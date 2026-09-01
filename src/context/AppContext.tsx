@@ -48,6 +48,7 @@ interface AppContextType {
   setTheme: (theme: 'light' | 'dark') => void;
   toggleTheme: () => void;
   resetAllData: () => void;
+  wipeAllSystemData: (wipeSupabase?: boolean) => Promise<{ success: boolean; message: string }>;
 
   // Workshop / Kiosk Mode for TV Display
   isKioskMode: boolean;
@@ -68,148 +69,32 @@ export const getNextOrderSerialNumber = (existingOrders: Order[]): string => {
   return (maxNum + 1).toString();
 };
 
-// Initial Mock Data
-const initialOrders: Order[] = [
-  { 
-    id: '1001', 
-    serialNumber: '1001',
-    serviceType: 'لافتة إعلانية',
-    clientName: 'شركة الأفق للاستثمار والتطوير', 
-    description: 'لوحة إعلانية خارجية 3x2 مضيئة حروف أكريليك بارزة مع شاسيه حديد وليدات', 
-    price: 1500, 
-    cost: 850,
-    expectedProfit: 650,
-    assignedEmployee: 'خالد الفني',
-    status: 'بانتظار اعتماد التصميم', 
-    paymentMethod: 'تحويل', 
-    date: new Date().toISOString(), 
-    dimensions: { width: '3', height: '2' }, 
-    targetDeliveryDate: new Date(Date.now() + 86400000 * 3).toISOString(), 
-    deposit: 500, 
-    remaining: 1000, 
-    installationAddress: 'طرابلس - طريق الشط', 
-    craneCost: 120 
-  },
-  { 
-    id: '1002', 
-    serialNumber: '1002',
-    serviceType: 'إدارة صفحات سوشيال ميديا',
-    clientName: 'مقهى الرواد الحديث', 
-    description: 'إدارة صفحات التواصل الاجتماعي شهرياً، تصميم 12 منشوراً إعلانياً وإطلاق حملة تسويقية', 
-    price: 800, 
-    cost: 320,
-    expectedProfit: 480,
-    assignedEmployee: 'عمر المصمم',
-    status: 'قيد التركيب', 
-    paymentMethod: 'نقدي', 
-    date: new Date().toISOString(), 
-    targetDeliveryDate: new Date(Date.now() + 86400000).toISOString(), 
-    deposit: 400, 
-    remaining: 400, 
-    installationAddress: 'بنغازي - شارع دبي' 
-  },
-  { 
-    id: '1003', 
-    serialNumber: '1003',
-    serviceType: 'تصميم موقع إلكتروني',
-    clientName: 'مجموعة المروج الهندسية', 
-    description: 'تصميم وبرمجة موقع إلكتروني تعريفي متجاوب مع واجهة عربية ولوحة تحكم لإدارة المشاريع', 
-    price: 2400, 
-    cost: 950,
-    expectedProfit: 1450,
-    assignedEmployee: 'أحمد الإداري',
-    status: 'قيد التصميم', 
-    paymentMethod: 'تحويل', 
-    date: new Date().toISOString(), 
-    targetDeliveryDate: new Date(Date.now() + 86400000 * 5).toISOString(), 
-    deposit: 1200, 
-    remaining: 1200 
-  },
-  { 
-    id: '1004', 
-    serialNumber: '1004',
-    serviceType: 'خدمات طباعة',
-    clientName: 'المركز التجاري الدولي', 
-    description: 'طباعة 5000 بروشور مطوي لامع و10 رول أب ستاند ألومنيوم للمعارض والفعاليات', 
-    price: 950, 
-    cost: 450,
-    expectedProfit: 500,
-    assignedEmployee: 'خالد الفني',
-    status: 'تم التسليم', 
-    paymentMethod: 'نقدي', 
-    date: new Date().toISOString(), 
-    targetDeliveryDate: new Date().toISOString(), 
-    deposit: 950, 
-    remaining: 0 
-  },
-];
+// Initial Empty Data for Fresh Client Setup
+const initialOrders: Order[] = [];
 
-const initialInventory: InventoryItem[] = [
-  { id: '1', name: 'أكريليك أسود 3ملم', quantity: 15, minLimit: 20, unit: 'لوح', unitPrice: 85 },
-  { id: '2', name: 'رول فينيل أبيض ألماني', quantity: 5, minLimit: 3, unit: 'رول', unitPrice: 40 },
-  { id: '3', name: 'ليدات إضاءة بيضاء موفرة', quantity: 50, minLimit: 100, unit: 'متر', unitPrice: 8 },
-  { id: '4', name: 'حديد مربعات 2.5×2.5 سم', quantity: 35, minLimit: 15, unit: 'قطعة', unitPrice: 28 },
-];
+const initialInventory: InventoryItem[] = [];
 
 const initialEmployees: Employee[] = [
-  { id: '1', name: 'أحمد الإداري', role: 'مدير', salary: 5000 },
-  { id: '2', name: 'عمر المصمم', role: 'مصمم', salary: 3000 },
-  { id: '3', name: 'خالد الفني', role: 'فني تركيب', salary: 2500 },
+  {
+    id: '1',
+    name: 'المدير العام',
+    role: 'مدير',
+    salary: 0,
+    phone: '',
+    nationalId: '',
+    joinedDate: new Date().toISOString(),
+    emergencyContact: '',
+    status: 'نشط',
+  },
 ];
 
-const initialExpenses: Expense[] = [
-  {
-    id: 'f1',
-    type: 'وارد',
-    description: 'دفعة مقدمة - لوحة إعلانية خارجية (شركة الأفق)',
-    amount: 500,
-    category: 'مقبوضات مبيعات',
-    date: new Date(Date.now() - 3600000 * 24).toISOString(),
-    paymentMethod: 'تحويل',
-  },
-  {
-    id: 'f2',
-    type: 'وارد',
-    description: 'تحصيل نقدي - تسليم بروشورات المركز التجاري الدولي',
-    amount: 950,
-    category: 'تحصيل دفعات',
-    date: new Date(Date.now() - 3600000 * 12).toISOString(),
-    paymentMethod: 'نقدي',
-  },
-  {
-    id: 'f3',
-    type: 'مصروف',
-    description: 'فاتورة استهلاك كهرباء الورشة لشهر أغسطس',
-    amount: 280,
-    category: 'مصاريف تشغيلية',
-    date: new Date(Date.now() - 3600000 * 48).toISOString(),
-    paymentMethod: 'نقدي',
-  },
-  {
-    id: 'f4',
-    type: 'مصروف',
-    description: 'صيانة ماكينة الليزر وقص الأكريليك',
-    amount: 190,
-    category: 'صيانة ومعدات',
-    date: new Date(Date.now() - 3600000 * 20).toISOString(),
-    paymentMethod: 'نقدي',
-  },
-  {
-    id: 'f5',
-    type: 'وارد',
-    description: 'دفعة نقدية - مقهى الرواد الحديث',
-    amount: 400,
-    category: 'مقبوضات مبيعات',
-    date: new Date().toISOString(),
-    paymentMethod: 'نقدي',
-  },
-];
+const initialExpenses: Expense[] = [];
 
 const defaultSettings: SystemSettings = {
   shopInfo: {
     name: 'شركة أسلوب للدعاية والإعلان',
-    phone: '091-0000000 / 092-0000000',
-    address: 'طرابلس، شارع عمر المختار - المنطقة الإعلانية',
+    phone: '',
+    address: '',
     logoUrl: null,
     currency: 'د.ل',
   },
@@ -259,11 +144,11 @@ const defaultSettings: SystemSettings = {
     },
   },
   invoice: {
-    footerNote: 'شكراً لتعاملكم مع شركة أسلوب للدعاية والإعلان. يسري ضمان العمل المعتمد وفق المواصفات المحددة.',
+    footerNote: 'شكراً لتعاملكم معنا. يسري ضمان العمل المعتمد وفق المواصفات المحددة.',
     subHeader: 'للدعاية والإعلان والطباعة والتجهيزات الإعلانية المتكاملة',
     termsText: 'الدفعة الأولى غير قابلة للاسترجاع بعد بدء أعمال القص والتشكيل والتجهيز.',
   },
-  theme: 'light',
+  theme: 'dark',
 };
 
 export const AppProvider = ({ children }: { children: ReactNode }) => {
@@ -746,13 +631,80 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const resetAllData = () => {
-    setOrders(initialOrders);
-    setInventory(initialInventory);
-    setExpenses(initialExpenses);
+    setOrders([]);
+    setInventory([]);
+    setExpenses([]);
     setEmployees(initialEmployees);
+    setCurrentUser(initialEmployees[0]);
     setSettings(defaultSettings);
     setSyncQueue([]);
     localStorage.clear();
+    localStorage.setItem('masar_orders', JSON.stringify([]));
+    localStorage.setItem('masar_inventory', JSON.stringify([]));
+    localStorage.setItem('masar_expenses', JSON.stringify([]));
+    localStorage.setItem('masar_employees', JSON.stringify(initialEmployees));
+    localStorage.setItem('masar_current_user', JSON.stringify(initialEmployees[0]));
+    localStorage.setItem('masar_settings', JSON.stringify(defaultSettings));
+  };
+
+  const wipeAllSystemData = async (wipeSupabase = true): Promise<{ success: boolean; message: string }> => {
+    try {
+      // 1. Reset React State to empty clean-slate arrays
+      setOrders([]);
+      setInventory([]);
+      setExpenses([]);
+      const defaultAdmin: Employee[] = [
+        {
+          id: '1',
+          name: 'المدير العام',
+          role: 'مدير',
+          phone: '',
+          nationalId: '',
+          salary: 0,
+          joinedDate: new Date().toISOString(),
+          emergencyContact: '',
+          status: 'نشط',
+        }
+      ];
+      setEmployees(defaultAdmin);
+      setCurrentUser(defaultAdmin[0]);
+      setSyncQueue([]);
+
+      // 2. Wipe LocalStorage
+      localStorage.removeItem('masar_orders');
+      localStorage.removeItem('masar_inventory');
+      localStorage.removeItem('masar_expenses');
+      localStorage.removeItem('masar_employees');
+      localStorage.removeItem('masar_sync_queue');
+      localStorage.removeItem('masar_last_sync');
+      localStorage.removeItem('masar_last_sync_time');
+
+      // Initialize clean empty arrays in LocalStorage
+      localStorage.setItem('masar_orders', JSON.stringify([]));
+      localStorage.setItem('masar_inventory', JSON.stringify([]));
+      localStorage.setItem('masar_expenses', JSON.stringify([]));
+      localStorage.setItem('masar_employees', JSON.stringify(defaultAdmin));
+      localStorage.setItem('masar_current_user', JSON.stringify(defaultAdmin[0]));
+      localStorage.setItem('masar_sync_queue', JSON.stringify([]));
+
+      // 3. Clear remote Supabase tables if connected
+      if (wipeSupabase && isSupabaseConfigured) {
+        try {
+          await Promise.allSettled([
+            supabase.from('orders').delete().neq('id', '_dummy_none_'),
+            supabase.from('inventory').delete().neq('id', '_dummy_none_'),
+            supabase.from('expenses').delete().neq('id', '_dummy_none_'),
+            supabase.from('employees').delete().neq('id', '1'),
+          ]);
+        } catch (supabaseErr) {
+          console.warn('Supabase remote table wipe error:', supabaseErr);
+        }
+      }
+
+      return { success: true, message: 'تم تصفير المنظومة ومسح كافة السجلات بنجاح' };
+    } catch (err: any) {
+      return { success: false, message: err?.message || 'حدث خطأ أثناء تصفير المنظومة' };
+    }
   };
 
   return (
@@ -774,6 +726,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       setTheme,
       toggleTheme,
       resetAllData,
+      wipeAllSystemData,
       isKioskMode,
       setIsKioskMode,
       toggleKioskMode,

@@ -37,7 +37,7 @@ export default function Layout() {
 
   // All primary navigation items unconditionally visible
   const navItems = [
-    { name: 'الرئيسية', path: '/', icon: <LayoutDashboard size={19} /> },
+    { name: 'لوحة التحكم', path: '/', icon: <LayoutDashboard size={19} /> },
     { name: 'المبيعات والطلبيات', path: '/sales', icon: <ShoppingCart size={19} /> },
     { name: 'المخزون والمواد', path: '/inventory', icon: <Box size={19} /> },
     { name: 'المالية', path: '/expenses', icon: <Receipt size={19} /> },

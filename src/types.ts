@@ -69,6 +69,11 @@ export interface Employee {
   name: string;
   role: EmployeeRole;
   salary: number;
+  phone?: string;
+  nationalId?: string;
+  joinedDate?: string;
+  emergencyContact?: string;
+  status?: 'نشط' | 'موقوف';
   pendingSync?: boolean;
 }
 

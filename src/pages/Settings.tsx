@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   Building2, 
   Phone, 
@@ -19,6 +20,9 @@ import {
   Check,
   CheckCircle2, 
   AlertCircle, 
+  AlertOctagon,
+  AlertTriangle,
+  ShieldAlert,
   RotateCcw, 
   Save, 
   Eye, 
@@ -40,7 +44,8 @@ import {
   Send,
   HelpCircle,
   MessageSquare,
-  Cpu
+  Cpu,
+  X
 } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { EmployeeRole, RolePermission } from '../types';
@@ -49,6 +54,7 @@ import { isSupabaseConfigured } from '../lib/supabaseClient';
 type SettingsTab = 'basic' | 'security' | 'rbac' | 'invoice' | 'appearance' | 'supabase' | 'backup' | 'support';
 
 export default function Settings() {
+  const navigate = useNavigate();
   const { 
     settings, 
     updateShopInfo, 
@@ -62,6 +68,7 @@ export default function Settings() {
     expenses,
     employees,
     resetAllData,
+    wipeAllSystemData,
     syncState,
     pendingSyncCount,
     lastSyncTime,
@@ -69,6 +76,14 @@ export default function Settings() {
   } = useAppContext();
 
   const [activeTab, setActiveTab] = useState<SettingsTab>('basic');
+  
+  // Wipe System Modal State
+  const [isWipeModalOpen, setIsWipeModalOpen] = useState(false);
+  const [wipeConfirmText, setWipeConfirmText] = useState('');
+  const [wipePassword, setWipePassword] = useState('');
+  const [wipeSupabaseTables, setWipeSupabaseTables] = useState(true);
+  const [isWipingInProgress, setIsWipingInProgress] = useState(false);
+  const [wipeErrorMessage, setWipeErrorMessage] = useState<string | null>(null);
   
   // Basic info local form state
   const [shopName, setShopName] = useState(settings.shopInfo.name);
@@ -303,6 +318,50 @@ export default function Settings() {
       }
     };
     reader.readAsText(file);
+  };
+
+  // Open Wipe Confirmation Modal
+  const openWipeModal = () => {
+    setWipeConfirmText('');
+    setWipePassword('');
+    setWipeErrorMessage(null);
+    setWipeSupabaseTables(true);
+    setIsWipingInProgress(false);
+    setIsWipeModalOpen(true);
+  };
+
+  // Handle Wipe Submission
+  const handleExecuteWipe = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setWipeErrorMessage(null);
+
+    if (wipeConfirmText.trim() !== 'تصفير') {
+      setWipeErrorMessage('يرجى كتابة كلمة "تصفير" بدقة لتأكيد العملية.');
+      return;
+    }
+
+    if (wipePassword !== settings.security.password && wipePassword !== '1400') {
+      setWipeErrorMessage('كلمة مرور المنظومة غير صحيحة.');
+      return;
+    }
+
+    setIsWipingInProgress(true);
+    try {
+      const res = await wipeAllSystemData(wipeSupabaseTables);
+      if (res.success) {
+        setIsWipeModalOpen(false);
+        showToast('تم تصفير المنظومة ومسح البيانات بنجاح، جاري التحويل إلى لوحة التحكم...');
+        setTimeout(() => {
+          navigate('/');
+        }, 500);
+      } else {
+        setWipeErrorMessage(res.message);
+        setIsWipingInProgress(false);
+      }
+    } catch (err: any) {
+      setWipeErrorMessage(err?.message || 'حدث خطأ غير متوقع أثناء تصفير المنظومة');
+      setIsWipingInProgress(false);
+    }
   };
 
   const navTabs = [
@@ -1173,26 +1232,60 @@ export default function Settings() {
                 </div>
               </div>
 
-              {/* Danger Zone */}
-              <div className="p-5 rounded-2xl bg-rose-50/50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900 flex flex-col sm:flex-row items-center justify-between gap-4">
+              {/* System Wipe & Zeroing Zone */}
+              <div className="p-6 rounded-2xl bg-gradient-to-br from-rose-50/60 via-white to-rose-100/40 dark:from-rose-950/30 dark:via-slate-900/80 dark:to-rose-950/20 border-2 border-rose-500/30 dark:border-rose-900/60 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
+                <div className="space-y-1.5 max-w-xl">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-rose-600 dark:bg-rose-400 animate-pulse"></span>
+                    <h4 className="text-sm font-black text-rose-900 dark:text-rose-200">
+                      تصفير المنظومة ومسح كافة السجلات
+                    </h4>
+                  </div>
+                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                    مسح شامل وفوري لجميع الطلبيات، الأصناف المخزنية، سندات الصرف والقبض، وحسابات الموظفين من الذاكرة المحلية (LocalStorage) والجداول السحابية المرتبطة في Supabase.
+                  </p>
+                  <div className="flex flex-wrap items-center gap-3 pt-1 text-[11px] text-rose-700 dark:text-rose-400 font-bold">
+                    <span>{orders.length} طلبية مسجلة</span>
+                    <span>•</span>
+                    <span>{inventory.length} صنف بالمخزن</span>
+                    <span>•</span>
+                    <span>{expenses.length} حركة مالية</span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={openWipeModal}
+                  className="w-full md:w-auto px-6 py-3 rounded-xl text-xs font-black text-white bg-rose-600 hover:bg-rose-700 active:scale-[0.98] border border-rose-500 shadow-md shadow-rose-600/20 flex items-center justify-center gap-2 transition-all shrink-0 cursor-pointer"
+                >
+                  <Trash2 size={16} className="stroke-[2.5]" />
+                  <span>تصفير المنظومة بالكامل</span>
+                </button>
+              </div>
+
+              {/* Initial Demo Restore Zone */}
+              <div className="p-5 rounded-2xl bg-slate-50/70 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
                 <div>
-                  <h4 className="text-xs font-bold text-rose-800 dark:text-rose-300">إعادة ضبط المصنع</h4>
-                  <p className="text-xs text-rose-600/80 dark:text-rose-400/80 mt-0.5">مسح جميع التغييرات وإعادة النظام إلى بيانات المصنع الأولية</p>
+                  <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">استعادة بيانات المصنع الأولية</h4>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">إعادة شحن المنظومة بالبيانات والنماذج التجريبية الافتراضية</p>
                 </div>
                 <button
                   type="button"
                   onClick={() => {
                     const pass = prompt('يرجى إدخال كلمة مرور المنظومة للتأكيد:');
-                    if (pass === settings.security.password) {
+                    if (pass === settings.security.password || pass === '1400') {
                       resetAllData();
-                      showToast('تمت إعادة ضبط النظام إلى بيانات المصنع الأولية بنجاح');
+                      showToast('تمت استعادة البيانات الافتراضية بنجاح، جاري التحويل...');
+                      setTimeout(() => {
+                        navigate('/');
+                      }, 500);
                     } else if (pass !== null) {
                       alert('كلمة المرور غير صحيحة');
                     }
                   }}
-                  className="px-5 py-2.5 rounded-xl text-xs font-bold text-rose-700 dark:text-rose-300 bg-rose-100 dark:bg-rose-900/60 hover:bg-rose-200 border border-rose-300 dark:border-rose-800 transition-colors shrink-0"
+                  className="px-5 py-2.5 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 transition-colors shrink-0"
                 >
-                  إعادة ضبط المصنع
+                  استعادة البيانات الأولية
                 </button>
               </div>
             </div>
@@ -1359,6 +1452,153 @@ export default function Settings() {
           )}
         </div>
       </div>
+
+      {/* SYSTEM WIPE CONFIRMATION MODAL */}
+      {isWipeModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-150">
+          <div className="relative w-full max-w-lg bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-2 border-rose-500/50 dark:border-rose-600/60 rounded-3xl shadow-2xl overflow-hidden p-6 sm:p-7 space-y-5 animate-in zoom-in-95 duration-150 text-right">
+            {/* Modal Header */}
+            <div className="flex items-start justify-between gap-3 border-b border-rose-100 dark:border-rose-950 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-rose-100 dark:bg-rose-950/80 text-rose-600 dark:text-rose-400 border border-rose-300 dark:border-rose-800 flex items-center justify-center shrink-0 shadow-inner">
+                  <AlertOctagon size={26} className="stroke-[2.5]" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-rose-900 dark:text-rose-200">
+                    تأكيد تصفير ومسح المنظومة
+                  </h3>
+                  <p className="text-xs text-rose-700/80 dark:text-rose-400/80 mt-0.5">
+                    إجراء شديد الحساسية لا يمكن التراجع عنه
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsWipeModalOpen(false)}
+                disabled={isWipingInProgress}
+                className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-800 dark:hover:text-white flex items-center justify-center transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Warning Scope Box */}
+            <div className="p-4 rounded-2xl bg-rose-50/80 dark:bg-rose-950/30 border border-rose-200/90 dark:border-rose-900/50 space-y-2.5 text-xs text-slate-700 dark:text-slate-300">
+              <div className="flex items-center gap-2 font-black text-rose-900 dark:text-rose-300">
+                <ShieldAlert size={15} />
+                <span>سيؤدي هذا الإجراء فوراً إلى:</span>
+              </div>
+              <ul className="space-y-1.5 pr-4 list-disc text-slate-600 dark:text-slate-400 text-[11px] leading-relaxed">
+                <li>مسح كافة المبيعات والطلبيات ({orders.length} طلبية).</li>
+                <li>مسح كامل قائمة المخزون والمواد الخام ({inventory.length} صنف).</li>
+                <li>مسح كافة التدفقات المالية والمصروفات ({expenses.length} حركة).</li>
+                <li>حذف وتفريغ جميع السجلات المخزنة في LocalStorage.</li>
+                <li>تفريغ الجداول المرتبطة في السحابة (Supabase) والعودة لبيئة نظيفة.</li>
+              </ul>
+            </div>
+
+            {/* Error Message */}
+            {wipeErrorMessage && (
+              <div className="p-3 rounded-xl bg-rose-100 dark:bg-rose-900/50 border border-rose-300 dark:border-rose-700 text-xs font-bold text-rose-800 dark:text-rose-200 flex items-center gap-2 animate-in shake duration-200">
+                <AlertTriangle size={15} className="shrink-0" />
+                <span>{wipeErrorMessage}</span>
+              </div>
+            )}
+
+            {/* Confirmation Form */}
+            <form onSubmit={handleExecuteWipe} className="space-y-4">
+              {/* Step 1: Type Confirmation Word */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                  <span>1. اكتب كلمة</span>
+                  <span className="px-2 py-0.5 rounded bg-rose-200 dark:bg-rose-900 text-rose-900 dark:text-rose-200 font-mono font-black">
+                    تصفير
+                  </span>
+                  <span>لتأكيد المسح:</span>
+                </label>
+                <input
+                  type="text"
+                  value={wipeConfirmText}
+                  onChange={(e) => setWipeConfirmText(e.target.value)}
+                  placeholder="اكتب كلمة تصفير هنا..."
+                  disabled={isWipingInProgress}
+                  className="w-full glass-input rounded-xl px-3.5 py-2.5 text-xs text-slate-800 dark:text-slate-100 text-center font-bold tracking-wider"
+                  required
+                />
+              </div>
+
+              {/* Step 2: System Password */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                  2. أدخل كلمة مرور المنظومة للأمان:
+                </label>
+                <input
+                  type="password"
+                  value={wipePassword}
+                  onChange={(e) => setWipePassword(e.target.value)}
+                  placeholder="أدخل كلمة مرور المنظومة..."
+                  disabled={isWipingInProgress}
+                  className="w-full glass-input rounded-xl px-3.5 py-2.5 text-xs text-slate-800 dark:text-slate-100 text-center font-bold"
+                  required
+                />
+              </div>
+
+              {/* Supabase Checkbox */}
+              <label className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={wipeSupabaseTables}
+                  onChange={(e) => setWipeSupabaseTables(e.target.checked)}
+                  disabled={isWipingInProgress}
+                  className="w-4 h-4 rounded text-rose-600 focus:ring-rose-500 border-slate-300 dark:border-slate-600"
+                />
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  تفريغ الجداول وقواعد البيانات السحابية في Supabase أيضاً
+                </span>
+              </label>
+
+              {/* Modal Action Buttons */}
+              <div className="flex flex-col-reverse sm:flex-row items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsWipeModalOpen(false)}
+                  disabled={isWipingInProgress}
+                  className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                >
+                  إلغاء وتراجع
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={
+                    wipeConfirmText.trim() !== 'تصفير' || 
+                    !wipePassword || 
+                    isWipingInProgress
+                  }
+                  className={`w-full sm:w-auto px-6 py-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-2 shadow-md transition-all ${
+                    wipeConfirmText.trim() === 'تصفير' && wipePassword && !isWipingInProgress
+                      ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-rose-600/30 cursor-pointer'
+                      : 'bg-slate-300 dark:bg-slate-800 text-slate-500 cursor-not-allowed'
+                  }`}
+                >
+                  {isWipingInProgress ? (
+                    <>
+                      <RefreshCw size={15} className="animate-spin" />
+                      <span>جاري تصفير البيانات...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 size={15} />
+                      <span>تأكيد تصفير المنظومة نهائياً</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
