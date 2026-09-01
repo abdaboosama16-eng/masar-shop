@@ -177,10 +177,10 @@ export default function Expenses() {
       {/* Top Header & Main Action Buttons */}
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
         <div>
-          <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2.5">
+          <h2 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2.5">
             <span>المالية</span>
           </h2>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+          <p className="text-xs text-slate-600 mt-1">
             إدارة التدفقات النقدية، تقييد الواردات والمقبوضات، ومتابعة سندات الصرف والمصروفات
           </p>
         </div>
@@ -189,7 +189,7 @@ export default function Expenses() {
         <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5 w-full lg:w-auto">
           <button
             onClick={() => openFormWith('وارد')}
-            className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white text-xs font-bold shadow-sm shadow-emerald-600/20 transition-all cursor-pointer"
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white text-xs font-bold shadow-sm shadow-emerald-600/20 transition-all duration-150 ease-out cursor-pointer"
           >
             <div className="w-5 h-5 rounded-lg bg-white/20 flex items-center justify-center shrink-0">
               <ArrowDownLeft size={14} className="stroke-[2.5]" />
@@ -199,7 +199,7 @@ export default function Expenses() {
 
           <button
             onClick={() => openFormWith('مصروف')}
-            className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4.5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 active:scale-[0.98] text-white text-xs font-bold shadow-sm shadow-rose-600/20 transition-all cursor-pointer"
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4.5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 active:scale-[0.98] text-white text-xs font-bold shadow-sm shadow-rose-600/20 transition-all duration-150 ease-out cursor-pointer"
           >
             <div className="w-5 h-5 rounded-lg bg-white/20 flex items-center justify-center shrink-0">
               <ArrowUpRight size={14} className="stroke-[2.5]" />
@@ -213,37 +213,37 @@ export default function Expenses() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         
         {/* Highlighted Card: Net Cash Balance (الواردات ناقص المصروفات) */}
-        <div className="glass-panel p-6 rounded-2xl relative overflow-hidden flex flex-col justify-between border-2 border-emerald-500/40 bg-gradient-to-br from-white via-emerald-50/20 to-emerald-100/30 dark:from-slate-900 dark:via-emerald-950/20 dark:to-slate-900 shadow-md">
+        <div className="glass-panel p-6 rounded-xl relative overflow-hidden flex flex-col justify-between border-2 border-emerald-500/40 bg-gradient-to-br from-white via-emerald-50/20 to-emerald-100/30 shadow-sm">
           <div className="flex justify-between items-start">
             <div className="space-y-1">
               <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-600 dark:bg-emerald-400"></span>
-                <span className="text-slate-600 dark:text-slate-300 text-xs font-bold">رصيد صافي الصندوق</span>
+                <span className="w-2 h-2 rounded-full bg-emerald-600 "></span>
+                <span className="text-slate-600 text-xs font-bold">رصيد صافي الصندوق</span>
               </div>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400">الواردات ناقص المصروفات</p>
+              <p className="text-[11px] text-slate-600 ">الواردات ناقص المصروفات</p>
             </div>
             <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
               netCashBalance >= 0 
-                ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700' 
-                : 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-700'
+                ? 'bg-emerald-500/15 text-emerald-700 border border-emerald-300 ' 
+                : 'bg-rose-500/15 text-rose-700 border border-rose-300 '
             }`}>
               <Wallet size={20} />
             </div>
           </div>
 
-          <div className="mt-4 pt-3 border-t border-slate-200/60 dark:border-slate-800 flex items-baseline justify-between">
+          <div className="mt-4 pt-3 border-t border-slate-200/80 flex items-baseline justify-between">
             <div className="flex items-baseline gap-1.5">
-              <span className={`text-3xl font-black font-mono tracking-tight ${
-                netCashBalance >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'
+              <span className={`text-3xl font-black font-mono tabular-nums tracking-tight ${
+                netCashBalance >= 0 ? 'text-emerald-700 ' : 'text-rose-700 '
               }`}>
                 {netCashBalance.toLocaleString()}
               </span>
-              <span className="text-xs font-bold text-slate-600 dark:text-slate-400">{settings.shopInfo.currency || 'د.ل'}</span>
+              <span className="text-xs font-bold text-slate-600 ">{settings.shopInfo.currency || 'د.ل'}</span>
             </div>
             <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
               netCashBalance >= 0 
-                ? 'bg-emerald-100/70 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800' 
-                : 'bg-rose-100/70 dark:bg-rose-950/50 text-rose-800 dark:text-rose-300 border-rose-200 dark:border-rose-800'
+                ? 'bg-emerald-100/70 text-emerald-800 border-emerald-200 ' 
+                : 'bg-rose-100/70 text-rose-800 border-rose-200 '
             }`}>
               {netCashBalance >= 0 ? 'فائض نقدي' : 'عجز في الصندوق'}
             </span>
@@ -257,25 +257,25 @@ export default function Expenses() {
         </div>
 
         {/* Card 2: Total Inflows (الواردات والمقبوضات) */}
-        <div className="glass-panel p-6 rounded-2xl relative overflow-hidden flex flex-col justify-between border border-slate-200/80 dark:border-slate-800 shadow-sm">
+        <div className="glass-panel p-6 rounded-xl relative overflow-hidden flex flex-col justify-between border border-slate-200/80 shadow-sm">
           <div className="flex justify-between items-start">
             <div className="space-y-1">
-              <span className="text-slate-600 dark:text-slate-400 text-xs font-bold">إجمالي الواردات والمقبوضات</span>
+              <span className="text-slate-600 text-xs font-bold">إجمالي الواردات والمقبوضات</span>
               <p className="text-[11px] text-slate-400">{totalInflowCount} سند قبض مسجل</p>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center justify-center">
               <ArrowDownLeft size={18} />
             </div>
           </div>
 
-          <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-baseline justify-between">
+          <div className="mt-4 pt-3 border-t border-slate-100 flex items-baseline justify-between">
             <div className="flex items-baseline gap-1.5">
-              <span className="text-2xl font-black font-mono text-emerald-700 dark:text-emerald-400">
+              <span className="text-2xl font-black font-mono tabular-nums text-emerald-700 ">
                 +{totalInflow.toLocaleString()}
               </span>
-              <span className="text-xs font-bold text-slate-600 dark:text-slate-400">{settings.shopInfo.currency || 'د.ل'}</span>
+              <span className="text-xs font-bold text-slate-600 ">{settings.shopInfo.currency || 'د.ل'}</span>
             </div>
-            <span className="text-[11px] text-emerald-700 dark:text-emerald-400 font-bold flex items-center gap-0.5">
+            <span className="text-[11px] text-emerald-700 font-bold flex items-center gap-0.5">
               <TrendingUp size={13} />
               <span>مقبوض</span>
             </span>
@@ -284,25 +284,25 @@ export default function Expenses() {
         </div>
 
         {/* Card 3: Total Outflows (المصروفات) */}
-        <div className="glass-panel p-6 rounded-2xl relative overflow-hidden flex flex-col justify-between border border-slate-200/80 dark:border-slate-800 shadow-sm">
+        <div className="glass-panel p-6 rounded-xl relative overflow-hidden flex flex-col justify-between border border-slate-200/80 shadow-sm">
           <div className="flex justify-between items-start">
             <div className="space-y-1">
-              <span className="text-slate-600 dark:text-slate-400 text-xs font-bold">إجمالي المصروفات والمدفوعات</span>
+              <span className="text-slate-600 text-xs font-bold">إجمالي المصروفات والمدفوعات</span>
               <p className="text-[11px] text-slate-400">{totalOutflowCount} سند صرف مسجل</p>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 border border-rose-200 flex items-center justify-center">
               <ArrowUpRight size={18} />
             </div>
           </div>
 
-          <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-baseline justify-between">
+          <div className="mt-4 pt-3 border-t border-slate-100 flex items-baseline justify-between">
             <div className="flex items-baseline gap-1.5">
-              <span className="text-2xl font-black font-mono text-rose-700 dark:text-rose-400">
+              <span className="text-2xl font-black font-mono tabular-nums text-rose-700 ">
                 -{totalOutflow.toLocaleString()}
               </span>
-              <span className="text-xs font-bold text-slate-600 dark:text-slate-400">{settings.shopInfo.currency || 'د.ل'}</span>
+              <span className="text-xs font-bold text-slate-600 ">{settings.shopInfo.currency || 'د.ل'}</span>
             </div>
-            <span className="text-[11px] text-rose-700 dark:text-rose-400 font-bold flex items-center gap-0.5">
+            <span className="text-[11px] text-rose-700 font-bold flex items-center gap-0.5">
               <TrendingDown size={13} />
               <span>مصروف</span>
             </span>
@@ -313,7 +313,7 @@ export default function Expenses() {
       </div>
 
       {/* Filter & Search Bar */}
-      <div className="glass-panel p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+      <div className="glass-panel p-4 rounded-xl border border-slate-200/80 shadow-sm flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
         
         {/* Search */}
         <div className="relative flex-1">
@@ -339,23 +339,23 @@ export default function Expenses() {
         <div className="flex flex-wrap items-center gap-2">
           
           {/* Type Filter */}
-          <div className="flex items-center rounded-xl bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200/80 dark:border-slate-700 text-xs">
+          <div className="flex items-center rounded-xl bg-slate-100 p-1 border border-slate-200/80 text-xs">
             <button
               onClick={() => setTypeFilter('all')}
-              className={`px-3 py-1 rounded-lg font-bold transition-all ${
+              className={`px-3 py-1 rounded-lg font-bold transition-all duration-150 ease-out ${
                 typeFilter === 'all'
-                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                  ? 'bg-white text-slate-900 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               الكل
             </button>
             <button
               onClick={() => setTypeFilter('وارد')}
-              className={`px-3 py-1 rounded-lg font-bold transition-all flex items-center gap-1 ${
+              className={`px-3 py-1 rounded-lg font-bold transition-all duration-150 ease-out flex items-center gap-1 ${
                 typeFilter === 'وارد'
                   ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
+                  : 'text-emerald-700 hover:bg-emerald-50 :bg-emerald-950/30'
               }`}
             >
               <ArrowDownLeft size={13} />
@@ -363,10 +363,10 @@ export default function Expenses() {
             </button>
             <button
               onClick={() => setTypeFilter('مصروف')}
-              className={`px-3 py-1 rounded-lg font-bold transition-all flex items-center gap-1 ${
+              className={`px-3 py-1 rounded-lg font-bold transition-all duration-150 ease-out flex items-center gap-1 ${
                 typeFilter === 'مصروف'
                   ? 'bg-rose-600 text-white shadow-xs'
-                  : 'text-rose-700 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30'
+                  : 'text-rose-700 hover:bg-rose-50 :bg-rose-950/30'
               }`}
             >
               <ArrowUpRight size={13} />
@@ -378,7 +378,7 @@ export default function Expenses() {
           <select
             value={paymentFilter}
             onChange={(e) => setPaymentFilter(e.target.value as any)}
-            className="glass-input text-xs rounded-xl px-3 py-1.5 bg-white dark:bg-slate-800 font-semibold"
+            className="glass-input text-xs rounded-xl px-3 py-1.5 bg-white font-semibold"
           >
             <option value="all">كافة طرق الدفع</option>
             <option value="نقدي">نقدي</option>
@@ -390,7 +390,7 @@ export default function Expenses() {
           <select
             value={dateFilter}
             onChange={(e) => setDateFilter(e.target.value as any)}
-            className="glass-input text-xs rounded-xl px-3 py-1.5 bg-white dark:bg-slate-800 font-semibold"
+            className="glass-input text-xs rounded-xl px-3 py-1.5 bg-white font-semibold"
           >
             <option value="all">كافة التواريخ</option>
             <option value="today">اليوم فقط</option>
@@ -401,20 +401,20 @@ export default function Expenses() {
       </div>
 
       {/* Operations Table */}
-      <div className="glass-panel rounded-2xl flex flex-col overflow-hidden shadow-sm border border-slate-200/80 dark:border-slate-800">
+      <div className="glass-panel rounded-xl flex flex-col overflow-hidden shadow-sm border border-slate-200/80 ">
         
         {/* Table Header Details */}
-        <div className="p-4 border-b border-slate-200/80 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+        <div className="p-4 border-b border-slate-200/80 bg-slate-50/60 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
           <div className="flex items-center gap-2">
-            <FileText size={16} className="text-slate-600 dark:text-slate-400" />
-            <h3 className="font-bold text-slate-900 dark:text-white text-xs sm:text-sm">
+            <FileText size={16} className="text-slate-600 " />
+            <h3 className="font-bold text-slate-900 text-xs sm:text-sm">
               جدول التدفقات والعمليات المالية
             </h3>
           </div>
-          <div className="flex items-center gap-3 text-xs font-mono text-slate-500 dark:text-slate-400">
+          <div className="flex items-center gap-3 text-xs font-mono tabular-nums text-slate-600 ">
             <span>{filteredList.length} حركة معروضة</span>
             <span>•</span>
-            <span className="text-slate-700 dark:text-slate-300 font-bold">
+            <span className="text-slate-700 font-bold">
               صافي الحركات المعروضة: {(
                 filteredList.reduce((sum, item) => item.type === 'وارد' ? sum + item.amount : sum - item.amount, 0)
               ).toLocaleString()} {settings.shopInfo.currency || 'د.ل'}
@@ -425,7 +425,7 @@ export default function Expenses() {
         {/* Table Content */}
         <div className="overflow-x-auto">
           <table className="w-full text-right text-xs">
-            <thead className="text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-900/80 border-b border-slate-200 dark:border-slate-800 font-bold">
+            <thead className="text-slate-600 bg-slate-50 border-b border-slate-200/80 font-bold">
               <tr>
                 <th className="p-3.5 text-center w-28">نوع الحركة</th>
                 <th className="p-3.5">البيان / الوصف والتصنيف</th>
@@ -435,28 +435,28 @@ export default function Expenses() {
                 <th className="p-3.5 text-center w-16">إجراء</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+            <tbody className="divide-y divide-slate-100 ">
               {filteredList.map((item) => {
                 const isInflow = item.type === 'وارد';
 
                 return (
-                  <tr key={item.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
+                  <tr key={item.id} className="hover:bg-slate-50/70 :bg-slate-800/40 transition-all duration-150 ease-out ">
                     
                     {/* Movement Type Badge */}
                     <td className="p-3.5 text-center">
                       <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold border ${
                         isInflow
-                          ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
-                          : 'bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800'
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200 '
+                          : 'bg-rose-50 text-rose-700 border-rose-200 '
                       }`}>
                         {isInflow ? (
                           <>
-                            <ArrowDownLeft size={13} className="shrink-0 text-emerald-600 dark:text-emerald-400" />
+                            <ArrowDownLeft size={13} className="shrink-0 text-emerald-600 " />
                             <span>وارد / قبض</span>
                           </>
                         ) : (
                           <>
-                            <ArrowUpRight size={13} className="shrink-0 text-rose-600 dark:text-rose-400" />
+                            <ArrowUpRight size={13} className="shrink-0 text-rose-600 " />
                             <span>مصروف / صرف</span>
                           </>
                         )}
@@ -466,15 +466,15 @@ export default function Expenses() {
                     {/* Description & Category */}
                     <td className="p-3.5">
                       <div className="space-y-0.5">
-                        <p className="font-bold text-slate-800 dark:text-slate-100">{item.description}</p>
-                        <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                        <p className="font-bold text-slate-800 ">{item.description}</p>
+                        <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-600 ">
                           {item.category && (
-                            <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-medium">
+                            <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 font-medium">
                               {item.category}
                             </span>
                           )}
                           {item.referenceNumber && (
-                            <span className="font-mono text-slate-400">
+                            <span className="font-mono tabular-nums text-slate-400">
                               مرجع: #{item.referenceNumber}
                             </span>
                           )}
@@ -484,20 +484,20 @@ export default function Expenses() {
 
                     {/* Payment Method */}
                     <td className="p-3.5">
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold text-[11px]">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-100 text-slate-700 font-semibold text-[11px]">
                         <CreditCard size={12} className="text-slate-400" />
                         <span>{item.paymentMethod || 'نقدي'}</span>
                       </span>
                     </td>
 
                     {/* Date & Time */}
-                    <td className="p-3.5 text-slate-600 dark:text-slate-400 font-mono text-[11px]">
+                    <td className="p-3.5 text-slate-600 font-mono tabular-nums text-[11px]">
                       {item.date ? format(new Date(item.date), 'yyyy-MM-dd HH:mm') : '—'}
                     </td>
 
                     {/* Amount */}
-                    <td className="p-3.5 text-left font-mono font-black text-sm">
-                      <span className={isInflow ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'}>
+                    <td className="p-3.5 text-left font-mono tabular-nums font-black text-sm">
+                      <span className={isInflow ? 'text-emerald-700 ' : 'text-rose-700 '}>
                         {isInflow ? '+' : '-'}{item.amount.toLocaleString()} {settings.shopInfo.currency || 'د.ل'}
                       </span>
                     </td>
@@ -509,14 +509,14 @@ export default function Expenses() {
                           <button
                             onClick={() => handleDelete(item.id)}
                             title="تأكيد الحذف"
-                            className="p-1 rounded-lg bg-rose-600 text-white hover:bg-rose-700 transition-colors"
+                            className="p-1 rounded-lg bg-rose-600 text-white hover:bg-rose-700 transition-all duration-150 ease-out "
                           >
                             <CheckCircle2 size={14} />
                           </button>
                           <button
                             onClick={() => setDeleteConfirmId(null)}
                             title="إلغاء"
-                            className="p-1 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 transition-colors"
+                            className="p-1 rounded-lg bg-slate-200 text-slate-700 hover:bg-slate-300 transition-all duration-150 ease-out "
                           >
                             <X size={14} />
                           </button>
@@ -525,7 +525,7 @@ export default function Expenses() {
                         <button
                           onClick={() => setDeleteConfirmId(item.id)}
                           title="حذف القيد"
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 :bg-rose-950/40 transition-all duration-150 ease-out "
                         >
                           <Trash2 size={14} />
                         </button>
@@ -540,14 +540,14 @@ export default function Expenses() {
                 <tr>
                   <td colSpan={6} className="p-16 text-center">
                     <div className="flex flex-col items-center justify-center gap-3">
-                      <div className="w-14 h-14 rounded-2xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-400">
+                      <div className="w-14 h-14 rounded-xl bg-slate-100 border border-slate-200/80 flex items-center justify-center text-slate-400">
                         <Wallet size={26} strokeWidth={1.5} />
                       </div>
                       <div>
-                        <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-1">
+                        <h4 className="text-sm font-bold text-slate-800 mb-1">
                           لا توجد حركات مالية مطابقة
                         </h4>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                        <p className="text-xs text-slate-600 ">
                           {searchQuery || typeFilter !== 'all' || paymentFilter !== 'all' || dateFilter !== 'all'
                             ? 'جرّب تعديل خيارات البحث والتصفية لعرض النتائج'
                             : 'اضغط على أحد الأزرار العلوية لتسجيل أول حركة وارد أو مصروف'}
@@ -564,14 +564,14 @@ export default function Expenses() {
 
       {/* Record Creation Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="w-full max-w-lg glass-panel bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200/80 dark:border-slate-800 overflow-hidden">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="w-full max-w-lg glass-panel bg-white rounded-xl shadow-2xl border border-slate-200/80 overflow-hidden">
             
             {/* Modal Header */}
             <div className={`p-4 border-b flex items-center justify-between ${
               transactionType === 'وارد'
-                ? 'bg-emerald-50/70 dark:bg-emerald-950/50 border-emerald-200 dark:border-emerald-900 text-emerald-900 dark:text-emerald-100'
-                : 'bg-rose-50/70 dark:bg-rose-950/50 border-rose-200 dark:border-rose-900 text-rose-900 dark:text-rose-100'
+                ? 'bg-emerald-50/70 border-emerald-200 text-emerald-900 '
+                : 'bg-rose-50/70 border-rose-200 text-rose-900 '
             }`}>
               <div className="flex items-center gap-2.5">
                 <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-white ${
@@ -591,7 +591,7 @@ export default function Expenses() {
 
               <button
                 onClick={() => setIsModalOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 :text-slate-200"
               >
                 <X size={18} />
               </button>
@@ -601,17 +601,17 @@ export default function Expenses() {
             <form onSubmit={handleSubmit} className="p-5 space-y-4">
               
               {/* Type Switcher in Form */}
-              <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
+              <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-xl">
                 <button
                   type="button"
                   onClick={() => {
                     setTransactionType('وارد');
                     setCategory(inflowCategories[0]);
                   }}
-                  className={`py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+                  className={`py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all duration-150 ease-out ${
                     transactionType === 'وارد'
                       ? 'bg-emerald-600 text-white shadow-xs'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                      : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
                   <ArrowDownLeft size={14} />
@@ -624,10 +624,10 @@ export default function Expenses() {
                     setTransactionType('مصروف');
                     setCategory(outflowCategories[0]);
                   }}
-                  className={`py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+                  className={`py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all duration-150 ease-out ${
                     transactionType === 'مصروف'
                       ? 'bg-rose-600 text-white shadow-xs'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                      : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
                   <ArrowUpRight size={14} />
@@ -639,7 +639,7 @@ export default function Expenses() {
                 
                 {/* Amount */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
                     المبلغ ({settings.shopInfo.currency || 'د.ل'}) <span className="text-rose-500">*</span>
                   </label>
                   <input
@@ -650,13 +650,13 @@ export default function Expenses() {
                     placeholder="0.00"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
-                    className="w-full glass-input rounded-xl px-3.5 py-2.5 text-sm font-mono font-bold text-slate-900 dark:text-white"
+                    className="w-full glass-input rounded-lg px-3.5 py-2.5 text-sm font-mono tabular-nums font-bold text-slate-900 "
                   />
                 </div>
 
                 {/* Date */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
                     تاريخ العملية
                   </label>
                   <input
@@ -664,19 +664,19 @@ export default function Expenses() {
                     required
                     value={date}
                     onChange={(e) => setDate(e.target.value)}
-                    className="w-full glass-input rounded-xl px-3.5 py-2.5 text-xs text-slate-800 dark:text-slate-100"
+                    className="w-full glass-input rounded-lg px-3.5 py-2.5 text-xs text-slate-800 "
                   />
                 </div>
 
                 {/* Category */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
                     التصنيف / البند
                   </label>
                   <select
                     value={category}
                     onChange={(e) => setCategory(e.target.value)}
-                    className="w-full glass-input rounded-xl px-3.5 py-2.5 text-xs text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-800"
+                    className="w-full glass-input rounded-lg px-3.5 py-2.5 text-xs text-slate-800 bg-white "
                   >
                     {(transactionType === 'وارد' ? inflowCategories : outflowCategories).map(cat => (
                       <option key={cat} value={cat}>{cat}</option>
@@ -686,13 +686,13 @@ export default function Expenses() {
 
                 {/* Payment Method */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
                     طريقة الدفع
                   </label>
                   <select
                     value={paymentMethod}
                     onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
-                    className="w-full glass-input rounded-xl px-3.5 py-2.5 text-xs text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-800"
+                    className="w-full glass-input rounded-lg px-3.5 py-2.5 text-xs text-slate-800 bg-white "
                   >
                     <option value="نقدي">نقدي (كاش الصندوق)</option>
                     <option value="تحويل">تحويل بنكي / صك</option>
@@ -705,14 +705,14 @@ export default function Expenses() {
               {/* Employee selector for salaries or transactions */}
               {transactionType === 'مصروف' && category.includes('رواتب') && (
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
                     الموظف المستفيد <span className="text-rose-500">*</span>
                   </label>
                   <select
                     required
                     value={employeeId}
                     onChange={(e) => setEmployeeId(e.target.value)}
-                    className="w-full glass-input rounded-xl px-3.5 py-2.5 text-xs text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-800"
+                    className="w-full glass-input rounded-lg px-3.5 py-2.5 text-xs text-slate-800 bg-white "
                   >
                     <option value="" disabled>اختر اسم الموظف...</option>
                     {employees.map(emp => (
@@ -724,7 +724,7 @@ export default function Expenses() {
 
               {/* Description / Statement */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
                   البيان / الوصف التفصيلي <span className="text-rose-500">*</span>
                 </label>
                 <input
@@ -737,13 +737,13 @@ export default function Expenses() {
                   }
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  className="w-full glass-input rounded-xl px-3.5 py-2.5 text-xs text-slate-800 dark:text-slate-100"
+                  className="w-full glass-input rounded-lg px-3.5 py-2.5 text-xs text-slate-800 "
                 />
               </div>
 
               {/* Reference number */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
                   رقم الإيصال / السند المرجعي (اختياري)
                 </label>
                 <input
@@ -751,22 +751,22 @@ export default function Expenses() {
                   placeholder="مثال: REC-402, INV-1002, صك 9841..."
                   value={referenceNumber}
                   onChange={(e) => setReferenceNumber(e.target.value)}
-                  className="w-full glass-input rounded-xl px-3.5 py-2.5 text-xs font-mono text-slate-800 dark:text-slate-100"
+                  className="w-full glass-input rounded-lg px-3.5 py-2.5 text-xs font-mono tabular-nums text-slate-800 "
                 />
               </div>
 
               {/* Footer / Actions */}
-              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100 ">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 text-xs font-bold rounded-xl text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  className="px-4 py-2 text-xs font-bold rounded-xl text-slate-600 hover:bg-slate-100 :bg-slate-800 transition-all duration-150 ease-out "
                 >
                   إلغاء
                 </button>
                 <button
                   type="submit"
-                  className={`px-6 py-2.5 text-xs font-bold rounded-xl text-white shadow-sm transition-all flex items-center gap-1.5 ${
+                  className={`px-6 py-2.5 text-xs font-bold rounded-xl text-white shadow-sm transition-all duration-150 ease-out flex items-center gap-1.5 ${
                     transactionType === 'وارد'
                       ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20'
                       : 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/20'

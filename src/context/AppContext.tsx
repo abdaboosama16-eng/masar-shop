@@ -1,15 +1,5 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useRef } from 'react';
-import { 
-  Order, 
-  InventoryItem, 
-  Expense, 
-  Employee, 
-  EmployeeRole, 
-  SystemSettings, 
-  ShopInfo, 
-  RolePermission,
-  SyncState 
-} from '../types';
+import { Order, InventoryItem, Expense, Employee, EmployeeRole, SystemSettings, ShopInfo, RolePermission, SyncState, Customer, Supplier, TreasuryAccount, TreasuryTransaction } from '../types';
 import { supabase, isSupabaseConfigured, SyncQueueItem, authenticateUser } from '../lib/supabaseClient';
 
 interface AppContextType {
@@ -26,6 +16,7 @@ interface AppContextType {
   deleteExpense: (id: string) => void;
   employees: Employee[];
   addEmployee: (employee: Omit<Employee, 'id'>) => void;
+  updateEmployee: (id: string, employee: Partial<Employee>) => void;
   currentUser: Employee | null;
   login: (id: string) => void;
   loginWithPasscode: (passcode: string) => Promise<{ success: boolean; message?: string }>;
@@ -42,8 +33,11 @@ interface AppContextType {
   // Settings & RBAC & Security
   settings: SystemSettings;
   updateShopInfo: (info: Partial<ShopInfo>) => void;
+  updateSystemSettings: (newSettings: Partial<SystemSettings>) => void;
   changeSystemPassword: (oldPass: string, newPass: string) => { success: boolean; message: string };
   updateRolePermissions: (role: EmployeeRole, perms: Partial<RolePermission>) => void;
+  addRole: (role: string, perms: RolePermission) => void;
+  deleteRole: (role: string) => void;
   updateInvoiceSettings: (invoice: Partial<SystemSettings['invoice']>) => void;
   setTheme: (theme: 'light' | 'dark') => void;
   toggleTheme: () => void;
@@ -51,6 +45,16 @@ interface AppContextType {
   wipeAllSystemData: (wipeSupabase?: boolean) => Promise<{ success: boolean; message: string }>;
 
   // Workshop / Kiosk Mode for TV Display
+  
+  customers: Customer[];
+  setCustomers: React.Dispatch<React.SetStateAction<Customer[]>>;
+  suppliers: Supplier[];
+  setSuppliers: React.Dispatch<React.SetStateAction<Supplier[]>>;
+  treasuryAccounts: TreasuryAccount[];
+  setTreasuryAccounts: React.Dispatch<React.SetStateAction<TreasuryAccount[]>>;
+  treasuryTransactions: TreasuryTransaction[];
+  setTreasuryTransactions: React.Dispatch<React.SetStateAction<TreasuryTransaction[]>>;
+
   isKioskMode: boolean;
   setIsKioskMode: (kiosk: boolean) => void;
   toggleKioskMode: () => void;
@@ -111,36 +115,10 @@ const defaultSettings: SystemSettings = {
       expenses: true,
       employees: true,
       settings: true,
-    },
-    'مصمم': {
-      dashboard: false,
-      sales: true,
-      designs: true,
-      installation: false,
-      inventory: false,
-      expenses: false,
-      employees: false,
-      settings: false,
-    },
-    'فني تركيب': {
-      dashboard: false,
-      sales: false,
-      designs: false,
-      installation: true,
-      inventory: true,
-      expenses: false,
-      employees: false,
-      settings: false,
-    },
-    'مركب': {
-      dashboard: false,
-      sales: false,
-      designs: false,
-      installation: true,
-      inventory: true,
-      expenses: false,
-      employees: false,
-      settings: false,
+      audit: true,
+      customers: true,
+      suppliers: true,
+      treasury: true,
     },
   },
   invoice: {
@@ -148,7 +126,8 @@ const defaultSettings: SystemSettings = {
     subHeader: 'للدعاية والإعلان والطباعة والتجهيزات الإعلانية المتكاملة',
     termsText: 'الدفعة الأولى غير قابلة للاسترجاع بعد بدء أعمال القص والتشكيل والتجهيز.',
   },
-  theme: 'dark',
+  theme: 'light',
+    commissionBasis: 'صافي الربح',
 };
 
 export const AppProvider = ({ children }: { children: ReactNode }) => {
@@ -218,6 +197,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   });
 
   const [settings, setSettings] = useState<SystemSettings>(() => {
+    const savedTheme = localStorage.getItem('masar_theme') as 'light' | 'dark' | null;
     const saved = localStorage.getItem('masar_settings');
     if (saved) {
       try {
@@ -237,12 +217,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           security: { ...defaultSettings.security, ...parsed.security },
           permissions: { ...defaultSettings.permissions, ...parsed.permissions },
           invoice: { ...defaultSettings.invoice, ...parsed.invoice },
+          theme: savedTheme || parsed.theme || defaultSettings.theme,
         };
       } catch (e) {
-        return defaultSettings;
+        return { ...defaultSettings, theme: savedTheme || defaultSettings.theme };
       }
     }
-    return defaultSettings;
+    return { ...defaultSettings, theme: savedTheme || defaultSettings.theme };
   });
 
   // Offline-First sync queue & status
@@ -264,6 +245,30 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const toggleKioskMode = () => setIsKioskMode(prev => !prev);
 
   const isSyncingRef = useRef(false);
+
+  
+  const [customers, setCustomers] = useState<Customer[]>(() => {
+    const saved = localStorage.getItem('masar_customers');
+    return saved ? JSON.parse(saved) : [];
+  });
+  
+  const [suppliers, setSuppliers] = useState<Supplier[]>(() => {
+    const saved = localStorage.getItem('masar_suppliers');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const [treasuryAccounts, setTreasuryAccounts] = useState<TreasuryAccount[]>(() => {
+    const saved = localStorage.getItem('masar_treasury_accounts');
+    return saved ? JSON.parse(saved) : [
+      { id: '1', name: 'الخزينة الرئيسية', type: 'صندوق', balance: 0 },
+      { id: '2', name: 'الحساب المصرفي', type: 'مصرف', balance: 0 }
+    ];
+  });
+  
+  const [treasuryTransactions, setTreasuryTransactions] = useState<TreasuryTransaction[]>(() => {
+    const saved = localStorage.getItem('masar_treasury_transactions');
+    return saved ? JSON.parse(saved) : [];
+  });
 
   // Persist state to local storage
   useEffect(() => {
@@ -287,6 +292,23 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   }, [settings]);
 
   useEffect(() => {
+    localStorage.setItem('masar_customers', JSON.stringify(customers));
+  }, [customers]);
+
+  useEffect(() => {
+    localStorage.setItem('masar_suppliers', JSON.stringify(suppliers));
+  }, [suppliers]);
+
+  useEffect(() => {
+    localStorage.setItem('masar_treasury_accounts', JSON.stringify(treasuryAccounts));
+  }, [treasuryAccounts]);
+
+  useEffect(() => {
+    localStorage.setItem('masar_treasury_transactions', JSON.stringify(treasuryTransactions));
+  }, [treasuryTransactions]);
+
+
+  useEffect(() => {
     if (currentUser) {
       localStorage.setItem('masar_current_user', JSON.stringify(currentUser));
     } else {
@@ -298,7 +320,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     localStorage.setItem('masar_sync_queue', JSON.stringify(syncQueue));
   }, [syncQueue]);
 
-  // Apply theme class to document
+  // Apply theme class to document and save to localStorage
   useEffect(() => {
     const root = document.documentElement;
     if (settings.theme === 'dark') {
@@ -306,6 +328,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     } else {
       root.classList.remove('dark');
     }
+    localStorage.setItem('masar_theme', settings.theme);
   }, [settings.theme]);
 
   // Enqueue a sync operation in the background
@@ -490,6 +513,18 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     enqueueSync('expenses', 'delete', { id });
   };
 
+  
+  const updateEmployee = (id: string, updatedFields: Partial<Employee>) => {
+    setEmployees(prev => prev.map(emp => {
+      if (emp.id === id) {
+        const newEmp = { ...emp, ...updatedFields, pendingSync: true };
+        enqueueSync('employees', 'update', newEmp);
+        return newEmp;
+      }
+      return emp;
+    }));
+  };
+
   const addEmployee = (employee: Omit<Employee, 'id'>) => {
     const newEmployee: Employee = { 
       ...employee, 
@@ -507,18 +542,27 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const loginWithPasscode = async (passcode: string): Promise<{ success: boolean; message?: string }> => {
+    // 1. Check if it matches an employee's pinCode
+    const matchedEmployeeByPin = employees.find(e => e.pinCode === passcode);
+    if (matchedEmployeeByPin) {
+      setCurrentUser(matchedEmployeeByPin);
+      return { success: true };
+    }
+
+    // 2. Fallback to Supabase/System Authentication
     const authResult = await authenticateUser(passcode);
     if (authResult.success) {
       const matchedEmployee = employees.find(e => e.role === 'مدير') || employees[0] || {
         id: '1',
         name: 'المدير العام',
         role: 'مدير' as EmployeeRole,
-        salary: 5000,
+        salary: 0,
       };
       setCurrentUser(matchedEmployee);
       return { success: true };
     }
 
+    // 3. System Admin Password
     if (passcode === settings.security.password) {
       const defaultAdmin = employees.find(e => e.role === 'مدير') || employees[0];
       if (defaultAdmin) {
@@ -527,7 +571,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       }
     }
 
-    return { success: false, message: authResult.message || 'رمز الدخول غير صحيح. الرمز الافتراضي هو 1400' };
+    return { success: false, message: authResult.message || 'رمز الدخول غير صحيح' };
   };
 
   const loginWithSupabaseAuth = async (email: string, pass: string): Promise<{ success: boolean; message?: string }> => {
@@ -562,6 +606,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   // Settings Handlers
+  
+  const updateSystemSettings = (newSettings: Partial<SystemSettings>) => {
+    setSettings(prev => ({ ...prev, ...newSettings }));
+  };
+
   const updateShopInfo = (info: Partial<ShopInfo>) => {
     setSettings(prev => ({
       ...prev,
@@ -605,6 +654,26 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     enqueueSync('system_settings', 'upsert', { type: 'permissions', role, perms });
   };
 
+  const addRole = (role: string, perms: RolePermission) => {
+    setSettings(prev => ({
+      ...prev,
+      permissions: {
+        ...prev.permissions,
+        [role]: perms,
+      }
+    }));
+    enqueueSync('system_settings', 'upsert', { type: 'permissions', role, perms });
+  };
+
+  const deleteRole = (role: string) => {
+    setSettings(prev => {
+      const newPermissions = { ...prev.permissions };
+      delete newPermissions[role];
+      return { ...prev, permissions: newPermissions };
+    });
+    // In a real backend, you'd want a delete sync event too.
+  };
+
   const updateInvoiceSettings = (invoice: Partial<SystemSettings['invoice']>) => {
     setSettings(prev => ({
       ...prev,
@@ -617,6 +686,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const setTheme = (theme: 'light' | 'dark') => {
+    localStorage.setItem('masar_theme', theme);
     setSettings(prev => ({
       ...prev,
       theme,
@@ -624,10 +694,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const toggleTheme = () => {
-    setSettings(prev => ({
-      ...prev,
-      theme: prev.theme === 'dark' ? 'light' : 'dark',
-    }));
+    setSettings(prev => {
+      const next = prev.theme === 'dark' ? 'light' : 'dark';
+      localStorage.setItem('masar_theme', next);
+      return {
+        ...prev,
+        theme: next,
+      };
+    });
   };
 
   const resetAllData = () => {
@@ -712,19 +786,23 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       orders, addOrder, deleteOrder, getNextSerialNumber, updateOrderStatus,
       inventory, addInventoryItem, updateInventoryQuantity,
       expenses, addExpense, deleteExpense,
-      employees, addEmployee,
+      employees, addEmployee, updateEmployee,
       currentUser, login, loginWithPasscode, loginWithSupabaseAuth, logout, simulateRole,
       syncState,
       pendingSyncCount: syncQueue.length,
       lastSyncTime,
       syncNow,
       settings,
+      updateSystemSettings,
       updateShopInfo,
       changeSystemPassword,
       updateRolePermissions,
+      addRole,
+      deleteRole,
       updateInvoiceSettings,
       setTheme,
       toggleTheme,
+      customers, setCustomers, suppliers, setSuppliers, treasuryAccounts, setTreasuryAccounts, treasuryTransactions, setTreasuryTransactions,
       resetAllData,
       wipeAllSystemData,
       isKioskMode,

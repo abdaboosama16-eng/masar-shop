@@ -1,356 +1,393 @@
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../context/AppContext';
-import { Order, OrderStatus, ServiceType } from '../types';
+import { Order, OrderStatus } from '../types';
 import { 
-  Layers, Share2, Monitor, FileSpreadsheet, FileText, 
-  Clock, MapPin, Calendar, CheckCircle2, ChevronLeft, 
-  ChevronRight, FileImage, User, Boxes, Filter, Search,
-  ArrowRight, Check, Sparkles, MoveRight
+  Search, 
+  Filter, 
+  User, 
+  Boxes, 
+  Activity, 
+  Check, 
+  ArrowLeft, 
+  ArrowRight,
+  Sparkles,
+  Layers,
+  ChevronLeft,
+  ChevronRight,
+  CheckCircle2,
+  Receipt
 } from 'lucide-react';
-import { format } from 'date-fns';
-import DesignAttachmentModal from '../components/DesignAttachmentModal';
 
 export default function ProductionKanban() {
-  const { orders, updateOrderStatus, currentUser, employees } = useAppContext();
+  const { 
+    orders, 
+    updateOrderStatus, 
+    updateInventoryQuantity,
+    customers, 
+    setCustomers,
+    treasuryAccounts, 
+    setTreasuryAccounts,
+    treasuryTransactions, 
+    setTreasuryTransactions,
+    settings 
+  } = useAppContext();
+
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedService, setSelectedService] = useState<string>('all');
-  const [selectedEmployee, setSelectedEmployee] = useState<string>('all');
-  const [selectedOrderForDesign, setSelectedOrderForDesign] = useState<Order | null>(null);
+  const [draggingOrderId, setDraggingOrderId] = useState<string | null>(null);
+  const [dragOverColumnId, setDragOverColumnId] = useState<OrderStatus | null>(null);
+  const [notification, setNotification] = useState<string | null>(null);
 
-  const isManager = currentUser?.role === 'مدير';
-
-  // Kanban Columns Definition
-  const columns: { id: OrderStatus; title: string; subtitle: string; color: string; badgeBg: string; borderColor: string }[] = [
-    {
-      id: 'قيد التصميم',
-      title: 'قيد التصميم',
-      subtitle: 'إعداد ومراجعة المخططات والقياسات',
-      color: 'text-purple-700 dark:text-purple-400',
-      badgeBg: 'bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800',
-      borderColor: 'border-t-purple-500'
+  // Exact 5 Kanban stages matching specifications
+  const columns: { id: OrderStatus; title: string; subtitle: string }[] = [
+    { 
+      id: 'بانتظار اعتماد التصميم', 
+      title: 'طلبات جديدة', 
+      subtitle: 'بانتظار المراجعة والاعتماد' 
     },
-    {
-      id: 'قيد الطباعة',
-      title: 'قيد الطباعة والتنفيذ',
-      subtitle: 'أعمال القص، التشكيل، اللحام، والطباعة',
-      color: 'text-amber-700 dark:text-amber-400',
-      badgeBg: 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800',
-      borderColor: 'border-t-amber-500'
+    { 
+      id: 'قيد التصميم', 
+      title: 'قيد التصميم', 
+      subtitle: 'إعداد الرسومات والمخططات' 
     },
-    {
-      id: 'قيد التركيب',
-      title: 'قيد التركيب الميداني',
-      subtitle: 'التثبيت في الموقع وأعمال الرفع والكهرباء',
-      color: 'text-blue-700 dark:text-blue-400',
-      badgeBg: 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800',
-      borderColor: 'border-t-blue-500'
+    { 
+      id: 'قيد الطباعة', 
+      title: 'قيد الطباعة والتنفيذ', 
+      subtitle: 'أعمال الطباعة والإنتاج الفعلي' 
     },
-    {
-      id: 'تم التسليم',
-      title: 'تم التسليم والاعتماد',
-      subtitle: 'المشاريع المنجزة والمعتمدة بالكامل',
-      color: 'text-emerald-700 dark:text-emerald-400',
-      badgeBg: 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
-      borderColor: 'border-t-emerald-500'
+    { 
+      id: 'قيد التركيب', 
+      title: 'جاهز للتسليم', 
+      subtitle: 'التجهيز أو التركيب النهائي' 
     },
+    { 
+      id: 'تم التسليم', 
+      title: 'مكتمل', 
+      subtitle: 'تم التسليم والأرشفة المالية' 
+    }
   ];
 
-  // Map other statuses if needed
-  const normalizeStatus = (status: OrderStatus): OrderStatus => {
-    if (status === 'بانتظار اعتماد التصميم') return 'قيد التصميم';
-    return status;
-  };
+  // Helper to trigger automated completion logic
+  const handleCompleteOrderAutomation = (order: Order) => {
+    let actionSummary: string[] = [];
 
-  // Filtered Orders
-  const filteredOrders = useMemo(() => {
-    return orders.filter(order => {
-      const q = searchQuery.toLowerCase().trim();
-      const serialMatch = (order.serialNumber || order.id).toLowerCase().includes(q);
-      const clientMatch = order.clientName.toLowerCase().includes(q);
-      const descMatch = order.description.toLowerCase().includes(q);
-      const addressMatch = (order.installationAddress || '').toLowerCase().includes(q);
-      const matchesSearch = !q || serialMatch || clientMatch || descMatch || addressMatch;
+    // 1. Automatic inventory materials deduction
+    if (order.usedMaterials && order.usedMaterials.length > 0) {
+      order.usedMaterials.forEach(mat => {
+        updateInventoryQuantity(mat.itemId, -mat.quantity);
+      });
+      actionSummary.push(`تم خصم ${order.usedMaterials.length} صنف مواد من المخزون`);
+    }
 
-      const matchesService = selectedService === 'all' || (order.serviceType || 'لافتة إعلانية') === selectedService;
-      const matchesEmployee = selectedEmployee === 'all' || (order.assignedEmployee || '') === selectedEmployee;
+    // 2. Financial settlement of remaining balance
+    const remainingAmount = Math.max(0, (order.price || 0) - (order.deposit || 0));
 
-      return matchesSearch && matchesService && matchesEmployee;
-    });
-  }, [orders, searchQuery, selectedService, selectedEmployee]);
+    if (remainingAmount > 0) {
+      if (order.paymentMethod === 'آجل') {
+        // Post debt to customer statement
+        setCustomers(prev => prev.map(c => {
+          if (c.name.trim().toLowerCase() === order.clientName.trim().toLowerCase() || c.id === order.clientId) {
+            const updatedTransactions = [
+              ...c.transactions,
+              {
+                id: Math.random().toString(36).substring(2, 9),
+                date: new Date().toISOString(),
+                description: `إتمام وتسليم طلب #${order.serialNumber || order.id}`,
+                amount: remainingAmount,
+                type: 'مدين' as const,
+                orderId: order.id
+              }
+            ];
+            return {
+              ...c,
+              balance: c.balance + remainingAmount,
+              totalInvoiced: c.totalInvoiced + (order.price || 0),
+              transactions: updatedTransactions
+            };
+          }
+          return c;
+        }));
+        actionSummary.push(`تم تقييد مبلغ ${remainingAmount.toLocaleString()} ${settings.shopInfo.currency} في مديونية العميل`);
+      } else {
+        // Post cash / transfer / card payment to Treasury
+        const treasuryName = order.paymentMethod === 'نقدي' ? 'الخزينة الرئيسية' : 'الحساب المصرفي';
+        const targetAccount = treasuryAccounts.find(a => a.name === treasuryName) || treasuryAccounts[0];
 
-  // Geometric icons for services
-  const renderServiceIcon = (type?: ServiceType) => {
-    switch (type) {
-      case 'لافتة إعلانية':
-        return <Layers size={14} className="text-emerald-700 dark:text-emerald-400" />;
-      case 'إدارة صفحات سوشيال ميديا':
-        return <Share2 size={14} className="text-sky-700 dark:text-sky-400" />;
-      case 'تصميم موقع إلكتروني':
-        return <Monitor size={14} className="text-indigo-700 dark:text-indigo-400" />;
-      case 'خدمات طباعة':
-        return <FileSpreadsheet size={14} className="text-purple-700 dark:text-purple-400" />;
-      default:
-        return <FileText size={14} className="text-slate-600 dark:text-slate-400" />;
+        if (targetAccount) {
+          setTreasuryAccounts(prev => prev.map(a => 
+            a.id === targetAccount.id ? { ...a, balance: a.balance + remainingAmount } : a
+          ));
+          setTreasuryTransactions(prev => [
+            {
+              id: Math.random().toString(36).substring(2, 9),
+              accountId: targetAccount.id,
+              date: new Date().toISOString(),
+              type: 'إيداع',
+              amount: remainingAmount,
+              description: `تحصيل متبقي طلب #${order.serialNumber || order.id} - ${order.clientName}`
+            },
+            ...prev
+          ]);
+          actionSummary.push(`تم إيداع ${remainingAmount.toLocaleString()} ${settings.shopInfo.currency} في ${targetAccount.name}`);
+        }
+      }
+    }
+
+    if (actionSummary.length > 0) {
+      setNotification(`اكتمل الطلب #${order.serialNumber || order.id}: ${actionSummary.join(' | ')}`);
+      setTimeout(() => setNotification(null), 5000);
     }
   };
 
-  const getNextStatus = (currentStatus: OrderStatus): OrderStatus | null => {
-    const norm = normalizeStatus(currentStatus);
-    if (norm === 'قيد التصميم') return 'قيد الطباعة';
-    if (norm === 'قيد الطباعة') return 'قيد التركيب';
-    if (norm === 'قيد التركيب') return 'تم التسليم';
-    return null;
+  // Drag and Drop Handlers
+  const handleDragStart = (e: React.DragEvent, orderId: string) => {
+    e.dataTransfer.setData('text/plain', orderId);
+    setDraggingOrderId(orderId);
   };
 
-  const getPrevStatus = (currentStatus: OrderStatus): OrderStatus | null => {
-    const norm = normalizeStatus(currentStatus);
-    if (norm === 'تم التسليم') return 'قيد التركيب';
-    if (norm === 'قيد التركيب') return 'قيد الطباعة';
-    if (norm === 'قيد الطباعة') return 'قيد التصميم';
-    return null;
+  const handleDragEnd = () => {
+    setDraggingOrderId(null);
+    setDragOverColumnId(null);
   };
+
+  const handleDragOver = (e: React.DragEvent, statusId: OrderStatus) => {
+    e.preventDefault();
+    if (dragOverColumnId !== statusId) {
+      setDragOverColumnId(statusId);
+    }
+  };
+
+  const handleDragLeave = () => {
+    setDragOverColumnId(null);
+  };
+
+  const handleDrop = (e: React.DragEvent, targetStatus: OrderStatus) => {
+    e.preventDefault();
+    setDragOverColumnId(null);
+    const orderId = e.dataTransfer.getData('text/plain') || draggingOrderId;
+    if (!orderId) return;
+
+    const order = orders.find(o => o.id === orderId);
+    if (!order || order.status === targetStatus) {
+      setDraggingOrderId(null);
+      return;
+    }
+
+    // Trigger automated actions when landing on "مكتمل" (تم التسليم)
+    if (targetStatus === 'تم التسليم' && order.status !== 'تم التسليم') {
+      handleCompleteOrderAutomation(order);
+    }
+
+    updateOrderStatus(orderId, targetStatus);
+    setDraggingOrderId(null);
+  };
+
+  // Step Move helper (for mobile or click-based stage transfer)
+  const handleMoveStage = (order: Order, nextStatus: OrderStatus) => {
+    if (nextStatus === 'تم التسليم' && order.status !== 'تم التسليم') {
+      handleCompleteOrderAutomation(order);
+    }
+    updateOrderStatus(order.id, nextStatus);
+  };
+
+  const filteredOrders = useMemo(() => {
+    return orders.filter(o => {
+      const query = searchQuery.trim().toLowerCase();
+      const matchesSearch = !query || 
+        o.clientName.toLowerCase().includes(query) || 
+        (o.serialNumber && o.serialNumber.toLowerCase().includes(query)) ||
+        o.id.toLowerCase().includes(query) ||
+        (o.assignedEmployee && o.assignedEmployee.toLowerCase().includes(query));
+      
+      const matchesService = selectedService === 'all' || o.serviceType === selectedService;
+      return matchesSearch && matchesService;
+    });
+  }, [orders, searchQuery, selectedService]);
 
   return (
     <div className="space-y-6">
-      {/* Top Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 no-print">
+      {/* Top Header & Filters */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white/90 dark:bg-slate-900/80 p-4 rounded-xl border border-slate-200/80 dark:border-slate-800/80 shadow-xs">
         <div>
-          <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
-            مسار الإنتاج والمهام (Kanban)
+          <h2 className="text-2xl font-black text-slate-900 dark:text-slate-100 tracking-tight flex items-center gap-2.5">
+            <Activity className="w-6 h-6 text-slate-700 dark:text-slate-300" />
+            مسار العمليات
           </h2>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            متابعة مراحل التنفيذ الفنية من التصميم والطباعة حتى التركيب والتسليم النهائي
+          <p className="text-sm font-medium text-slate-600 dark:text-slate-400 mt-1">
+            لوحة متابعة مراحل تنفيذ الطلبيات ونقل الحالات بالسحب والإفلات مع الأتمتة المباشرة
           </p>
         </div>
 
-        {/* Filters */}
-        <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
-          {/* Search */}
-          <div className="relative flex-1 sm:w-60">
+        <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+          <div className="relative">
+            <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
             <input
               type="text"
-              placeholder="بحث برقم الطلبية أو العميل..."
+              placeholder="بحث برقم الطلب، العميل، أو الموظف..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full glass-input rounded-xl pl-4 pr-9 py-2 text-xs"
+              className="w-full sm:w-72 pl-4 pr-10 py-2 bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/80 rounded-lg text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:border-slate-400 dark:focus:border-slate-500 focus:ring-1 focus:ring-slate-300 dark:focus:ring-slate-600 transition-all duration-150 ease-out placeholder:text-slate-400 shadow-sm"
             />
-            <Search className="absolute right-3 top-2.5 text-slate-400" size={14} />
           </div>
 
-          {/* Service Filter */}
-          <select
-            value={selectedService}
-            onChange={(e) => setSelectedService(e.target.value)}
-            className="glass-input rounded-xl px-3 py-2 text-xs"
-          >
-            <option value="all">جميع الخدمات</option>
-            <option value="لافتة إعلانية">لافتات إعلانية</option>
-            <option value="خدمات طباعة">خدمات طباعة</option>
-            <option value="تصميم موقع إلكتروني">مواقع إلكترونية</option>
-            <option value="إدارة صفحات سوشيال ميديا">سوشيال ميديا</option>
-          </select>
-
-          {/* Employee Filter */}
-          <select
-            value={selectedEmployee}
-            onChange={(e) => setSelectedEmployee(e.target.value)}
-            className="glass-input rounded-xl px-3 py-2 text-xs"
-          >
-            <option value="all">جميع المنفذين</option>
-            {employees.map(emp => (
-              <option key={emp.id} value={emp.name}>{emp.name}</option>
-            ))}
-          </select>
+          <div className="relative">
+            <Filter className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+            <select
+              value={selectedService}
+              onChange={(e) => setSelectedService(e.target.value)}
+              className="w-full sm:w-48 pl-4 pr-10 py-2 bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/80 rounded-lg text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:border-slate-400 dark:focus:border-slate-500 focus:ring-1 focus:ring-slate-300 dark:focus:ring-slate-600 transition-all duration-150 ease-out appearance-none shadow-sm cursor-pointer font-medium"
+            >
+              <option value="all">جميع الخدمات</option>
+              <option value="لافتة إعلانية">لافتة إعلانية</option>
+              <option value="إدارة صفحات سوشيال ميديا">سوشيال ميديا</option>
+              <option value="تصميم موقع إلكتروني">موقع إلكتروني</option>
+              <option value="خدمات طباعة">خدمات طباعة</option>
+            </select>
+          </div>
         </div>
       </div>
 
-      {/* Role Notice Banner if not manager */}
-      {!isManager && (
-        <div className="p-3.5 px-4 rounded-xl bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 flex items-center justify-between text-xs text-emerald-900 dark:text-emerald-200">
-          <div className="flex items-center gap-2 font-medium">
-            <User size={15} className="text-emerald-700 dark:text-emerald-400 shrink-0" />
-            <span>
-              وضع العمل التشغيلي: مسجل كـ <strong>{currentUser?.name} ({currentUser?.role})</strong> - تعرض البيانات والمواصفات الفنية ومسار التنفيذ بدون تفاصيل مالية.
-            </span>
+      {/* Automated Action Toast Banner */}
+      {notification && (
+        <div className="p-3.5 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/80 rounded-xl text-xs font-semibold text-emerald-800 dark:text-emerald-300 flex items-center justify-between shadow-sm animate-fade-in">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <span>{notification}</span>
           </div>
-          <span className="font-bold text-[11px] px-2 py-0.5 rounded bg-emerald-200/70 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200">
-            فني وإنتاج
-          </span>
+          <button 
+            type="button" 
+            onClick={() => setNotification(null)}
+            className="text-emerald-700 dark:text-emerald-300 hover:text-emerald-900 dark:hover:text-emerald-100 text-xs px-2 py-0.5"
+          >
+            إغلاق
+          </button>
         </div>
       )}
 
-      {/* Kanban Board Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4.5 items-start">
-        {columns.map((col) => {
-          const colOrders = filteredOrders.filter(o => normalizeStatus(o.status) === col.id);
+      {/* Kanban Board Horizontal Track */}
+      <div className="flex gap-4 overflow-x-auto pb-6 pt-1 select-none">
+        {columns.map((col, colIndex) => {
+          const colOrders = filteredOrders.filter(o => o.status === col.id);
+          const isOver = dragOverColumnId === col.id;
+
+          const prevCol = colIndex > 0 ? columns[colIndex - 1] : null;
+          const nextCol = colIndex < columns.length - 1 ? columns[colIndex + 1] : null;
 
           return (
             <div 
               key={col.id}
-              className={`glass-panel rounded-2xl p-4 flex flex-col min-h-[560px] border-t-4 ${col.borderColor} bg-white/90 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800 shadow-sm`}
+              onDragOver={(e) => handleDragOver(e, col.id)}
+              onDragLeave={handleDragLeave}
+              onDrop={(e) => handleDrop(e, col.id)}
+              className={`flex-shrink-0 w-80 flex flex-col rounded-xl border transition-all duration-150 ease-out ${
+                isOver 
+                  ? 'bg-slate-100/90 dark:bg-slate-800/90 border-slate-400 dark:border-slate-500 ring-2 ring-slate-300/60 dark:ring-slate-600/60' 
+                  : 'bg-slate-50 dark:bg-slate-900/60 border-slate-200/80 dark:border-slate-800/80'
+              }`}
             >
               {/* Column Header */}
-              <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="p-3.5 border-b border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-slate-900/90 rounded-t-xl flex items-center justify-between">
                 <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-bold text-sm text-slate-900 dark:text-white">
-                      {col.title}
-                    </h3>
-                    <span className={`px-2 py-0.5 rounded-lg text-xs font-mono font-black ${col.badgeBg}`}>
-                      {colOrders.length}
-                    </span>
-                  </div>
-                  <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
+                  <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm tracking-tight">
+                    {col.title}
+                  </h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
                     {col.subtitle}
                   </p>
                 </div>
+                <span className="bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-mono tabular-nums text-xs font-bold px-2 py-0.5 rounded-full shadow-sm">
+                  {colOrders.length}
+                </span>
               </div>
 
-              {/* Column Cards List */}
-              <div className="space-y-3 flex-1 overflow-y-auto max-h-[75vh] pr-0.5">
-                {colOrders.map((order) => {
-                  const daysLeft = order.targetDeliveryDate 
-                    ? Math.ceil((new Date(order.targetDeliveryDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
-                    : null;
-                  const isUrgent = daysLeft !== null && daysLeft <= 2 && order.status !== 'تم التسليم';
-                  const nextSt = getNextStatus(order.status);
-                  const prevSt = getPrevStatus(order.status);
+              {/* Column Body / Draggable Cards */}
+              <div className="flex-1 p-3 space-y-3 min-h-[420px] max-h-[calc(100vh-280px)] overflow-y-auto">
+                {colOrders.map(order => {
+                  const isBeingDragged = draggingOrderId === order.id;
 
                   return (
                     <div
                       key={order.id}
-                      className="p-4 rounded-xl bg-white dark:bg-slate-800/90 border border-slate-200/90 dark:border-slate-700/80 shadow-sm hover:shadow-md transition-all space-y-2.5 group"
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, order.id)}
+                      onDragEnd={handleDragEnd}
+                      className={`bg-white dark:bg-slate-800/90 p-4 rounded-xl border border-slate-200/80 dark:border-slate-700/80 shadow-sm transition-all duration-150 ease-out cursor-grab active:cursor-grabbing hover:border-slate-300 dark:hover:border-slate-600 hover:shadow-md ${
+                        isBeingDragged ? 'opacity-40 scale-95' : 'opacity-100'
+                      }`}
                     >
-                      {/* Top Row: Serial, Service, Urgency */}
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <span className="font-mono text-[11px] font-black text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-600">
-                            #{order.serialNumber || order.id}
-                          </span>
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
-                            {renderServiceIcon(order.serviceType)}
-                            <span className="truncate">{order.serviceType || 'لافتة'}</span>
+                      {/* Top Row: Serial Number & Service Tag */}
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <span className="font-mono tabular-nums text-xs font-bold text-slate-800 dark:text-slate-200 bg-slate-50 dark:bg-slate-700/60 border border-slate-200/80 dark:border-slate-600/80 px-2 py-0.5 rounded">
+                          #{order.serialNumber || order.id}
+                        </span>
+                        <span className="text-[11px] font-medium text-slate-600 dark:text-slate-300 bg-slate-100/70 dark:bg-slate-700/50 px-2 py-0.5 rounded truncate max-w-[120px]">
+                          {order.serviceType || 'خدمة عامة'}
+                        </span>
+                      </div>
+
+                      {/* Customer Name */}
+                      <h4 className="font-bold text-slate-900 dark:text-slate-100 text-sm leading-snug mb-2.5 truncate" title={order.clientName}>
+                        {order.clientName}
+                      </h4>
+
+                      {/* Financial Value & Assigned Employee */}
+                      <div className="space-y-1.5 pt-2 border-t border-slate-100 dark:border-slate-700/70 text-xs">
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-500 dark:text-slate-400 font-medium">القيمة:</span>
+                          <span className="font-mono tabular-nums font-bold text-slate-900 dark:text-slate-100">
+                            {order.price?.toLocaleString() || 0} {settings.shopInfo.currency}
                           </span>
                         </div>
 
-                        {daysLeft !== null && order.status !== 'تم التسليم' && (
-                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${
-                            isUrgent 
-                              ? 'bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 animate-pulse' 
-                              : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
-                          }`}>
-                            {daysLeft > 0 ? `${daysLeft} يوم` : 'متأخر'}
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-500 dark:text-slate-400 font-medium flex items-center gap-1">
+                            <User className="w-3.5 h-3.5 text-slate-400" />
+                            المسؤول:
+                          </span>
+                          <span className="font-semibold text-slate-700 dark:text-slate-300 truncate max-w-[130px]">
+                            {order.assignedEmployee || 'غير محدد'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Quick stage move controls */}
+                      <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-700/70 flex items-center justify-between gap-1.5">
+                        {prevCol ? (
+                          <button
+                            type="button"
+                            onClick={() => handleMoveStage(order, prevCol.id)}
+                            className="px-2 py-1 text-[11px] font-medium text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700 rounded-md transition-all duration-150 ease-out flex items-center gap-1"
+                            title={`إرجاع إلى: ${prevCol.title}`}
+                          >
+                            <ChevronRight className="w-3.5 h-3.5" />
+                            <span>السابق</span>
+                          </button>
+                        ) : <div />}
+
+                        {nextCol ? (
+                          <button
+                            type="button"
+                            onClick={() => handleMoveStage(order, nextCol.id)}
+                            className="px-2.5 py-1 text-[11px] font-bold text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 border border-slate-200/80 dark:border-slate-600/80 rounded-md transition-all duration-150 ease-out flex items-center gap-1 shadow-sm"
+                            title={`نقل إلى: ${nextCol.title}`}
+                          >
+                            <span>{nextCol.title}</span>
+                            <ChevronLeft className="w-3.5 h-3.5" />
+                          </button>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 px-2 py-0.5 rounded">
+                            <Check className="w-3 h-3" />
+                            <span>مكتمل</span>
                           </span>
                         )}
-                      </div>
-
-                      {/* Client Name & Dimensions */}
-                      <div>
-                        <h4 className="font-black text-xs text-slate-900 dark:text-white leading-tight">
-                          {order.clientName}
-                        </h4>
-                        {order.dimensions?.width && order.dimensions?.height && (
-                          <div className="text-[11px] font-mono text-emerald-700 dark:text-emerald-400 font-bold mt-0.5">
-                            المقاس: {order.dimensions.height}م × {order.dimensions.width}م
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Description */}
-                      <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed line-clamp-3 bg-slate-50/70 dark:bg-slate-900/50 p-2 rounded-lg border border-slate-100 dark:border-slate-800">
-                        {order.description}
-                      </p>
-
-                      {/* Used Materials if any */}
-                      {order.usedMaterials && order.usedMaterials.length > 0 && (
-                        <div className="space-y-1 pt-1">
-                          <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1">
-                            <Boxes size={11} className="text-emerald-600" />
-                            المواد المخصومة:
-                          </span>
-                          <div className="flex flex-wrap gap-1">
-                            {order.usedMaterials.map((mat, i) => (
-                              <span key={i} className="text-[10px] bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 px-1.5 py-0.5 rounded font-medium">
-                                {mat.name}: {mat.quantity} {mat.unit || ''}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Location & Delivery Date info */}
-                      <div className="pt-1.5 border-t border-slate-100 dark:border-slate-700/60 space-y-1 text-[10px] text-slate-500 dark:text-slate-400">
-                        {order.installationAddress && (
-                          <div className="flex items-center gap-1.5 truncate">
-                            <MapPin size={11} className="text-rose-500 shrink-0" />
-                            <span className="truncate">{order.installationAddress}</span>
-                          </div>
-                        )}
-                        {order.targetDeliveryDate && (
-                          <div className="flex items-center gap-1.5">
-                            <Calendar size={11} className="text-blue-500 shrink-0" />
-                            <span>موعد التسليم: {format(new Date(order.targetDeliveryDate), 'yyyy-MM-dd')}</span>
-                          </div>
-                        )}
-                        {order.assignedEmployee && (
-                          <div className="flex items-center gap-1.5">
-                            <User size={11} className="text-slate-400 shrink-0" />
-                            <span>المنفذ: <strong className="text-slate-700 dark:text-slate-300">{order.assignedEmployee}</strong></span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Action Row: Move Stage & Attachments */}
-                      <div className="flex items-center justify-between gap-1 pt-2 border-t border-slate-100 dark:border-slate-700/60">
-                        {/* Design Button */}
-                        <button
-                          type="button"
-                          onClick={() => setSelectedOrderForDesign(order)}
-                          className="px-2 py-1 bg-purple-50 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300 hover:bg-purple-100 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-colors border border-purple-200 dark:border-purple-800"
-                          title="معاينة أو إرفاق مخطط التصميم"
-                        >
-                          <FileImage size={11} />
-                          <span>التصميم</span>
-                        </button>
-
-                        {/* Move Forward / Backward Controls */}
-                        <div className="flex items-center gap-1">
-                          {prevSt && (
-                            <button
-                              type="button"
-                              onClick={() => updateOrderStatus(order.id, prevSt)}
-                              className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
-                              title={`إرجاع إلى: ${prevSt}`}
-                            >
-                              <ChevronRight size={14} />
-                            </button>
-                          )}
-
-                          {nextSt ? (
-                            <button
-                              type="button"
-                              onClick={() => updateOrderStatus(order.id, nextSt)}
-                              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-bold flex items-center gap-1 transition-colors shadow-xs"
-                              title={`نقل إلى: ${nextSt}`}
-                            >
-                              <span>{nextSt}</span>
-                              <ChevronLeft size={12} />
-                            </button>
-                          ) : (
-                            <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-1 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800">
-                              <Check size={11} />
-                              <span>مكتمل</span>
-                            </span>
-                          )}
-                        </div>
                       </div>
                     </div>
                   );
                 })}
 
                 {colOrders.length === 0 && (
-                  <div className="h-36 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-xl flex flex-col items-center justify-center text-center p-3 text-slate-400">
-                    <p className="text-[11px] font-medium">لا توجد مهام في هذه المرحلة</p>
+                  <div className="h-32 flex flex-col items-center justify-center border-2 border-dashed border-slate-200/80 dark:border-slate-800 rounded-xl text-slate-400 dark:text-slate-500 text-xs font-medium text-center p-3">
+                    <span>اسحب الطلبية إلى هنا</span>
                   </div>
                 )}
               </div>
@@ -358,13 +395,6 @@ export default function ProductionKanban() {
           );
         })}
       </div>
-
-      {/* Design Attachment Modal */}
-      <DesignAttachmentModal
-        order={selectedOrderForDesign}
-        isOpen={Boolean(selectedOrderForDesign)}
-        onClose={() => setSelectedOrderForDesign(null)}
-      />
     </div>
   );
 }

@@ -5,7 +5,7 @@ import './index.css';
 
 // Perform zero-data clean slate initialization on startup
 function initializeFreshClientStorage() {
-  const CLIENT_SETUP_KEY = 'masar_clean_setup_v4';
+  const CLIENT_SETUP_KEY = 'masar_clean_setup_v5';
   if (!localStorage.getItem(CLIENT_SETUP_KEY)) {
     // Purge all old demo and mock records from localStorage
     localStorage.removeItem('masar_orders');
@@ -15,6 +15,7 @@ function initializeFreshClientStorage() {
     localStorage.removeItem('masar_sync_queue');
     localStorage.removeItem('masar_last_sync_time');
     localStorage.removeItem('masar_current_user');
+    localStorage.removeItem('masar_settings');
 
     // Initialize clean empty data structures
     localStorage.setItem('masar_orders', JSON.stringify([]));

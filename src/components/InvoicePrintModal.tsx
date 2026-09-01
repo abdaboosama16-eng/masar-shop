@@ -35,17 +35,17 @@ export default function InvoicePrintModal({ order, isOpen, onClose }: InvoicePri
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/75 backdrop-blur-sm flex justify-center p-2 sm:p-4 md:p-6 print:p-0 print:bg-white print:static print:inset-auto">
       {/* Modal Container */}
-      <div className="relative w-full max-w-4xl bg-white dark:bg-slate-900 rounded-2xl shadow-2xl overflow-hidden border border-slate-200 dark:border-slate-800 flex flex-col my-auto print:border-none print:shadow-none print:w-full print:max-w-none print:my-0 print:rounded-none">
+      <div className="relative w-full max-w-4xl bg-white rounded-xl shadow-2xl overflow-hidden border border-slate-200/80 flex flex-col my-auto print:border-none print:shadow-none print:w-full print:max-w-none print:my-0 print:rounded-none">
         
         {/* Modal Actions Bar (Hidden in Print) */}
-        <div className="no-print flex items-center justify-between px-6 py-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700">
+        <div className="no-print flex items-center justify-between px-6 py-4 bg-slate-50 border-b border-slate-200/80 ">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-400 flex items-center justify-center font-bold">
+            <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold">
               <FileText size={18} />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white">معاينة وطباعة الفاتورة (A4 طولي)</h3>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400">فاتورة رسمية مطابقة للمواصفات الإدارية المعتمدة</p>
+              <h3 className="text-sm font-bold text-slate-900 ">معاينة وطباعة الفاتورة (A4 طولي)</h3>
+              <p className="text-[11px] text-slate-600 ">فاتورة رسمية مطابقة للمواصفات الإدارية المعتمدة</p>
             </div>
           </div>
 
@@ -54,10 +54,10 @@ export default function InvoicePrintModal({ order, isOpen, onClose }: InvoicePri
             <button
               type="button"
               onClick={() => setIncludeManagerCosts(!includeManagerCosts)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all duration-150 ease-out  ${
                 includeManagerCosts
-                  ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300'
-                  : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+                  ? 'bg-amber-50 border-amber-300 text-amber-800 '
+                  : 'bg-white border-slate-200/80 text-slate-600 hover:bg-slate-100 :bg-slate-700'
               }`}
               title="إظهار تفاصيل التكلفة وصافي الأرباح (خاص بالإدارة)"
             >
@@ -79,7 +79,7 @@ export default function InvoicePrintModal({ order, isOpen, onClose }: InvoicePri
             <button
               type="button"
               onClick={onClose}
-              className="p-2 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-700 transition-colors"
+              className="p-2 rounded-xl text-slate-400 hover:text-slate-700 :text-slate-200 hover:bg-slate-200/60 :bg-slate-700 transition-all duration-150 ease-out "
             >
               <X size={18} />
             </button>
@@ -87,12 +87,12 @@ export default function InvoicePrintModal({ order, isOpen, onClose }: InvoicePri
         </div>
 
         {/* Scrollable Printable Paper Canvas */}
-        <div className="p-4 sm:p-8 bg-slate-100 dark:bg-slate-950 overflow-y-auto flex justify-center print:p-0 print:bg-white">
+        <div className="p-4 sm:p-8 bg-slate-100 overflow-y-auto flex justify-center print:p-0 print:bg-white">
           
           {/* A4 Sheet Area (210mm x 297mm styled sheet) */}
           <div 
             id="printable-invoice"
-            className="w-full max-w-[210mm] min-h-[290mm] bg-white text-slate-900 p-8 sm:p-10 rounded-xl shadow-lg border border-slate-200/90 print:shadow-none print:border-none print:rounded-none print:p-8 print:w-full print:max-w-none flex flex-col justify-between"
+            className="w-full max-w-[210mm] min-h-[290mm] bg-white text-slate-900 p-8 sm:p-10 rounded-xl shadow-sm border border-slate-200/90 print:shadow-none print:border-none print:rounded-none print:p-8 print:w-full print:max-w-none flex flex-col justify-between"
             style={{ fontFamily: "'Cairo', sans-serif" }}
           >
             {/* Header: Dynamic Logo, Company Name & Invoice Serial */}
@@ -102,7 +102,7 @@ export default function InvoicePrintModal({ order, isOpen, onClose }: InvoicePri
                 <div className="flex items-start gap-4">
                   {/* Dynamic Logo */}
                   {settings.shopInfo.logoUrl ? (
-                    <div className="w-16 h-16 rounded-xl border border-slate-200 bg-white p-1 flex items-center justify-center shrink-0 shadow-sm overflow-hidden">
+                    <div className="w-16 h-16 rounded-xl border border-slate-200/80 bg-white p-1 flex items-center justify-center shrink-0 shadow-sm overflow-hidden">
                       <img 
                         src={settings.shopInfo.logoUrl} 
                         alt="شعار الشركة" 
@@ -127,11 +127,11 @@ export default function InvoicePrintModal({ order, isOpen, onClose }: InvoicePri
 
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600 mt-2.5 font-medium">
                       <span className="flex items-center gap-1">
-                        <Phone size={12} className="text-slate-500 shrink-0" />
+                        <Phone size={12} className="text-slate-600 shrink-0" />
                         <span>{settings.shopInfo.phone}</span>
                       </span>
                       <span className="flex items-center gap-1">
-                        <MapPin size={12} className="text-slate-500 shrink-0" />
+                        <MapPin size={12} className="text-slate-600 shrink-0" />
                         <span>{settings.shopInfo.address}</span>
                       </span>
                     </div>
@@ -139,9 +139,9 @@ export default function InvoicePrintModal({ order, isOpen, onClose }: InvoicePri
                 </div>
 
                 {/* Top Left Header: Invoice Meta Badge */}
-                <div className="text-left bg-slate-50 p-3.5 rounded-xl border border-slate-200 min-w-[175px]">
-                  <div className="text-xs font-bold text-slate-500 mb-1">فاتورة رسمية / طلبية</div>
-                  <div className="text-xl font-mono font-black text-slate-900 tracking-tight">
+                <div className="text-left bg-slate-50 p-3.5 rounded-xl border border-slate-200/80 min-w-[175px]">
+                  <div className="text-xs font-bold text-slate-600 mb-1">فاتورة رسمية / طلبية</div>
+                  <div className="text-xl font-mono tabular-nums font-black text-slate-900 tracking-tight">
                     #{invoiceSerial}
                   </div>
                   <div className="text-[11px] text-slate-600 mt-1.5 space-y-0.5 font-medium">
@@ -154,10 +154,10 @@ export default function InvoicePrintModal({ order, isOpen, onClose }: InvoicePri
               </div>
 
               {/* Client & Service Info Strip with Explicit Executing Party */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-4 rounded-xl bg-slate-50 border border-slate-200 mb-6 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-4 rounded-xl bg-slate-50 border border-slate-200/80 mb-6 text-xs">
                 {/* 1. اسم الزبون */}
                 <div>
-                  <span className="text-[11px] font-bold text-slate-500 block mb-1">المطلوب من السيد / الشركة:</span>
+                  <span className="text-[11px] font-bold text-slate-600 block mb-1">المطلوب من السيد / الشركة:</span>
                   <span className="text-sm font-black text-slate-900 block">{order.clientName}</span>
                   {order.installationAddress && (
                     <span className="text-[11px] text-slate-600 block mt-1">
@@ -167,18 +167,18 @@ export default function InvoicePrintModal({ order, isOpen, onClose }: InvoicePri
                 </div>
 
                 {/* 2. نوع الخدمة */}
-                <div className="border-r border-slate-200 pr-3">
-                  <span className="text-[11px] font-bold text-slate-500 block mb-1">نوع الخدمة:</span>
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-white border border-slate-200 text-slate-900">
+                <div className="border-r border-slate-200/80 pr-3">
+                  <span className="text-[11px] font-bold text-slate-600 block mb-1">نوع الخدمة:</span>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-white border border-slate-200/80 text-slate-900">
                     <Layers size={13} className="text-slate-700" />
                     <span>{order.serviceType || 'لافتة إعلانية'}</span>
                   </span>
                 </div>
 
                 {/* 3. الجهة المنفذة */}
-                <div className="border-r border-slate-200 pr-3">
-                  <span className="text-[11px] font-bold text-slate-500 block mb-1">الجهة المنفذة (المسؤول):</span>
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-white border border-slate-200 text-slate-900">
+                <div className="border-r border-slate-200/80 pr-3">
+                  <span className="text-[11px] font-bold text-slate-600 block mb-1">الجهة المنفذة (المسؤول):</span>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-white border border-slate-200/80 text-slate-900">
                     <Briefcase size={13} className="text-slate-700" />
                     <span>{order.assignedEmployee || 'قسم التنفيذ والإنتاج'}</span>
                   </span>
@@ -186,7 +186,7 @@ export default function InvoicePrintModal({ order, isOpen, onClose }: InvoicePri
               </div>
 
               {/* Itemized Table: تفصيل الخدمة والسعر الإجمالي */}
-              <div className="border border-slate-200 rounded-xl overflow-hidden mb-6">
+              <div className="border border-slate-200/80 rounded-xl overflow-hidden mb-6">
                 <table className="w-full text-right border-collapse">
                   <thead>
                     <tr className="bg-slate-900 text-white text-xs font-bold">
@@ -198,11 +198,11 @@ export default function InvoicePrintModal({ order, isOpen, onClose }: InvoicePri
                   </thead>
                   <tbody className="divide-y divide-slate-200 text-xs">
                     <tr>
-                      <td className="p-3 text-center font-mono font-bold text-slate-500">1</td>
+                      <td className="p-3 text-center font-mono tabular-nums font-bold text-slate-600">1</td>
                       <td className="p-3 font-bold text-slate-900 align-top">
                         <div>{order.serviceType || 'لافتة إعلانية'}</div>
                         {order.dimensions?.width && order.dimensions?.height && (
-                          <div className="text-[11px] text-slate-600 font-mono mt-0.5">
+                          <div className="text-[11px] text-slate-600 font-mono tabular-nums mt-0.5">
                             المقاس: {order.dimensions.height}م × {order.dimensions.width}م ({((parseFloat(order.dimensions.width) || 0) * (parseFloat(order.dimensions.height) || 0)).toFixed(2)} م²)
                           </div>
                         )}
@@ -210,7 +210,7 @@ export default function InvoicePrintModal({ order, isOpen, onClose }: InvoicePri
                       <td className="p-3 text-slate-700 leading-relaxed whitespace-pre-line align-top">
                         {order.description}
                       </td>
-                      <td className="p-3 text-left font-mono font-black text-slate-900 text-sm align-top">
+                      <td className="p-3 text-left font-mono tabular-nums font-black text-slate-900 text-sm align-top">
                         {order.price.toLocaleString()} {settings.shopInfo.currency}
                       </td>
                     </tr>
@@ -230,17 +230,17 @@ export default function InvoicePrintModal({ order, isOpen, onClose }: InvoicePri
                       نسخة إدارية
                     </span>
                   </div>
-                  <div className="grid grid-cols-3 gap-3 text-center pt-1 font-mono">
+                  <div className="grid grid-cols-3 gap-3 text-center pt-1 font-mono tabular-nums">
                     <div className="p-2 rounded bg-white border border-amber-200">
-                      <span className="text-[10px] text-slate-500 block">تكلفة التنفيذ:</span>
+                      <span className="text-[10px] text-slate-600 block">تكلفة التنفيذ:</span>
                       <span className="font-bold text-rose-700">{orderCost.toLocaleString()} {settings.shopInfo.currency}</span>
                     </div>
                     <div className="p-2 rounded bg-white border border-amber-200">
-                      <span className="text-[10px] text-slate-500 block">صافي الربح المتوقع:</span>
+                      <span className="text-[10px] text-slate-600 block">صافي الربح المتوقع:</span>
                       <span className="font-black text-emerald-700">+{orderProfit.toLocaleString()} {settings.shopInfo.currency}</span>
                     </div>
                     <div className="p-2 rounded bg-white border border-amber-200">
-                      <span className="text-[10px] text-slate-500 block">هامش الربح:</span>
+                      <span className="text-[10px] text-slate-600 block">هامش الربح:</span>
                       <span className="font-bold text-slate-800">{profitPercentage}%</span>
                     </div>
                   </div>
@@ -250,22 +250,22 @@ export default function InvoicePrintModal({ order, isOpen, onClose }: InvoicePri
               {/* Financial Totals Calculation Box */}
               <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-6">
                 {/* Payment & Terms Note */}
-                <div className="flex-1 text-xs text-slate-600 space-y-1.5 p-3 rounded-xl bg-slate-50 border border-slate-200">
+                <div className="flex-1 text-xs text-slate-600 space-y-1.5 p-3 rounded-xl bg-slate-50 border border-slate-200/80">
                   <div className="font-bold text-slate-800 mb-1">الشروط والأحكام:</div>
                   <p className="text-[11px] leading-relaxed">
                     {settings.invoice.termsText || 'الدفعة الأولى غير قابلة للاسترجاع بعد بدء أعمال القص والتشكيل والتجهيز.'}
                   </p>
                   <div className="pt-1.5 text-[11px] font-semibold text-slate-700 flex items-center gap-2">
                     <span>طريقة السداد:</span>
-                    <span className="px-2 py-0.5 rounded bg-white border border-slate-200">{order.paymentMethod}</span>
+                    <span className="px-2 py-0.5 rounded bg-white border border-slate-200/80">{order.paymentMethod}</span>
                   </div>
                 </div>
 
                 {/* Calculation Summary */}
-                <div className="w-full sm:w-72 bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
+                <div className="w-full sm:w-72 bg-slate-50 p-4 rounded-xl border border-slate-200/80 space-y-2">
                   <div className="flex justify-between text-xs font-semibold text-slate-700">
                     <span>السعر الإجمالي:</span>
-                    <span className="font-mono font-bold text-slate-900">
+                    <span className="font-mono tabular-nums font-bold text-slate-900">
                       {order.price.toLocaleString()} {settings.shopInfo.currency}
                     </span>
                   </div>
@@ -273,7 +273,7 @@ export default function InvoicePrintModal({ order, isOpen, onClose }: InvoicePri
                   {order.deposit !== undefined && order.deposit > 0 && (
                     <div className="flex justify-between text-xs text-emerald-800 font-semibold">
                       <span>الدفعة المقدمة (العربون):</span>
-                      <span className="font-mono font-bold">
+                      <span className="font-mono tabular-nums font-bold">
                         {order.deposit.toLocaleString()} {settings.shopInfo.currency}
                       </span>
                     </div>
@@ -281,7 +281,7 @@ export default function InvoicePrintModal({ order, isOpen, onClose }: InvoicePri
 
                   <div className="pt-2 border-t-2 border-slate-900 flex justify-between items-baseline">
                     <span className="text-xs font-black text-slate-900">المبلغ المتبقي:</span>
-                    <span className="text-base font-mono font-black text-slate-900">
+                    <span className="text-base font-mono tabular-nums font-black text-slate-900">
                       {remaining.toLocaleString()} {settings.shopInfo.currency}
                     </span>
                   </div>
@@ -290,7 +290,7 @@ export default function InvoicePrintModal({ order, isOpen, onClose }: InvoicePri
             </div>
 
             {/* Bottom Footer & Signatures */}
-            <div className="pt-6 border-t border-slate-200">
+            <div className="pt-6 border-t border-slate-200/80">
               <div className="grid grid-cols-2 gap-8 text-center text-xs text-slate-700 mb-6">
                 <div>
                   <span className="font-bold block mb-8">توقيع العميل / المستلم:</span>
@@ -302,7 +302,7 @@ export default function InvoicePrintModal({ order, isOpen, onClose }: InvoicePri
                 </div>
               </div>
 
-              <div className="text-center text-[10px] text-slate-500 font-medium pt-2 border-t border-slate-100">
+              <div className="text-center text-[10px] text-slate-600 font-medium pt-2 border-t border-slate-100">
                 {settings.invoice.footerNote || 'شكراً لتعاملكم مع شركة أسلوب للدعاية والإعلان. يسري ضمان العمل المعتمد وفق المواصفات المحددة.'}
               </div>
             </div>

@@ -27,8 +27,8 @@ export default function SupportModal({ isOpen, onClose }: SupportModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="glass-panel w-full max-w-2xl max-h-[90vh] flex flex-col rounded-2xl overflow-hidden shadow-2xl border border-white/80 bg-white/95">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md animate-in fade-in duration-150">
+      <div className="glass-panel w-full max-w-2xl max-h-[90vh] flex flex-col rounded-xl overflow-hidden shadow-2xl border border-white/80 bg-white/95">
         {/* Header */}
         <div className="p-5 border-b border-slate-200/80 flex justify-between items-center bg-slate-50/70">
           <div className="flex items-center gap-3">
@@ -37,12 +37,12 @@ export default function SupportModal({ isOpen, onClose }: SupportModalProps) {
             </div>
             <div>
               <h2 className="text-lg font-bold text-slate-900">مركز الدعم الفني والمساعدة</h2>
-              <p className="text-xs text-slate-500">فريق الدعم الهندسي لمنظومة مسار للحلول البرمجية</p>
+              <p className="text-xs text-slate-600">فريق الدعم الهندسي لمنظومة مسار للحلول البرمجية</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-700 hover:bg-slate-100 p-2 rounded-xl transition-colors"
+            className="text-slate-400 hover:text-slate-700 hover:bg-slate-100 p-2 rounded-xl transition-all duration-150 ease-out "
           >
             <X size={18} />
           </button>
@@ -57,7 +57,7 @@ export default function SupportModal({ isOpen, onClose }: SupportModalProps) {
                 <Activity size={16} />
               </div>
               <div>
-                <p className="text-[11px] text-slate-500 font-medium">حالة الخادم</p>
+                <p className="text-[11px] text-slate-600 font-medium">حالة الخادم</p>
                 <p className="text-xs font-bold text-emerald-700">متصل وجاهز 100%</p>
               </div>
             </div>
@@ -67,17 +67,17 @@ export default function SupportModal({ isOpen, onClose }: SupportModalProps) {
                 <ShieldCheck size={16} />
               </div>
               <div>
-                <p className="text-[11px] text-slate-500 font-medium">أمان البيانات</p>
+                <p className="text-[11px] text-slate-600 font-medium">أمان البيانات</p>
                 <p className="text-xs font-bold text-blue-700">تشفير محلي متين</p>
               </div>
             </div>
 
-            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center gap-3">
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg bg-slate-200 text-slate-700 flex items-center justify-center">
                 <Clock size={16} />
               </div>
               <div>
-                <p className="text-[11px] text-slate-500 font-medium">زمن الاستجابة</p>
+                <p className="text-[11px] text-slate-600 font-medium">زمن الاستجابة</p>
                 <p className="text-xs font-bold text-slate-800">فوري (&lt; 20ms)</p>
               </div>
             </div>
@@ -87,23 +87,23 @@ export default function SupportModal({ isOpen, onClose }: SupportModalProps) {
           <div className="space-y-3">
             <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">قنوات التواصل المباشرة</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="p-3.5 rounded-xl bg-white border border-slate-200 shadow-sm flex items-center gap-3">
+              <div className="p-3.5 rounded-xl bg-white border border-slate-200/80 shadow-sm flex items-center gap-3">
                 <div className="w-9 h-9 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center">
                   <PhoneCall size={16} />
                 </div>
                 <div>
                   <p className="text-xs font-bold text-slate-800">الخط الساخن المباشر</p>
-                  <p className="text-xs font-mono text-slate-500" dir="ltr">+218 91 000 0000</p>
+                  <p className="text-xs font-mono tabular-nums text-slate-600" dir="ltr">+218 91 000 0000</p>
                 </div>
               </div>
 
-              <div className="p-3.5 rounded-xl bg-white border border-slate-200 shadow-sm flex items-center gap-3">
+              <div className="p-3.5 rounded-xl bg-white border border-slate-200/80 shadow-sm flex items-center gap-3">
                 <div className="w-9 h-9 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center">
                   <Mail size={16} />
                 </div>
                 <div>
                   <p className="text-xs font-bold text-slate-800">البريد الإلكتروني للدعم</p>
-                  <p className="text-xs font-mono text-slate-500">support@masar-systems.com</p>
+                  <p className="text-xs font-mono tabular-nums text-slate-600">support@masar-systems.com</p>
                 </div>
               </div>
             </div>
@@ -126,7 +126,7 @@ export default function SupportModal({ isOpen, onClose }: SupportModalProps) {
                     placeholder="مثال: استفسار حول حساب المقاسات، إضافة طابعة..."
                     value={ticketSubject}
                     onChange={(e) => setTicketSubject(e.target.value)}
-                    className="w-full glass-input rounded-xl px-3.5 py-2 text-xs"
+                    className="w-full glass-input rounded-lg px-3.5 py-2 text-xs"
                   />
                 </div>
                 <div>
@@ -134,7 +134,7 @@ export default function SupportModal({ isOpen, onClose }: SupportModalProps) {
                   <select
                     value={ticketPriority}
                     onChange={(e) => setTicketPriority(e.target.value)}
-                    className="w-full glass-input rounded-xl px-3 py-2 text-xs appearance-none"
+                    className="w-full glass-input rounded-lg px-3 py-2 text-xs appearance-none"
                   >
                     <option value="عادي">عادي</option>
                     <option value="متوسط">متوسط</option>
@@ -151,7 +151,7 @@ export default function SupportModal({ isOpen, onClose }: SupportModalProps) {
                   placeholder="يرجى وصف المشكلة أو التحديث المطلوب بالتفصيل..."
                   value={ticketDetails}
                   onChange={(e) => setTicketDetails(e.target.value)}
-                  className="w-full glass-input rounded-xl px-3.5 py-2 text-xs resize-none"
+                  className="w-full glass-input rounded-lg px-3.5 py-2 text-xs resize-none"
                 />
               </div>
 
@@ -184,9 +184,9 @@ export default function SupportModal({ isOpen, onClose }: SupportModalProps) {
         </div>
 
         {/* Footer */}
-        <div className="p-3.5 border-t border-slate-200/80 bg-slate-50/70 flex justify-between items-center text-xs text-slate-500">
+        <div className="p-3.5 border-t border-slate-200/80 bg-slate-50/70 flex justify-between items-center text-xs text-slate-600">
           <span className="font-medium">ساعات عمل الدعم الفني: 08:00 ص - 10:00 م (السبت - الخميس)</span>
-          <span className="font-mono text-slate-400">مسار v2.4.0</span>
+          <span className="font-mono tabular-nums text-slate-400">مسار v2.4.0</span>
         </div>
       </div>
     </div>

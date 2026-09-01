@@ -1,7 +1,18 @@
-export type OrderStatus = 'بانتظار اعتماد التصميم' | 'قيد التصميم' | 'قيد الطباعة' | 'قيد التركيب' | 'تم التسليم';
-export type PaymentMethod = 'نقدي' | 'بطاقة' | 'تحويل';
-export type ServiceType = 'لافتة إعلانية' | 'إدارة صفحات سوشيال ميديا' | 'تصميم موقع إلكتروني' | 'خدمات طباعة';
 
+export type CommissionBasis = 'إجمالي المبيعات' | 'صافي الربح' | 'المبلغ المحصل';
+export type CommissionStatus = 'مستحقة' | 'معتمدة' | 'مدفوعة';
+
+export interface CommissionRecord {
+  id: string;
+  orderId: string;
+  amount: number;
+  status: CommissionStatus;
+  date: string;
+  description?: string;
+}
+export type OrderStatus = 'بانتظار اعتماد التصميم' | 'قيد التصميم' | 'قيد الطباعة' | 'قيد التركيب' | 'تم التسليم';
+export type PaymentMethod = 'نقدي' | 'بطاقة' | 'تحويل' | 'آجل';
+export type ServiceType = 'لافتة إعلانية' | 'إدارة صفحات سوشيال ميديا' | 'تصميم موقع إلكتروني' | 'خدمات طباعة';
 export type SyncState = 'synced' | 'syncing' | 'pending' | 'offline';
 
 export interface OrderMaterialUsage {
@@ -13,16 +24,33 @@ export interface OrderMaterialUsage {
   totalCost?: number;
 }
 
+export interface AuditLogEntry {
+  date: string;
+  user: string;
+  action: string;
+  details?: string;
+}
+
 export interface Order {
   id: string;
   serialNumber?: string;
   serviceType?: ServiceType;
+  costCenter?: string; // مركز التكلفة
   clientName: string;
+  clientId?: string;
   description: string;
   price: number;
-  cost?: number; // تكلفة التنفيذ
+  
+  // Detailed Costs
+  cost?: number; // Total direct cost
+  materialCost?: number; // تكلفة المواد
+  printingCost?: number; // تكلفة الطباعة
+  externalCost?: number; // تكاليف خارجية
+  commissionCost?: number; // عمولة التنفيذ
+  otherCosts?: number; // مصروفات إضافية
+  
   expectedProfit?: number; // صافي الربح المتوقع
-  assignedEmployee?: string; // الجهة المنفذة / الموظف المسؤول
+  assignedEmployee?: string; 
   status: OrderStatus;
   paymentMethod: PaymentMethod;
   date: string; // ISO string
@@ -32,8 +60,19 @@ export interface Order {
   remaining?: number;
   installationAddress?: string;
   craneCost?: number;
-  usedMaterials?: OrderMaterialUsage[]; // المواد الخام المستهلكة من المخزون
+  usedMaterials?: OrderMaterialUsage[]; 
+  attachments?: string[]; // روابط المرفقات
+  auditLog?: AuditLogEntry[]; // سجل العمليات والتدقيق
   pendingSync?: boolean;
+  commissions?: CommissionRecord[];
+}
+
+export interface InventoryTransaction {
+  date: string;
+  type: 'وارد' | 'منصرف';
+  quantity: number;
+  unitCost?: number;
+  notes?: string;
 }
 
 export interface InventoryItem {
@@ -42,15 +81,16 @@ export interface InventoryItem {
   quantity: number;
   minLimit: number;
   unit: string;
-  unitPrice?: number; // سعر التكلفة للوحدة
+  unitPrice?: number; // متوسط التكلفة / سعر التكلفة
+  transactions?: InventoryTransaction[];
   pendingSync?: boolean;
+  commissions?: CommissionRecord[];
 }
 
 export type FinancialRecordType = 'وارد' | 'مصروف';
-
 export interface Expense {
   id: string;
-  type?: FinancialRecordType; // 'وارد' | 'مصروف'
+  type?: FinancialRecordType; 
   description: string;
   amount: number;
   category?: string;
@@ -59,15 +99,73 @@ export interface Expense {
   employeeId?: string; 
   referenceNumber?: string;
   notes?: string;
+  attachments?: string[];
   pendingSync?: boolean;
+  commissions?: CommissionRecord[];
 }
 
-export type EmployeeRole = 'مدير' | 'مصمم' | 'فني تركيب' | 'مركب';
+export interface CustomerTransaction {
+  id: string;
+  date: string;
+  description: string;
+  amount: number;
+  type: 'مدين' | 'دائن'; // مدين (عليه) = الفاتورة، دائن (له) = الدفعة
+  orderId?: string;
+}
 
+export interface Customer {
+  id: string;
+  name: string;
+  phone?: string;
+  balance: number; // الرصيد الحالي (المتبقي عليه)
+  totalInvoiced: number; // إجمالي الفواتير
+  totalPaid: number; // إجمالي المدفوع
+  lastPaymentDate?: string;
+  transactions: CustomerTransaction[];
+}
+
+export interface SupplierTransaction {
+  id: string;
+  date: string;
+  description: string;
+  amount: number;
+  type: 'مدين' | 'دائن'; // مدين (دفعة له)، دائن (فاتورة علينا)
+}
+
+export interface Supplier {
+  id: string;
+  name: string;
+  phone?: string;
+  balance: number; // الرصيد المستحق له
+  totalInvoiced: number;
+  totalPaid: number;
+  transactions: SupplierTransaction[];
+}
+
+export type TreasuryAccountType = 'صندوق' | 'مصرف' | 'عهدة';
+export interface TreasuryAccount {
+  id: string;
+  name: string;
+  type: TreasuryAccountType;
+  balance: number;
+}
+
+export interface TreasuryTransaction {
+  id: string;
+  accountId: string;
+  date: string;
+  type: 'إيداع' | 'سحب' | 'تحويل';
+  amount: number;
+  description: string;
+  relatedAccountId?: string; // If transfer
+}
+
+export type EmployeeRole = string;
 export interface Employee {
   id: string;
   name: string;
   role: EmployeeRole;
+  pinCode?: string; 
   salary: number;
   phone?: string;
   nationalId?: string;
@@ -75,6 +173,7 @@ export interface Employee {
   emergencyContact?: string;
   status?: 'نشط' | 'موقوف';
   pendingSync?: boolean;
+  commissions?: CommissionRecord[];
 }
 
 export interface ShopInfo {
@@ -90,14 +189,18 @@ export interface SystemSecurity {
 }
 
 export interface RolePermission {
-  dashboard: boolean; // لوحة التحكم والأرباح
-  sales: boolean; // المبيعات والطلبيات
-  designs: boolean; // إرفاق واعتماد التصاميم
-  installation: boolean; // تفاصيل التركيب
-  inventory: boolean; // المخزون والمواد الخام
-  expenses: boolean; // المصروفات
-  employees: boolean; // شؤون العاملين
-  settings: boolean; // إعدادات المنظومة
+  dashboard: boolean; 
+  sales: boolean; 
+  designs: boolean; 
+  installation: boolean; 
+  inventory: boolean; 
+  expenses: boolean; 
+  employees: boolean; 
+  settings: boolean; 
+  audit: boolean; 
+  customers: boolean;
+  suppliers: boolean;
+  treasury: boolean;
 }
 
 export interface SystemSettings {
@@ -110,4 +213,5 @@ export interface SystemSettings {
     termsText: string;
   };
   theme: 'light' | 'dark';
+  commissionBasis?: CommissionBasis;
 }

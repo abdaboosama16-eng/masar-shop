@@ -25,8 +25,8 @@ export default function DesignAttachmentModal({ order, isOpen, onClose }: Design
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md animate-in fade-in duration-200 no-print">
-      <div className="glass-panel w-full max-w-xl flex flex-col rounded-2xl overflow-hidden shadow-2xl border border-white/80 bg-white/95">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md animate-in fade-in duration-150 no-print">
+      <div className="glass-panel w-full max-w-xl flex flex-col rounded-xl overflow-hidden shadow-2xl border border-white/80 bg-white/95">
         {/* Header */}
         <div className="p-5 border-b border-slate-200/80 flex justify-between items-center bg-slate-50/70">
           <div className="flex items-center gap-3">
@@ -35,12 +35,12 @@ export default function DesignAttachmentModal({ order, isOpen, onClose }: Design
             </div>
             <div>
               <h2 className="text-lg font-bold text-slate-900">مرفقات التصميم والمخطط الهندسي</h2>
-              <p className="text-xs text-slate-500">الطلب: {order.clientName} - {order.description.substring(0, 30)}...</p>
+              <p className="text-xs text-slate-600">الطلب: {order.clientName} - {order.description.substring(0, 30)}...</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-700 hover:bg-slate-100 p-2 rounded-xl transition-colors"
+            className="text-slate-400 hover:text-slate-700 hover:bg-slate-100 p-2 rounded-xl transition-all duration-150 ease-out "
           >
             <X size={18} />
           </button>
@@ -52,7 +52,7 @@ export default function DesignAttachmentModal({ order, isOpen, onClose }: Design
           <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
             <div>
               <span className="text-slate-400 block">المقاس المطلوب:</span>
-              <span className="font-bold text-slate-800 font-mono">
+              <span className="font-bold text-slate-800 font-mono tabular-nums">
                 {order.dimensions?.height || '0'}م × {order.dimensions?.width || '0'}م
               </span>
             </div>
@@ -62,12 +62,12 @@ export default function DesignAttachmentModal({ order, isOpen, onClose }: Design
             </div>
             <div>
               <span className="text-slate-400 block">تاريخ الطلب:</span>
-              <span className="font-bold text-slate-800 font-mono">{order.date.slice(0, 10)}</span>
+              <span className="font-bold text-slate-800 font-mono tabular-nums">{order.date.slice(0, 10)}</span>
             </div>
           </div>
 
           {/* Upload Dropzone */}
-          <div className="border-2 border-dashed border-slate-300 rounded-2xl p-6 text-center hover:border-emerald-500 hover:bg-emerald-50/20 transition-all cursor-pointer group">
+          <div className="border-2 border-dashed border-slate-200/80 rounded-xl p-6 text-center hover:border-emerald-500 hover:bg-emerald-50/20 transition-all duration-150 ease-out cursor-pointer group">
             <input
               type="file"
               accept="image/*,.pdf,.ai,.psd"
@@ -80,7 +80,7 @@ export default function DesignAttachmentModal({ order, isOpen, onClose }: Design
               }}
             />
             <label htmlFor="design-file-input" className="cursor-pointer flex flex-col items-center gap-2">
-              <div className="w-12 h-12 rounded-xl bg-slate-100 group-hover:bg-emerald-100 group-hover:text-emerald-700 text-slate-600 flex items-center justify-center transition-colors">
+              <div className="w-12 h-12 rounded-xl bg-slate-100 group-hover:bg-emerald-100 group-hover:text-emerald-700 text-slate-600 flex items-center justify-center transition-all duration-150 ease-out ">
                 <Upload size={22} />
               </div>
               <span className="text-sm font-bold text-slate-800 group-hover:text-emerald-700">
@@ -98,7 +98,7 @@ export default function DesignAttachmentModal({ order, isOpen, onClose }: Design
               value={designNote}
               onChange={(e) => setDesignNote(e.target.value)}
               placeholder="مثال: مراعاة تثبيت المسامير الجانبية، ألوان الفينيل حسب كود RAL..."
-              className="w-full glass-input rounded-xl px-3.5 py-2.5 text-xs resize-none"
+              className="w-full glass-input rounded-lg px-3.5 py-2.5 text-xs resize-none"
             />
           </div>
 
@@ -109,7 +109,7 @@ export default function DesignAttachmentModal({ order, isOpen, onClose }: Design
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 text-xs font-bold rounded-xl text-slate-600 hover:text-slate-800 hover:bg-slate-100 transition-colors"
+                className="px-4 py-2 text-xs font-bold rounded-xl text-slate-600 hover:text-slate-800 hover:bg-slate-100 transition-all duration-150 ease-out "
               >
                 إلغاء
               </button>

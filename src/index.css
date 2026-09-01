@@ -1,124 +1,168 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @layer utilities {
   .bg-texture {
     background-color: #f8fafc;
     position: relative;
-    transition: background-color 0.3s ease;
+    transition: background-color 0.2s ease-out;
   }
-  .dark .bg-texture {
-    background-color: #090d16;
+
+  .dark .bg-texture,
+  .dark.bg-texture {
+    background-color: #0c1322;
   }
   
   .bg-texture::before {
     content: '';
     position: fixed;
     inset: 0;
-    opacity: 0.035;
+    opacity: 0.025;
     pointer-events: none;
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
     z-index: 0;
   }
+
   .dark .bg-texture::before {
-    opacity: 0.06;
+    opacity: 0.05;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 240 240' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='paperWall'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23paperWall)' opacity='0.8'/%3E%3C/svg%3E");
   }
 
+  /* Glass Panel - Light Mode & Dark Mode Glassmorphism */
   .glass-panel {
-    background: rgba(255, 255, 255, 0.88);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border: 1px solid rgba(226, 232, 240, 0.9);
-    box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05), 0 1px 3px 0 rgba(15, 23, 42, 0.02);
-    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(226, 232, 240, 0.85);
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04);
+    transition: all 0.2s ease-out;
   }
+
   .dark .glass-panel {
-    background: rgba(15, 23, 42, 0.82);
-    border: 1px solid rgba(51, 65, 85, 0.6);
-    box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.4);
-    color: #f1f5f9;
+    background: rgba(18, 26, 43, 0.72);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.35);
   }
   
   .glass-panel:hover {
-    border-color: rgba(203, 213, 225, 0.95);
-    box-shadow: 0 10px 30px -4px rgba(15, 23, 42, 0.08), 0 2px 6px -1px rgba(15, 23, 42, 0.03);
-  }
-  .dark .glass-panel:hover {
-    border-color: rgba(71, 85, 105, 0.8);
-    box-shadow: 0 10px 30px -4px rgba(0, 0, 0, 0.6);
+    border-color: rgba(203, 213, 225, 0.9);
   }
 
+  .dark .glass-panel:hover {
+    border-color: rgba(255, 255, 255, 0.14);
+  }
+
+  /* Glass Button */
   .glass-button {
-    background: rgba(255, 255, 255, 0.95);
+    background: rgba(255, 255, 255, 1);
     border: 1px solid #e2e8f0;
     color: #334155;
-    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.02);
+    transition: all 0.15s ease-out;
   }
+
   .dark .glass-button {
-    background: rgba(30, 41, 59, 0.85);
-    border: 1px solid #334155;
-    color: #cbd5e1;
+    background: rgba(30, 41, 59, 0.6);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    color: #e2e8f0;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.2);
   }
   
   .glass-button:hover {
-    background: #ffffff;
+    background: #f8fafc;
     border-color: #cbd5e1;
     color: #0f172a;
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
+    box-shadow: 0 2px 4px 0 rgba(0, 0, 0, 0.04);
   }
+
   .dark .glass-button:hover {
-    background: #1e293b;
-    border-color: #475569;
-    color: #f8fafc;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    background: rgba(45, 59, 84, 0.75);
+    border-color: rgba(255, 255, 255, 0.18);
+    color: #ffffff;
+    box-shadow: 0 4px 12px 0 rgba(0, 0, 0, 0.3);
   }
 
   .glass-button:active {
     transform: translateY(0px) scale(0.98);
   }
 
+  /* Glass Input */
   .glass-input {
-    background: rgba(255, 255, 255, 0.95);
-    border: 1px solid #cbd5e1;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
     color: #0f172a;
-    transition: all 0.2s ease;
+    transition: all 0.15s ease-out;
   }
+
   .dark .glass-input {
-    background: rgba(15, 23, 42, 0.9);
-    border: 1px solid #334155;
-    color: #f8fafc;
+    background: rgba(13, 20, 36, 0.75);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #f1f5f9;
   }
+
   .glass-input::placeholder {
     color: #94a3b8;
   }
+
   .dark .glass-input::placeholder {
     color: #64748b;
   }
+
+  .glass-input:hover {
+    background: #ffffff;
+    border-color: #cbd5e1;
+  }
+
+  .dark .glass-input:hover {
+    background: rgba(18, 28, 50, 0.85);
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+
   .glass-input:focus {
-    border-color: #059669;
+    border-color: #cbd5e1;
     outline: none;
-    box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.15);
+    box-shadow: 0 0 0 2px rgba(203, 213, 225, 0.4);
     background: #ffffff;
   }
+
   .dark .glass-input:focus {
     border-color: #10b981;
-    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
-    background: #0f172a;
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.25);
+    background: rgba(15, 23, 42, 0.95);
   }
   
+  /* Primary Button */
   .btn-primary {
-    background-color: #059669;
+    background-color: #0f172a;
     color: white;
     font-weight: 700;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: all 0.15s ease-out;
     box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  }
+
+  .dark .btn-primary {
+    background-color: #059669;
+    color: #ffffff;
+    font-weight: 700;
   }
   
   .btn-primary:hover {
-    background-color: #047857;
+    background-color: #334155;
     transform: translateY(-1px);
-    box-shadow: 0 4px 14px rgba(5, 150, 105, 0.25);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  }
+
+  .dark .btn-primary:hover {
+    background-color: #047857;
+    color: #ffffff;
+    box-shadow: 0 4px 12px -1px rgba(5, 150, 105, 0.4);
   }
 
   .btn-primary:active {
@@ -127,24 +171,29 @@
   }
 }
 
-
-/* Custom Scrollbar for Enterprise Light Mode */
+/* Custom Scrollbar */
 ::-webkit-scrollbar {
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: rgba(241, 245, 249, 0.6);
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(203, 213, 225, 0.8);
+  background: rgba(203, 213, 225, 0.6);
   border-radius: 9999px;
 }
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(71, 85, 105, 0.6);
+}
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(148, 163, 184, 0.9);
+  background: rgba(148, 163, 184, 0.8);
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.8);
 }
 
-/* Print specific styles */
+/* Print */
 @media print {
   @page {
     size: A4 portrait;
@@ -167,20 +216,16 @@
   }
   * {
     box-shadow: none !important;
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
   }
 }
 
-/* Mobile Responsiveness & Touch Targets */
-@media (max-width: 768px) {
-  .glass-button, .btn-primary, .glass-input, select {
-    min-height: 44px;
-    font-size: 15px !important;
-  }
-  
-  .glass-panel {
-    padding: 1.125rem !important;
-  }
+/* Base resets */
+body {
+  color: #0f172a;
+  background-color: #f8fafc;
 }
 
+.dark body {
+  color: #f1f5f9;
+  background-color: #0c1322;
+}
