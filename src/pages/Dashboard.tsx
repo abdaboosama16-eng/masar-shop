@@ -15,8 +15,21 @@ import {
 type TimeFilterRange = 'today' | 'week' | 'month' | 'custom' | 'all';
 
 export default function Dashboard() {
-  const { orders, expenses, inventory, employees, settings } = useAppContext();
+  const { orders, expenses, inventory, employees, settings, pagesConfig } = useAppContext();
   
+  const dashboardConfig = useMemo(() => {
+    return pagesConfig?.find(p => p.id === 'dashboard') || {
+      name: 'لوحة التحكم',
+      components: []
+    };
+  }, [pagesConfig]);
+
+  const isComponentVisible = (compId: string, defaultVal = true) => {
+    if (!dashboardConfig.components || dashboardConfig.components.length === 0) return defaultVal;
+    const comp = dashboardConfig.components.find(c => c.id === compId);
+    return comp ? comp.visible !== false : defaultVal;
+  };
+
   // Interactive Time Filter State
   const [timeFilter, setTimeFilter] = useState<TimeFilterRange>('month');
   const [customStartDate, setCustomStartDate] = useState<string>(
@@ -181,7 +194,7 @@ export default function Dashboard() {
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-white/90 p-4 sm:p-5 rounded-xl border border-slate-200/80 shadow-xs">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-2xl font-black text-slate-900 tracking-tight">لوحة التحكم</h2>
+            <h2 className="text-2xl font-black text-slate-900 tracking-tight">{dashboardConfig.name || 'لوحة التحكم'}</h2>
             <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 ">
               {filteredOrders.length} طلبية بالفترة
             </span>

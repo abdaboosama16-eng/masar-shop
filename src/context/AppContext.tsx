@@ -1,6 +1,465 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useRef } from 'react';
-import { Order, InventoryItem, Expense, Employee, EmployeeRole, SystemSettings, ShopInfo, RolePermission, SyncState, Customer, Supplier, TreasuryAccount, TreasuryTransaction } from '../types';
+import { 
+  Order, 
+  InventoryItem, 
+  Expense, 
+  Employee, 
+  EmployeeRole, 
+  SystemSettings, 
+  ShopInfo, 
+  RolePermission, 
+  SyncState, 
+  Customer, 
+  Supplier, 
+  TreasuryAccount, 
+  TreasuryTransaction, 
+  DynamicServiceConfig,
+  PageConfig,
+  PageComponentConfig,
+  PageComponentType
+} from '../types';
 import { supabase, isSupabaseConfigured, SyncQueueItem, authenticateUser } from '../lib/supabaseClient';
+
+export const defaultPagesConfig: PageConfig[] = [
+  {
+    id: 'dashboard',
+    name: 'لوحة التحكم',
+    path: '/',
+    icon: 'LayoutDashboard',
+    description: 'المركز الرئيسي للتحكم واستعراض المؤشرات المالية ومتابعة الأداء',
+    visible: true,
+    isSystemDefault: true,
+    order: 1,
+    components: [
+      {
+        id: 'kpi_sales',
+        title: 'إجمالي المبيعات',
+        type: 'metric_card',
+        description: 'بطاقة عرض إجمالي المبيعات المحققة وقيمة الفواتير المسجلة',
+        visible: true,
+        order: 1,
+        width: 'third',
+      },
+      {
+        id: 'kpi_expenses',
+        title: 'المصروفات والتكاليف',
+        type: 'metric_card',
+        description: 'إجمالي المصروفات التشغيلية وتكاليف المواد والرافعات',
+        visible: true,
+        order: 2,
+        width: 'third',
+      },
+      {
+        id: 'kpi_profit',
+        title: 'صافي الأرباح',
+        type: 'metric_card',
+        description: 'صافي الربح المحقق بعد خصم كافة التكاليف والمصروفات',
+        visible: true,
+        order: 3,
+        width: 'third',
+      },
+      {
+        id: 'time_filter',
+        title: 'شريط التصفية الزمني',
+        type: 'filter_bar',
+        description: 'أزرار التصفية السريعة (اليوم، هذا الأسبوع، هذا الشهر، مخصص، الكل)',
+        visible: true,
+        order: 4,
+        width: 'full',
+      },
+      {
+        id: 'profit_chart',
+        title: 'مخطط مقارنة الأرباح والمبيعات',
+        type: 'chart',
+        description: 'رسم بياني يوضح مبيعات وتكاليف وصافي أرباح الخدمات الإعلانية',
+        visible: true,
+        order: 5,
+        width: 'two_thirds',
+      },
+      {
+        id: 'employee_rankings',
+        title: 'كفاءة وإنجاز فريق العمل',
+        type: 'table',
+        description: 'تصنيف الموظفين وفرق العمل وفق عدد الطلبيات المنجزة والأرباح',
+        visible: true,
+        order: 6,
+        width: 'third',
+      },
+      {
+        id: 'upcoming_deliveries',
+        title: 'مواعيد التسليم المستهدفة',
+        type: 'table',
+        description: 'قائمة بأقرب 5 طلبيات قيد التجهيز ومواعيد تسليمها',
+        visible: true,
+        order: 7,
+        width: 'half',
+      },
+      {
+        id: 'low_stock_alert',
+        title: 'تنبيهات المخزون الحرج',
+        type: 'table',
+        description: 'إشعار فوري بالمواد التي انخفض رصيدها عن حد الأمان',
+        visible: true,
+        order: 8,
+        width: 'half',
+      }
+    ]
+  },
+  {
+    id: 'sales',
+    name: 'سجل المبيعات',
+    path: '/sales',
+    icon: 'ShoppingCart',
+    description: 'تسجيل ومتابعة طلبيات الدعاية واللافتات وإدارة الفواتير',
+    visible: true,
+    isSystemDefault: true,
+    order: 2,
+    components: [
+      {
+        id: 'sales_monthly_grid',
+        title: 'جدول المبيعات الشهري',
+        type: 'table',
+        description: 'عرض ومتابعة مبيعات الشهر بتصميم جداول العمليات الشاملة',
+        visible: true,
+        order: 1,
+        width: 'full',
+      },
+      {
+        id: 'sales_quick_add',
+        title: 'نموذج إضافة طلبية جديدة',
+        type: 'form_field',
+        description: 'تسجيل المواصفات والمقاسات وحساب التكاليف وعنوان التركيب والملاحظات',
+        visible: true,
+        order: 2,
+        width: 'full',
+      },
+      {
+        id: 'sales_invoices_archive',
+        title: 'أرشيف الفواتير',
+        type: 'table',
+        description: 'سجل الفواتير مع خيارات الطباعة والمشاركة عبر واتساب',
+        visible: true,
+        order: 3,
+        width: 'full',
+      },
+      {
+        id: 'sales_cost_calculator',
+        title: 'حاسبة التكاليف التلقائية',
+        type: 'custom_widget',
+        description: 'حساب تلقائي لتكلفة القص، التركيب، الشاسيه، وهامش الربح',
+        visible: true,
+        order: 4,
+        width: 'half',
+      }
+    ]
+  },
+  {
+    id: 'kanban',
+    name: 'مسار العمليات',
+    path: '/kanban',
+    icon: 'Activity',
+    description: 'لوحة متابعة مراحل العمل وتدفق الإنتاج في الورشة والميدان',
+    visible: true,
+    isSystemDefault: true,
+    order: 3,
+    components: [
+      {
+        id: 'kanban_board',
+        title: 'لوحة مراحل الإنتاج',
+        type: 'action_grid',
+        description: 'أعمدة كانبان من التصميم إلى الطباعة ثم التركيب والتسليم',
+        visible: true,
+        order: 1,
+        width: 'full',
+      },
+      {
+        id: 'kanban_kiosk_toggle',
+        title: 'وضع الورشة للشاشات الكبيرة',
+        type: 'custom_widget',
+        description: 'زر التبديل لشاشات المصنع بدون هوامش أو شريط جانبي',
+        visible: true,
+        order: 2,
+        width: 'half',
+      }
+    ]
+  },
+  {
+    id: 'inventory',
+    name: 'المخزون والمواد',
+    path: '/inventory',
+    icon: 'Box',
+    description: 'إدارة مخزون المواد الخام (كلادينج، زنكور، ليدات، فليكس، أكريليك)',
+    visible: true,
+    isSystemDefault: true,
+    order: 4,
+    components: [
+      {
+        id: 'inventory_kpi_total',
+        title: 'إجمالي قيمة المخزون',
+        type: 'metric_card',
+        description: 'حساب القيمة النقدية الإجمالية للمواد المتوفرة بالمخزن',
+        visible: true,
+        order: 1,
+        width: 'half',
+      },
+      {
+        id: 'inventory_low_limit',
+        title: 'المواد تحت حد الأمان',
+        type: 'metric_card',
+        description: 'عدد الأصناف التي تحتاج لإعادة طلب عاجل',
+        visible: true,
+        order: 2,
+        width: 'half',
+      },
+      {
+        id: 'inventory_table',
+        title: 'جدول المواد الخام',
+        type: 'table',
+        description: 'عرض الرصيد الفعلي، حد الطلب، وسعر التكلفة',
+        visible: true,
+        order: 3,
+        width: 'full',
+      },
+      {
+        id: 'inventory_add_item',
+        title: 'إضافة مادة خام جديدة',
+        type: 'form_field',
+        description: 'تسجيل مادة جديدة وتحديد وحدات القياس وحد الأمان',
+        visible: true,
+        order: 4,
+        width: 'full',
+      }
+    ]
+  },
+  {
+    id: 'expenses',
+    name: 'المالية',
+    path: '/expenses',
+    icon: 'Receipt',
+    description: 'المركز المالي الشامل: مؤشرات الأرباح والتحليل الذكي، المصروفات والواردات وسندات الصرف',
+    visible: true,
+    isSystemDefault: true,
+    order: 5,
+    components: [
+      {
+        id: 'expenses_smart_indicators',
+        title: 'مؤشرات التحليل الذكي وصافي الأرباح',
+        type: 'metric_card',
+        description: 'مؤشر صافي أرباح الشهر ومقارنته ومؤشر حركة المصروفات الشهرية',
+        visible: true,
+        order: 1,
+        width: 'full',
+      },
+      {
+        id: 'expenses_top_services',
+        title: 'الخدمات الأكثر طلباً',
+        type: 'action_grid',
+        description: 'ترتيب الخدمات الأكثر إقبالاً وطلباً ونسبتها من إجمالي العمليات',
+        visible: true,
+        order: 2,
+        width: 'half',
+      },
+      {
+        id: 'expenses_debt_alerts',
+        title: 'تنبيهات المديونيات المتأخرة',
+        type: 'action_grid',
+        description: 'متابعة العملاء أصحاب المديونيات المتأخرة والأرصدة المستحقة',
+        visible: true,
+        order: 3,
+        width: 'half',
+      },
+      {
+        id: 'expenses_kpi_total',
+        title: 'أرصدة الصندوق والتدفقات النقدية',
+        type: 'metric_card',
+        description: 'رصيد صافي الصندوق، إجمالي الواردات وإجمالي المصروفات',
+        visible: true,
+        order: 4,
+        width: 'full',
+      },
+      {
+        id: 'expenses_add_form',
+        title: 'سند صرف وقيد مالي جديد',
+        type: 'form_field',
+        description: 'تسجيل وارد أو مصروف مع تحديد التصنيف وطريقة الدفع والبيان',
+        visible: true,
+        order: 5,
+        width: 'two_thirds',
+      },
+      {
+        id: 'expenses_table',
+        title: 'سجل القيود والعمليات المالية',
+        type: 'table',
+        description: 'كشف تفصيلي لكافة الواردات والمصروفات مع التصفية والفرز',
+        visible: true,
+        order: 6,
+        width: 'full',
+      }
+    ]
+  },
+  {
+    id: 'customers',
+    name: 'العملاء',
+    path: '/customers',
+    icon: 'Users',
+    description: 'دليل العملاء وحساب المستحقات والمديونيات وكشوفات الحساب',
+    visible: true,
+    isSystemDefault: true,
+    order: 6,
+    components: [
+      {
+        id: 'customers_kpi_receivables',
+        title: 'إجمالي ديون العملاء',
+        type: 'metric_card',
+        description: 'مجموع المبالغ المتبقية على العملاء من الفواتير الآجلة',
+        visible: true,
+        order: 1,
+        width: 'half',
+      },
+      {
+        id: 'customers_table',
+        title: 'دليل حسابات العملاء',
+        type: 'table',
+        description: 'كشف حساب كل عميل مع إجمالي الفواتير والمدفوع والرصيد المتبقي',
+        visible: true,
+        order: 2,
+        width: 'full',
+      }
+    ]
+  },
+  {
+    id: 'employees',
+    name: 'شؤون العاملين',
+    path: '/employees',
+    icon: 'Badge',
+    description: 'سجل الموظفين والرواتب وعمولات المبيعات وساعات العمل',
+    visible: true,
+    isSystemDefault: true,
+    order: 7,
+    components: [
+      {
+        id: 'employees_kpi_count',
+        title: 'إجمالي الموظفين النشطين',
+        type: 'metric_card',
+        description: 'عدد الكادر الإداري والفني والتقني بالورشة',
+        visible: true,
+        order: 1,
+        width: 'third',
+      },
+      {
+        id: 'employees_table',
+        title: 'سجل الموظفين والرواتب',
+        type: 'table',
+        description: 'تفاصيل الرواتب الأساسية، نسبة العمولات، وأرقام الطوارئ',
+        visible: true,
+        order: 2,
+        width: 'full',
+      }
+    ]
+  },
+  {
+    id: 'audit',
+    name: 'التقارير',
+    path: '/audit',
+    icon: 'FileBarChart',
+    description: 'تقارير الأداء المالي، سجل الرقابة وتدقيق حركة النظام',
+    visible: true,
+    isSystemDefault: true,
+    order: 8,
+    components: [
+      {
+        id: 'audit_kpi_summary',
+        title: 'الملخص المالي الشامل',
+        type: 'metric_card',
+        description: 'ملخص الإيرادات والمصروفات وصافي الأرباح التراكمية',
+        visible: true,
+        order: 1,
+        width: 'full',
+      },
+      {
+        id: 'audit_activity_log',
+        title: 'سجل تدقيق النظام',
+        type: 'table',
+        description: 'تتبع كافة عمليات الحفظ والتعديل والحذف المنفذة',
+        visible: true,
+        order: 2,
+        width: 'full',
+      }
+    ]
+  },
+  {
+    id: 'settings',
+    name: 'الإعدادات العامة',
+    path: '/settings',
+    icon: 'Settings',
+    description: 'محرك التحكم المركزي بالصفحات والقوالب والصلاحيات والمزامنة',
+    visible: true,
+    isSystemDefault: true,
+    order: 9,
+    components: [
+      {
+        id: 'settings_page_manager',
+        title: 'محرك إدارة الصفحات والقوالب',
+        type: 'action_grid',
+        description: 'التحكم المطلق في هيكل الصفحات، وإعادة التسمية، وإضافة القوالب',
+        visible: true,
+        order: 1,
+        width: 'full',
+      },
+      {
+        id: 'settings_shop_info',
+        title: 'بيانات المنشأة والهوية',
+        type: 'form_field',
+        description: 'اسم المؤسسة، أرقام التواصل، العملة، والشعار الرسمي',
+        visible: true,
+        order: 2,
+        width: 'half',
+      },
+      {
+        id: 'settings_security',
+        title: 'الأمان وكلمات المرور',
+        type: 'form_field',
+        description: 'إدارة رمز الدخول السري وصلاحيات المستخدمين',
+        visible: true,
+        order: 3,
+        width: 'half',
+      }
+    ]
+  }
+];
+
+export const defaultServicesConfig: DynamicServiceConfig[] = [
+  {
+    id: 'srv-1',
+    name: 'إدارة صفحات سوشيال ميديا',
+    costItems: ['تكلفة المصمم', 'تكلفة كاتب المحتوى', 'إعلانات ممولة'],
+    isDefault: true,
+  },
+  {
+    id: 'srv-2',
+    name: 'تنفيذ لافتات',
+    costItems: ['تكلفة القص', 'تكلفة التركيب', 'مواد خام'],
+    isDefault: true,
+  },
+  {
+    id: 'srv-3',
+    name: 'تصميم موقع إلكتروني',
+    costItems: ['تكلفة المطور', 'تكلفة واجهات UI/UX', 'استضافة ونطاق'],
+    isDefault: true,
+  },
+  {
+    id: 'srv-4',
+    name: 'خدمات طباعة',
+    costItems: ['تكلفة الطباعة', 'تكلفة التصميم', 'تكلفة القص والتغليف'],
+    isDefault: true,
+  },
+  {
+    id: 'srv-5',
+    name: 'لافتة إعلانية',
+    costItems: ['تكلفة التصميم', 'تكلفة الطباعة', 'التكلفة الخارجية', 'مواد خام'],
+    isDefault: true,
+  },
+];
 
 interface AppContextType {
   orders: Order[];
@@ -24,6 +483,12 @@ interface AppContextType {
   logout: () => void;
   simulateRole: (role: EmployeeRole) => void;
   
+  // Dynamic Services & Cost Templates
+  addServiceConfig: (service: { name: string; costItems: string[] }) => void;
+  updateServiceConfig: (id: string, updated: { name?: string; costItems?: string[] }) => void;
+  deleteServiceConfig: (id: string) => void;
+  resetServicesConfig: () => void;
+  
   // Offline-First Supabase Sync
   syncState: SyncState;
   pendingSyncCount: number;
@@ -43,6 +508,18 @@ interface AppContextType {
   toggleTheme: () => void;
   resetAllData: () => void;
   wipeAllSystemData: (wipeSupabase?: boolean) => Promise<{ success: boolean; message: string }>;
+
+  // Page & Component Manager (Advanced Central Engine)
+  pagesConfig: PageConfig[];
+  updatePage: (pageId: string, updates: Partial<PageConfig>) => void;
+  addPage: (newPage: Omit<PageConfig, 'id' | 'order'>) => void;
+  deletePage: (pageId: string) => void;
+  reorderPages: (pageIds: string[]) => void;
+  addPageComponent: (pageId: string, component: Omit<PageComponentConfig, 'id' | 'order'>) => void;
+  updatePageComponent: (pageId: string, componentId: string, updates: Partial<PageComponentConfig>) => void;
+  deletePageComponent: (pageId: string, componentId: string) => void;
+  reorderPageComponents: (pageId: string, componentIds: string[]) => void;
+  resetPagesConfig: () => void;
 
   // Workshop / Kiosk Mode for TV Display
   
@@ -73,8 +550,192 @@ export const getNextOrderSerialNumber = (existingOrders: Order[]): string => {
   return (maxNum + 1).toString();
 };
 
-// Initial Empty Data for Fresh Client Setup
-const initialOrders: Order[] = [];
+// Initial Sample Data for Orders & Services
+const initialOrders: Order[] = [
+  {
+    id: '1001',
+    serialNumber: '1001',
+    serviceType: 'إدارة صفحات سوشيال ميديا',
+    clientName: 'شركة الأفق للخدمات التقنية',
+    description: 'إدارة شاملة لحسابات التواصل الاجتماعي والحملات الممولة وتصميم 20 منشور إعلاني',
+    price: 3500,
+    cost: 1100,
+    costBreakdown: { 'تكلفة المصمم': 600, 'تكلفة كاتب المحتوى': 500 },
+    costExecutors: { 'تكلفة المصمم': 'أحمد السعيد (مصمم جرافيك)', 'تكلفة كاتب المحتوى': 'سارة منصور (كاتبة محتوى)' },
+    costBreakdownSummary: 'تكلفة المصمم: 600، تكلفة كاتب المحتوى: 500',
+    designCost: 600,
+    designerName: 'أحمد السعيد (مصمم جرافيك)',
+    printingCost: 0,
+    externalCost: 500,
+    externalExecutor: 'سارة منصور (كاتبة محتوى)',
+    materialCost: 0,
+    expectedProfit: 2400,
+    assignedEmployee: 'محمد علي (مدير المشاريع)',
+    status: 'تم التسليم',
+    paymentMethod: 'تحويل',
+    date: '2026-03-02T10:30:00.000Z',
+    deposit: 3500,
+    remaining: 0,
+  },
+  {
+    id: '1002',
+    serialNumber: '1002',
+    serviceType: 'تنفيذ لافتات',
+    clientName: 'مصحة الشفاء التخصصية',
+    description: 'واجهة كلادينج وحروف زنكور مضيئة LED للواجهة الرئيسية مع الرفع والتركيب',
+    price: 8500,
+    cost: 4600,
+    costBreakdown: { 'تكلفة القص': 1200, 'تكلفة التركيب': 1800, 'مواد خام': 1600 },
+    costExecutors: { 'تكلفة القص': 'خالد الهواري (فني ليزر)', 'تكلفة التركيب': 'فريق التركيبات الميدانية', 'مواد خام': 'مخزن الورشة' },
+    costBreakdownSummary: 'تكلفة القص: 1200، تكلفة التركيب: 1800، مواد خام: 1600',
+    designCost: 500,
+    designerName: 'محمود طارق',
+    printingCost: 1200,
+    printerName: 'خالد الهواري',
+    externalCost: 1800,
+    externalExecutor: 'فريق التركيبات الميدانية',
+    materialCost: 1100,
+    expectedProfit: 3900,
+    assignedEmployee: 'فريق التركيبات الميدانية',
+    status: 'قيد التركيب',
+    paymentMethod: 'نقدي',
+    date: '2026-03-05T14:15:00.000Z',
+    dimensions: { width: '8.5', height: '2.4' },
+    installationAddress: 'شارع الجمهورية - المقر الرئيسي',
+    deposit: 5000,
+    remaining: 3500,
+  },
+  {
+    id: '1003',
+    serialNumber: '1003',
+    serviceType: 'تصميم موقع إلكتروني',
+    clientName: 'مجموعة النماء للاستثمار العقاري',
+    description: 'تصميم وبرمجة موقع تعريفي متجاوب ونظام عرض العقارات والمشاريع المتاحة',
+    price: 6200,
+    cost: 1700,
+    costBreakdown: { 'تكلفة المطور': 1200, 'استضافة ونطاق': 500 },
+    costExecutors: { 'تكلفة المطور': 'عمر خالد (مطور ويب)', 'استضافة ونطاق': 'خادم كلاود هوست' },
+    costBreakdownSummary: 'تكلفة المطور: 1200، استضافة ونطاق: 500',
+    designCost: 1200,
+    designerName: 'عمر خالد',
+    printingCost: 0,
+    externalCost: 500,
+    externalExecutor: 'شركة الاستضافة السحابية',
+    materialCost: 0,
+    expectedProfit: 4500,
+    assignedEmployee: 'عمر خالد (مطور ويب)',
+    status: 'قيد التصميم',
+    paymentMethod: 'تحويل',
+    date: '2026-03-08T11:00:00.000Z',
+    deposit: 3100,
+    remaining: 3100,
+  },
+  {
+    id: '1004',
+    serialNumber: '1004',
+    serviceType: 'خدمات طباعة',
+    clientName: 'مطعم وكافيه الأندلس',
+    description: 'طباعة 10,000 بروشور وقوائم طعام فاخرة مقاومة للماء مع التغليف الحراري',
+    price: 2800,
+    cost: 1450,
+    costBreakdown: { 'تكلفة الطباعة': 950, 'تكلفة التصميم': 350, 'تكلفة القص والتغليف': 150 },
+    costExecutors: { 'تكلفة الطباعة': 'سالم أحمد (فني الطباعة)', 'تكلفة التصميم': 'أحمد السعيد (مصمم)', 'تكلفة القص والتغليف': 'يوسف النجار' },
+    costBreakdownSummary: 'تكلفة الطباعة: 950، تكلفة التصميم: 350، تكلفة القص والتغليف: 150',
+    designCost: 350,
+    designerName: 'أحمد السعيد',
+    printingCost: 950,
+    printerName: 'سالم أحمد',
+    externalCost: 150,
+    externalExecutor: 'ورشة التغليف',
+    materialCost: 0,
+    expectedProfit: 1350,
+    assignedEmployee: 'سالم أحمد (مسؤول الطباعة)',
+    status: 'تم التسليم',
+    paymentMethod: 'نقدي',
+    date: '2026-03-12T16:20:00.000Z',
+    deposit: 2800,
+    remaining: 0,
+  },
+  {
+    id: '1005',
+    serialNumber: '1005',
+    serviceType: 'تنفيذ لافتات',
+    clientName: 'صيدلية السلام المركزية',
+    description: 'لوحة فليكس بوكس وجهين مع إنارة داخلية وتثبيت شاسيه حديد مجلفن',
+    price: 3200,
+    cost: 1800,
+    costBreakdown: { 'تكلفة القص': 500, 'تكلفة التركيب': 500, 'مواد خام': 800 },
+    costExecutors: { 'تكلفة القص': 'خالد الهواري', 'تكلفة التركيب': 'فريق التركيبات', 'مواد خام': 'مخزن الورشة' },
+    costBreakdownSummary: 'تكلفة القص: 500، تكلفة التركيب: 500، مواد خام: 800',
+    designCost: 200,
+    designerName: 'محمود طارق',
+    printingCost: 800,
+    printerName: 'سالم أحمد',
+    externalCost: 300,
+    externalExecutor: 'ورشة الحديد',
+    materialCost: 500,
+    expectedProfit: 1400,
+    assignedEmployee: 'فريق التركيبات الميدانية',
+    status: 'قيد الطباعة',
+    paymentMethod: 'بطاقة',
+    date: '2026-03-15T09:45:00.000Z',
+    dimensions: { width: '4.0', height: '1.2' },
+    installationAddress: 'ميدان الشهداء - الفرع الجديد',
+    deposit: 2000,
+    remaining: 1200,
+  },
+  {
+    id: '1006',
+    serialNumber: '1006',
+    serviceType: 'إدارة صفحات سوشيال ميديا',
+    clientName: 'مدارس الرواد الدولية',
+    description: 'إطلاق حملة التسجيل للعام الدراسي الجديد وتصوير ومونتاج 4 فيديوهات ريلز',
+    price: 4000,
+    cost: 1300,
+    costBreakdown: { 'تكلفة المصمم': 700, 'إعلانات ممولة': 600 },
+    costExecutors: { 'تكلفة المصمم': 'أحمد السعيد (مصمم)', 'إعلانات ممولة': 'إدارة الحملات الممولة' },
+    costBreakdownSummary: 'تكلفة المصمم: 700، إعلانات ممولة: 600',
+    designCost: 700,
+    designerName: 'أحمد السعيد',
+    printingCost: 0,
+    externalCost: 600,
+    externalExecutor: 'منصة فيسبوك/إنستغرام',
+    materialCost: 0,
+    expectedProfit: 2700,
+    assignedEmployee: 'محمد علي (مصمم جرافيك)',
+    status: 'قيد التصميم',
+    paymentMethod: 'تحويل',
+    date: '2026-03-18T13:10:00.000Z',
+    deposit: 4000,
+    remaining: 0,
+  },
+  {
+    id: '1007',
+    serialNumber: '1007',
+    serviceType: 'خدمات طباعة',
+    clientName: 'شركة البنيان للمقاولات العامة',
+    description: 'طباعة رول أب ستاند عدد 4 مع فولدرات أوراق رسمية وبطاقات عمل للمهندسين',
+    price: 1950,
+    cost: 850,
+    costBreakdown: { 'تكلفة الطباعة': 500, 'تكلفة التصميم': 250, 'تكلفة القص والتغليف': 100 },
+    costExecutors: { 'تكلفة الطباعة': 'سالم أحمد', 'تكلفة التصميم': 'أحمد السعيد', 'تكلفة القص والتغليف': 'يوسف النجار' },
+    costBreakdownSummary: 'تكلفة الطباعة: 500، تكلفة التصميم: 250، تكلفة القص والتغليف: 100',
+    designCost: 250,
+    designerName: 'أحمد السعيد',
+    printingCost: 500,
+    printerName: 'سالم أحمد',
+    externalCost: 100,
+    externalExecutor: 'ورشة التغليف',
+    materialCost: 0,
+    expectedProfit: 1100,
+    assignedEmployee: 'سالم أحمد (مسؤول الطباعة)',
+    status: 'بانتظار اعتماد التصميم',
+    paymentMethod: 'نقدي',
+    date: '2026-03-22T15:30:00.000Z',
+    deposit: 1000,
+    remaining: 950,
+  }
+];
 
 const initialInventory: InventoryItem[] = [];
 
@@ -127,7 +788,8 @@ const defaultSettings: SystemSettings = {
     termsText: 'الدفعة الأولى غير قابلة للاسترجاع بعد بدء أعمال القص والتشكيل والتجهيز.',
   },
   theme: 'light',
-    commissionBasis: 'صافي الربح',
+  commissionBasis: 'صافي الربح',
+  servicesConfig: defaultServicesConfig,
 };
 
 export const AppProvider = ({ children }: { children: ReactNode }) => {
@@ -144,7 +806,16 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         clientName: o.clientName || 'عميل نقدي',
         description: o.description || '',
         price: Number(o.price) || 0,
-        cost: typeof o.cost === 'number' ? o.cost : 0,
+        cost: typeof o.cost === 'number' ? o.cost : (Number(o.cost) || 0),
+        costBreakdown: o.costBreakdown || undefined,
+        costBreakdownSummary: o.costBreakdownSummary || undefined,
+        designCost: typeof o.designCost === 'number' ? o.designCost : (Number(o.designCost) || 0),
+        materialCost: typeof o.materialCost === 'number' ? o.materialCost : (Number(o.materialCost) || 0),
+        printingCost: typeof o.printingCost === 'number' ? o.printingCost : (Number(o.printingCost) || 0),
+        externalCost: typeof o.externalCost === 'number' ? o.externalCost : (Number(o.externalCost) || 0),
+        commissionCost: typeof o.commissionCost === 'number' ? o.commissionCost : (Number(o.commissionCost) || 0),
+        otherCosts: typeof o.otherCosts === 'number' ? o.otherCosts : (Number(o.otherCosts) || 0),
+        costCenter: o.costCenter,
         expectedProfit: typeof o.expectedProfit === 'number' ? o.expectedProfit : ((Number(o.price) || 0) - (Number(o.cost) || 0)),
         assignedEmployee: o.assignedEmployee || 'أحمد الإداري',
         status: o.status || 'بانتظار اعتماد التصميم',
@@ -206,6 +877,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           ? 'شركة أسلوب للدعاية والإعلان' 
           : parsed.shopInfo.name;
         
+        const servicesConfig = (Array.isArray(parsed.servicesConfig) && parsed.servicesConfig.length > 0)
+          ? parsed.servicesConfig
+          : defaultServicesConfig;
+
         return {
           ...defaultSettings,
           ...parsed,
@@ -217,6 +892,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           security: { ...defaultSettings.security, ...parsed.security },
           permissions: { ...defaultSettings.permissions, ...parsed.permissions },
           invoice: { ...defaultSettings.invoice, ...parsed.invoice },
+          servicesConfig,
           theme: savedTheme || parsed.theme || defaultSettings.theme,
         };
       } catch (e) {
@@ -225,6 +901,199 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
     return { ...defaultSettings, theme: savedTheme || defaultSettings.theme };
   });
+
+  // Pages and Components Central Manager State
+  const [pagesConfig, setPagesConfig] = useState<PageConfig[]>(() => {
+    const saved = localStorage.getItem('masar_pages_config');
+    if (!saved) return defaultPagesConfig;
+    try {
+      const parsed: PageConfig[] = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        // Filter out removed pages (treasury, analysis) and ensure clean structure
+        const filtered = parsed
+          .filter(p => p.id !== 'treasury' && p.id !== 'analysis' && p.path !== '/treasury' && p.path !== '/analysis')
+          .map(p => {
+            if (p.id === 'dashboard') {
+              return { ...p, name: p.name || 'لوحة التحكم' };
+            }
+            if (p.id === 'sales' || p.path === '/sales') {
+              return { ...p, name: 'سجل المبيعات' };
+            }
+            if (p.id === 'expenses') {
+              // Ensure expenses has the rich smart indicators components if missing
+              const hasSmart = p.components?.some(c => c.id === 'expenses_smart_indicators');
+              if (!hasSmart) {
+                const defaultExpenses = defaultPagesConfig.find(dp => dp.id === 'expenses');
+                if (defaultExpenses) {
+                  return { ...p, description: defaultExpenses.description, components: defaultExpenses.components };
+                }
+              }
+            }
+            return p;
+          });
+        return filtered.length > 0 ? filtered : defaultPagesConfig;
+      }
+      return defaultPagesConfig;
+    } catch {
+      return defaultPagesConfig;
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('masar_pages_config', JSON.stringify(pagesConfig));
+  }, [pagesConfig]);
+
+  const updatePage = (pageId: string, updates: Partial<PageConfig>) => {
+    setPagesConfig(prev => {
+      const next = prev.map(p => {
+        if (p.id === pageId) {
+          return { ...p, ...updates };
+        }
+        return p;
+      });
+      localStorage.setItem('masar_pages_config', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const addPage = (newPage: Omit<PageConfig, 'id' | 'order'>) => {
+    setPagesConfig(prev => {
+      const newId = 'page-' + Math.random().toString(36).substring(2, 9);
+      const nextOrder = prev.length > 0 ? Math.max(...prev.map(p => p.order || 0)) + 1 : 1;
+      const createdPage: PageConfig = {
+        ...newPage,
+        id: newId,
+        path: newPage.path?.startsWith('/') ? newPage.path : `/page/${newId}`,
+        order: nextOrder,
+        visible: newPage.visible ?? true,
+        components: newPage.components || [
+          {
+            id: `${newId}_comp_1`,
+            title: 'إحصائيات وقراءات فورية',
+            type: 'metric_card',
+            description: 'مؤشر أداء رقمي مباشر يتم تحديثه تلقائياً',
+            visible: true,
+            order: 1,
+            width: 'half',
+          },
+          {
+            id: `${newId}_comp_2`,
+            title: 'جدول البيانات والعمليات',
+            type: 'table',
+            description: 'كشف بالعمليات والبيانات الخاصة بالقسم',
+            visible: true,
+            order: 2,
+            width: 'full',
+          }
+        ]
+      };
+      const next = [...prev, createdPage];
+      localStorage.setItem('masar_pages_config', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const deletePage = (pageId: string) => {
+    setPagesConfig(prev => {
+      const next = prev.filter(p => p.id !== pageId);
+      localStorage.setItem('masar_pages_config', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const reorderPages = (pageIds: string[]) => {
+    setPagesConfig(prev => {
+      const orderMap = new Map(pageIds.map((id, index) => [id, index + 1]));
+      const next = [...prev].sort((a, b) => {
+        const orderA = orderMap.get(a.id) ?? a.order;
+        const orderB = orderMap.get(b.id) ?? b.order;
+        return orderA - orderB;
+      }).map((p, idx) => ({ ...p, order: idx + 1 }));
+      localStorage.setItem('masar_pages_config', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const addPageComponent = (pageId: string, component: Omit<PageComponentConfig, 'id' | 'order'>) => {
+    setPagesConfig(prev => {
+      const next = prev.map(p => {
+        if (p.id === pageId) {
+          const comps = p.components || [];
+          const nextOrder = comps.length > 0 ? Math.max(...comps.map(c => c.order || 0)) + 1 : 1;
+          const newComp: PageComponentConfig = {
+            ...component,
+            id: `${pageId}_comp_${Math.random().toString(36).substring(2, 8)}`,
+            order: nextOrder,
+            visible: component.visible ?? true
+          };
+          return {
+            ...p,
+            components: [...comps, newComp]
+          };
+        }
+        return p;
+      });
+      localStorage.setItem('masar_pages_config', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const updatePageComponent = (pageId: string, componentId: string, updates: Partial<PageComponentConfig>) => {
+    setPagesConfig(prev => {
+      const next = prev.map(p => {
+        if (p.id === pageId) {
+          const comps = (p.components || []).map(c => {
+            if (c.id === componentId) {
+              return { ...c, ...updates };
+            }
+            return c;
+          });
+          return { ...p, components: comps };
+        }
+        return p;
+      });
+      localStorage.setItem('masar_pages_config', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const deletePageComponent = (pageId: string, componentId: string) => {
+    setPagesConfig(prev => {
+      const next = prev.map(p => {
+        if (p.id === pageId) {
+          const comps = (p.components || []).filter(c => c.id !== componentId);
+          return { ...p, components: comps };
+        }
+        return p;
+      });
+      localStorage.setItem('masar_pages_config', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const reorderPageComponents = (pageId: string, componentIds: string[]) => {
+    setPagesConfig(prev => {
+      const next = prev.map(p => {
+        if (p.id === pageId) {
+          const orderMap = new Map(componentIds.map((id, index) => [id, index + 1]));
+          const sorted = [...(p.components || [])].sort((a, b) => {
+            const orderA = orderMap.get(a.id) ?? a.order;
+            const orderB = orderMap.get(b.id) ?? b.order;
+            return orderA - orderB;
+          }).map((c, idx) => ({ ...c, order: idx + 1 }));
+          return { ...p, components: sorted };
+        }
+        return p;
+      });
+      localStorage.setItem('masar_pages_config', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const resetPagesConfig = () => {
+    setPagesConfig(defaultPagesConfig);
+    localStorage.setItem('masar_pages_config', JSON.stringify(defaultPagesConfig));
+  };
 
   // Offline-First sync queue & status
   const [syncQueue, setSyncQueue] = useState<SyncQueueItem[]>(() => {
@@ -685,6 +1554,70 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     enqueueSync('system_settings', 'upsert', { type: 'invoice', invoice });
   };
 
+  const addServiceConfig = (service: { name: string; costItems: string[] }) => {
+    setSettings(prev => {
+      const currentList = prev.servicesConfig || defaultServicesConfig;
+      const newService: DynamicServiceConfig = {
+        id: `srv-${Date.now()}`,
+        name: service.name.trim(),
+        costItems: service.costItems.filter(item => item.trim() !== ''),
+        isDefault: false,
+      };
+      const updated = [...currentList, newService];
+      localStorage.setItem('masar_settings', JSON.stringify({ ...prev, servicesConfig: updated }));
+      return {
+        ...prev,
+        servicesConfig: updated,
+      };
+    });
+    enqueueSync('system_settings', 'upsert', { type: 'servicesConfig', action: 'add' });
+  };
+
+  const updateServiceConfig = (id: string, updated: { name?: string; costItems?: string[] }) => {
+    setSettings(prev => {
+      const currentList = prev.servicesConfig || defaultServicesConfig;
+      const updatedList = currentList.map(srv => {
+        if (srv.id === id) {
+          return {
+            ...srv,
+            name: updated.name !== undefined ? updated.name.trim() : srv.name,
+            costItems: updated.costItems !== undefined ? updated.costItems.filter(i => i.trim() !== '') : srv.costItems,
+          };
+        }
+        return srv;
+      });
+      localStorage.setItem('masar_settings', JSON.stringify({ ...prev, servicesConfig: updatedList }));
+      return {
+        ...prev,
+        servicesConfig: updatedList,
+      };
+    });
+    enqueueSync('system_settings', 'upsert', { type: 'servicesConfig', action: 'update', id });
+  };
+
+  const deleteServiceConfig = (id: string) => {
+    setSettings(prev => {
+      const currentList = prev.servicesConfig || defaultServicesConfig;
+      const updatedList = currentList.filter(srv => srv.id !== id);
+      localStorage.setItem('masar_settings', JSON.stringify({ ...prev, servicesConfig: updatedList }));
+      return {
+        ...prev,
+        servicesConfig: updatedList,
+      };
+    });
+    enqueueSync('system_settings', 'upsert', { type: 'servicesConfig', action: 'delete', id });
+  };
+
+  const resetServicesConfig = () => {
+    setSettings(prev => {
+      localStorage.setItem('masar_settings', JSON.stringify({ ...prev, servicesConfig: defaultServicesConfig }));
+      return {
+        ...prev,
+        servicesConfig: defaultServicesConfig,
+      };
+    });
+  };
+
   const setTheme = (theme: 'light' | 'dark') => {
     localStorage.setItem('masar_theme', theme);
     setSettings(prev => ({
@@ -800,9 +1733,23 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       addRole,
       deleteRole,
       updateInvoiceSettings,
+      addServiceConfig,
+      updateServiceConfig,
+      deleteServiceConfig,
+      resetServicesConfig,
       setTheme,
       toggleTheme,
       customers, setCustomers, suppliers, setSuppliers, treasuryAccounts, setTreasuryAccounts, treasuryTransactions, setTreasuryTransactions,
+      pagesConfig,
+      updatePage,
+      addPage,
+      deletePage,
+      reorderPages,
+      addPageComponent,
+      updatePageComponent,
+      deletePageComponent,
+      reorderPageComponents,
+      resetPagesConfig,
       resetAllData,
       wipeAllSystemData,
       isKioskMode,

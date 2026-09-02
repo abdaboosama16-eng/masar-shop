@@ -1,30 +1,28 @@
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { 
-  Plus, 
   ArrowDownLeft, 
   ArrowUpRight, 
   Wallet, 
   TrendingUp, 
   TrendingDown, 
   Search, 
-  Filter, 
-  Calendar, 
   CreditCard, 
   Trash2, 
   X, 
   CheckCircle2, 
   FileText, 
-  Layers, 
-  ArrowUpDown,
-  Building2,
-  DollarSign
+  DollarSign,
+  Brain,
+  ShoppingBag,
+  AlertCircle,
+  Activity
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { FinancialRecordType, PaymentMethod } from '../types';
 
 export default function Expenses() {
-  const { expenses, addExpense, deleteExpense, employees, settings } = useAppContext();
+  const { orders, expenses, customers, addExpense, deleteExpense, employees, settings } = useAppContext();
 
   // Modal / Form state
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -109,7 +107,78 @@ export default function Expenses() {
     setDeleteConfirmId(null);
   };
 
-  // Calculations
+  // Smart Analysis calculations
+  const smartAnalysis = useMemo(() => {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    const previousMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+    const previousYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+
+    // Filter by date
+    const getMonthData = (month: number, year: number) => {
+      const monthOrders = orders.filter(o => {
+        if (!o.date) return false;
+        const d = new Date(o.date);
+        return d.getMonth() === month && d.getFullYear() === year;
+      });
+      const monthExpenses = expenses.filter(e => {
+        if (!e.date) return false;
+        const d = new Date(e.date);
+        return d.getMonth() === month && d.getFullYear() === year;
+      });
+
+      const totalSales = monthOrders.reduce((sum, o) => sum + (o.price || 0), 0);
+      const totalProfits = monthOrders.reduce((sum, o) => sum + (o.expectedProfit !== undefined ? o.expectedProfit : ((o.price || 0) - (o.cost || 0))), 0);
+      const totalExpenses = monthExpenses.filter(e => e.type !== 'وارد').reduce((sum, e) => sum + (e.amount || 0), 0);
+
+      return { totalSales, totalProfits, totalExpenses, ordersCount: monthOrders.length };
+    };
+
+    const currentData = getMonthData(currentMonth, currentYear);
+    const previousData = getMonthData(previousMonth, previousYear);
+
+    const calcChange = (curr: number, prev: number) => {
+      if (prev === 0) return curr > 0 ? 100 : 0;
+      return ((curr - prev) / prev) * 100;
+    };
+
+    const profitChange = calcChange(currentData.totalProfits, previousData.totalProfits);
+    const expenseChange = calcChange(currentData.totalExpenses, previousData.totalExpenses);
+
+    // Most requested services
+    const serviceCount: Record<string, number> = {};
+    orders.forEach(o => {
+      if (o.serviceType) {
+        serviceCount[o.serviceType] = (serviceCount[o.serviceType] || 0) + 1;
+      }
+    });
+    const topServices = Object.entries(serviceCount)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 4);
+
+    // Debtors (Overdue clients)
+    const topDebtors = [...customers]
+      .sort((a, b) => (b.balance || 0) - (a.balance || 0))
+      .filter(c => (c.balance || 0) > 0)
+      .slice(0, 4);
+
+    const totalOverdueAmount = customers.reduce((sum, c) => sum + Math.max(0, c.balance || 0), 0);
+
+    return {
+      currentData,
+      previousData,
+      profitChange,
+      expenseChange,
+      topServices,
+      topDebtors,
+      totalOverdueAmount
+    };
+  }, [orders, expenses, customers]);
+
+  // Cash flow calculations
   const totalInflow = useMemo(() => {
     return expenses
       .filter(item => item.type === 'وارد')
@@ -118,7 +187,7 @@ export default function Expenses() {
 
   const totalOutflow = useMemo(() => {
     return expenses
-      .filter(item => item.type !== 'وارد') // 'مصروف' or default
+      .filter(item => item.type !== 'وارد')
       .reduce((sum, item) => sum + item.amount, 0);
   }, [expenses]);
 
@@ -181,7 +250,7 @@ export default function Expenses() {
             <span>المالية</span>
           </h2>
           <p className="text-xs text-slate-600 mt-1">
-            إدارة التدفقات النقدية، تقييد الواردات والمقبوضات، ومتابعة سندات الصرف والمصروفات
+            المركز المالي الشامل: مؤشرات الأرباح والتحليل الذكي، المصروفات والواردات وسندات الصرف
           </p>
         </div>
 
@@ -209,23 +278,136 @@ export default function Expenses() {
         </div>
       </div>
 
-      {/* Financial Summary Cards */}
+      {/* Integrated Smart Analysis Cards */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2 px-1">
+          <Brain className="w-4 h-4 text-indigo-600" />
+          <h3 className="text-sm font-bold text-slate-900">مؤشرات التحليل الذكي والأداء المالي</h3>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          
+          {/* Card 1: Profit Indicator */}
+          <div className="glass-panel p-5 rounded-xl border border-slate-200/80 shadow-sm relative overflow-hidden flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-bold text-slate-600">مؤشر صافي الأرباح (هذا الشهر)</span>
+                <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center">
+                  <DollarSign className="w-4 h-4 text-emerald-600" />
+                </div>
+              </div>
+              <div className="text-2xl font-black text-slate-900 font-mono tabular-nums">
+                {smartAnalysis.currentData.totalProfits.toLocaleString()} <span className="text-xs text-slate-600 font-bold">{settings.shopInfo.currency}</span>
+              </div>
+            </div>
+            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+              <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md ${
+                smartAnalysis.profitChange >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
+              }`}>
+                {smartAnalysis.profitChange >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                {Math.abs(smartAnalysis.profitChange).toFixed(1)}%
+              </span>
+              <span className="text-[10px] text-slate-500 font-medium">مقارنة بالشهر السابق</span>
+            </div>
+          </div>
+
+          {/* Card 2: Expenses Indicator */}
+          <div className="glass-panel p-5 rounded-xl border border-slate-200/80 shadow-sm relative overflow-hidden flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-bold text-slate-600">مؤشر المصروفات (هذا الشهر)</span>
+                <div className="w-8 h-8 rounded-lg bg-rose-100 flex items-center justify-center">
+                  <Activity className="w-4 h-4 text-rose-600" />
+                </div>
+              </div>
+              <div className="text-2xl font-black text-slate-900 font-mono tabular-nums">
+                {smartAnalysis.currentData.totalExpenses.toLocaleString()} <span className="text-xs text-slate-600 font-bold">{settings.shopInfo.currency}</span>
+              </div>
+            </div>
+            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+              <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md ${
+                smartAnalysis.expenseChange <= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+              }`}>
+                {smartAnalysis.expenseChange <= 0 ? <TrendingDown className="w-3 h-3" /> : <TrendingUp className="w-3 h-3" />}
+                {Math.abs(smartAnalysis.expenseChange).toFixed(1)}%
+              </span>
+              <span className="text-[10px] text-slate-500 font-medium">مقارنة بالشهر السابق</span>
+            </div>
+          </div>
+
+          {/* Card 3: Top Requested Services */}
+          <div className="glass-panel p-5 rounded-xl border border-slate-200/80 shadow-sm flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold text-slate-600">الخدمات الأكثر طلباً</span>
+                <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
+                  <ShoppingBag className="w-4 h-4 text-blue-600" />
+                </div>
+              </div>
+              
+              {smartAnalysis.topServices.length > 0 ? (
+                <div className="space-y-1.5 mt-2">
+                  {smartAnalysis.topServices.slice(0, 2).map((service, idx) => (
+                    <div key={idx} className="flex items-center justify-between text-xs py-1 px-2 rounded-lg bg-slate-50 border border-slate-100">
+                      <span className="font-bold text-slate-800 truncate max-w-[140px]">{service.name}</span>
+                      <span className="font-mono tabular-nums font-bold text-blue-600">{service.count} طلب</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-[11px] text-slate-500 py-3 text-center">لا توجد طلبيات مسجلة</p>
+              )}
+            </div>
+
+            <div className="mt-3 pt-2 border-t border-slate-100 text-[10px] text-slate-500 flex justify-between items-center">
+              <span>إجمالي الخدمات النشطة:</span>
+              <span className="font-bold font-mono">{smartAnalysis.topServices.length}</span>
+            </div>
+          </div>
+
+          {/* Card 4: Debt Alerts */}
+          <div className="glass-panel p-5 rounded-xl border border-slate-200/80 shadow-sm flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold text-slate-600">تنبيهات المديونيات</span>
+                <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center">
+                  <AlertCircle className="w-4 h-4 text-amber-600" />
+                </div>
+              </div>
+
+              <div className="text-2xl font-black text-amber-700 font-mono tabular-nums">
+                {smartAnalysis.totalOverdueAmount.toLocaleString()} <span className="text-xs text-slate-600 font-bold">{settings.shopInfo.currency}</span>
+              </div>
+            </div>
+
+            <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px]">
+              <span className="text-slate-500 font-medium">العملاء ذوي الأرصدة المتأخرة:</span>
+              <span className="font-mono font-bold text-amber-700 px-2 py-0.5 rounded bg-amber-50 border border-amber-200">
+                {smartAnalysis.topDebtors.length} عميل
+              </span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      {/* Financial Cash Flow Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         
-        {/* Highlighted Card: Net Cash Balance (الواردات ناقص المصروفات) */}
+        {/* Highlighted Card: Net Cash Balance */}
         <div className="glass-panel p-6 rounded-xl relative overflow-hidden flex flex-col justify-between border-2 border-emerald-500/40 bg-gradient-to-br from-white via-emerald-50/20 to-emerald-100/30 shadow-sm">
           <div className="flex justify-between items-start">
             <div className="space-y-1">
               <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-600 "></span>
+                <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
                 <span className="text-slate-600 text-xs font-bold">رصيد صافي الصندوق</span>
               </div>
-              <p className="text-[11px] text-slate-600 ">الواردات ناقص المصروفات</p>
+              <p className="text-[11px] text-slate-600">الواردات ناقص المصروفات</p>
             </div>
             <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
               netCashBalance >= 0 
-                ? 'bg-emerald-500/15 text-emerald-700 border border-emerald-300 ' 
-                : 'bg-rose-500/15 text-rose-700 border border-rose-300 '
+                ? 'bg-emerald-500/15 text-emerald-700 border border-emerald-300' 
+                : 'bg-rose-500/15 text-rose-700 border border-rose-300'
             }`}>
               <Wallet size={20} />
             </div>
@@ -234,16 +416,16 @@ export default function Expenses() {
           <div className="mt-4 pt-3 border-t border-slate-200/80 flex items-baseline justify-between">
             <div className="flex items-baseline gap-1.5">
               <span className={`text-3xl font-black font-mono tabular-nums tracking-tight ${
-                netCashBalance >= 0 ? 'text-emerald-700 ' : 'text-rose-700 '
+                netCashBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'
               }`}>
                 {netCashBalance.toLocaleString()}
               </span>
-              <span className="text-xs font-bold text-slate-600 ">{settings.shopInfo.currency || 'د.ل'}</span>
+              <span className="text-xs font-bold text-slate-600">{settings.shopInfo.currency || 'د.ل'}</span>
             </div>
             <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
               netCashBalance >= 0 
-                ? 'bg-emerald-100/70 text-emerald-800 border-emerald-200 ' 
-                : 'bg-rose-100/70 text-rose-800 border-rose-200 '
+                ? 'bg-emerald-100/70 text-emerald-800 border-emerald-200' 
+                : 'bg-rose-100/70 text-rose-800 border-rose-200'
             }`}>
               {netCashBalance >= 0 ? 'فائض نقدي' : 'عجز في الصندوق'}
             </span>
@@ -256,7 +438,7 @@ export default function Expenses() {
           }`} />
         </div>
 
-        {/* Card 2: Total Inflows (الواردات والمقبوضات) */}
+        {/* Card 2: Total Inflows */}
         <div className="glass-panel p-6 rounded-xl relative overflow-hidden flex flex-col justify-between border border-slate-200/80 shadow-sm">
           <div className="flex justify-between items-start">
             <div className="space-y-1">
@@ -270,10 +452,10 @@ export default function Expenses() {
 
           <div className="mt-4 pt-3 border-t border-slate-100 flex items-baseline justify-between">
             <div className="flex items-baseline gap-1.5">
-              <span className="text-2xl font-black font-mono tabular-nums text-emerald-700 ">
+              <span className="text-2xl font-black font-mono tabular-nums text-emerald-700">
                 +{totalInflow.toLocaleString()}
               </span>
-              <span className="text-xs font-bold text-slate-600 ">{settings.shopInfo.currency || 'د.ل'}</span>
+              <span className="text-xs font-bold text-slate-600">{settings.shopInfo.currency || 'د.ل'}</span>
             </div>
             <span className="text-[11px] text-emerald-700 font-bold flex items-center gap-0.5">
               <TrendingUp size={13} />
@@ -283,7 +465,7 @@ export default function Expenses() {
           <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-500 to-transparent" />
         </div>
 
-        {/* Card 3: Total Outflows (المصروفات) */}
+        {/* Card 3: Total Outflows */}
         <div className="glass-panel p-6 rounded-xl relative overflow-hidden flex flex-col justify-between border border-slate-200/80 shadow-sm">
           <div className="flex justify-between items-start">
             <div className="space-y-1">
@@ -297,10 +479,10 @@ export default function Expenses() {
 
           <div className="mt-4 pt-3 border-t border-slate-100 flex items-baseline justify-between">
             <div className="flex items-baseline gap-1.5">
-              <span className="text-2xl font-black font-mono tabular-nums text-rose-700 ">
+              <span className="text-2xl font-black font-mono tabular-nums text-rose-700">
                 -{totalOutflow.toLocaleString()}
               </span>
-              <span className="text-xs font-bold text-slate-600 ">{settings.shopInfo.currency || 'د.ل'}</span>
+              <span className="text-xs font-bold text-slate-600">{settings.shopInfo.currency || 'د.ل'}</span>
             </div>
             <span className="text-[11px] text-rose-700 font-bold flex items-center gap-0.5">
               <TrendingDown size={13} />
@@ -355,7 +537,7 @@ export default function Expenses() {
               className={`px-3 py-1 rounded-lg font-bold transition-all duration-150 ease-out flex items-center gap-1 ${
                 typeFilter === 'وارد'
                   ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'text-emerald-700 hover:bg-emerald-50 :bg-emerald-950/30'
+                  : 'text-emerald-700 hover:bg-emerald-50'
               }`}
             >
               <ArrowDownLeft size={13} />
@@ -366,7 +548,7 @@ export default function Expenses() {
               className={`px-3 py-1 rounded-lg font-bold transition-all duration-150 ease-out flex items-center gap-1 ${
                 typeFilter === 'مصروف'
                   ? 'bg-rose-600 text-white shadow-xs'
-                  : 'text-rose-700 hover:bg-rose-50 :bg-rose-950/30'
+                  : 'text-rose-700 hover:bg-rose-50'
               }`}
             >
               <ArrowUpRight size={13} />
@@ -401,17 +583,17 @@ export default function Expenses() {
       </div>
 
       {/* Operations Table */}
-      <div className="glass-panel rounded-xl flex flex-col overflow-hidden shadow-sm border border-slate-200/80 ">
+      <div className="glass-panel rounded-xl flex flex-col overflow-hidden shadow-sm border border-slate-200/80">
         
         {/* Table Header Details */}
         <div className="p-4 border-b border-slate-200/80 bg-slate-50/60 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
           <div className="flex items-center gap-2">
-            <FileText size={16} className="text-slate-600 " />
+            <FileText size={16} className="text-slate-600" />
             <h3 className="font-bold text-slate-900 text-xs sm:text-sm">
               جدول التدفقات والعمليات المالية
             </h3>
           </div>
-          <div className="flex items-center gap-3 text-xs font-mono tabular-nums text-slate-600 ">
+          <div className="flex items-center gap-3 text-xs font-mono tabular-nums text-slate-600">
             <span>{filteredList.length} حركة معروضة</span>
             <span>•</span>
             <span className="text-slate-700 font-bold">
@@ -435,28 +617,28 @@ export default function Expenses() {
                 <th className="p-3.5 text-center w-16">إجراء</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 ">
+            <tbody className="divide-y divide-slate-100">
               {filteredList.map((item) => {
                 const isInflow = item.type === 'وارد';
 
                 return (
-                  <tr key={item.id} className="hover:bg-slate-50/70 :bg-slate-800/40 transition-all duration-150 ease-out ">
+                  <tr key={item.id} className="hover:bg-slate-50/70 transition-all duration-150 ease-out">
                     
                     {/* Movement Type Badge */}
                     <td className="p-3.5 text-center">
                       <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold border ${
                         isInflow
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200 '
-                          : 'bg-rose-50 text-rose-700 border-rose-200 '
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          : 'bg-rose-50 text-rose-700 border-rose-200'
                       }`}>
                         {isInflow ? (
                           <>
-                            <ArrowDownLeft size={13} className="shrink-0 text-emerald-600 " />
+                            <ArrowDownLeft size={13} className="shrink-0 text-emerald-600" />
                             <span>وارد / قبض</span>
                           </>
                         ) : (
                           <>
-                            <ArrowUpRight size={13} className="shrink-0 text-rose-600 " />
+                            <ArrowUpRight size={13} className="shrink-0 text-rose-600" />
                             <span>مصروف / صرف</span>
                           </>
                         )}
@@ -466,8 +648,8 @@ export default function Expenses() {
                     {/* Description & Category */}
                     <td className="p-3.5">
                       <div className="space-y-0.5">
-                        <p className="font-bold text-slate-800 ">{item.description}</p>
-                        <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-600 ">
+                        <p className="font-bold text-slate-800">{item.description}</p>
+                        <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
                           {item.category && (
                             <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 font-medium">
                               {item.category}
@@ -497,7 +679,7 @@ export default function Expenses() {
 
                     {/* Amount */}
                     <td className="p-3.5 text-left font-mono tabular-nums font-black text-sm">
-                      <span className={isInflow ? 'text-emerald-700 ' : 'text-rose-700 '}>
+                      <span className={isInflow ? 'text-emerald-700' : 'text-rose-700'}>
                         {isInflow ? '+' : '-'}{item.amount.toLocaleString()} {settings.shopInfo.currency || 'د.ل'}
                       </span>
                     </td>
@@ -509,14 +691,14 @@ export default function Expenses() {
                           <button
                             onClick={() => handleDelete(item.id)}
                             title="تأكيد الحذف"
-                            className="p-1 rounded-lg bg-rose-600 text-white hover:bg-rose-700 transition-all duration-150 ease-out "
+                            className="p-1 rounded-lg bg-rose-600 text-white hover:bg-rose-700 transition-all duration-150 ease-out"
                           >
                             <CheckCircle2 size={14} />
                           </button>
                           <button
                             onClick={() => setDeleteConfirmId(null)}
                             title="إلغاء"
-                            className="p-1 rounded-lg bg-slate-200 text-slate-700 hover:bg-slate-300 transition-all duration-150 ease-out "
+                            className="p-1 rounded-lg bg-slate-200 text-slate-700 hover:bg-slate-300 transition-all duration-150 ease-out"
                           >
                             <X size={14} />
                           </button>
@@ -525,7 +707,7 @@ export default function Expenses() {
                         <button
                           onClick={() => setDeleteConfirmId(item.id)}
                           title="حذف القيد"
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 :bg-rose-950/40 transition-all duration-150 ease-out "
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-all duration-150 ease-out"
                         >
                           <Trash2 size={14} />
                         </button>
@@ -547,7 +729,7 @@ export default function Expenses() {
                         <h4 className="text-sm font-bold text-slate-800 mb-1">
                           لا توجد حركات مالية مطابقة
                         </h4>
-                        <p className="text-xs text-slate-600 ">
+                        <p className="text-xs text-slate-600">
                           {searchQuery || typeFilter !== 'all' || paymentFilter !== 'all' || dateFilter !== 'all'
                             ? 'جرّب تعديل خيارات البحث والتصفية لعرض النتائج'
                             : 'اضغط على أحد الأزرار العلوية لتسجيل أول حركة وارد أو مصروف'}
@@ -570,8 +752,8 @@ export default function Expenses() {
             {/* Modal Header */}
             <div className={`p-4 border-b flex items-center justify-between ${
               transactionType === 'وارد'
-                ? 'bg-emerald-50/70 border-emerald-200 text-emerald-900 '
-                : 'bg-rose-50/70 border-rose-200 text-rose-900 '
+                ? 'bg-emerald-50/70 border-emerald-200 text-emerald-900'
+                : 'bg-rose-50/70 border-rose-200 text-rose-900'
             }`}>
               <div className="flex items-center gap-2.5">
                 <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-white ${
@@ -591,7 +773,7 @@ export default function Expenses() {
 
               <button
                 onClick={() => setIsModalOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 :text-slate-200"
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700"
               >
                 <X size={18} />
               </button>
@@ -650,7 +832,7 @@ export default function Expenses() {
                     placeholder="0.00"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
-                    className="w-full glass-input rounded-lg px-3.5 py-2.5 text-sm font-mono tabular-nums font-bold text-slate-900 "
+                    className="w-full glass-input rounded-lg px-3.5 py-2.5 text-sm font-mono tabular-nums font-bold text-slate-900"
                   />
                 </div>
 
@@ -664,7 +846,7 @@ export default function Expenses() {
                     required
                     value={date}
                     onChange={(e) => setDate(e.target.value)}
-                    className="w-full glass-input rounded-lg px-3.5 py-2.5 text-xs text-slate-800 "
+                    className="w-full glass-input rounded-lg px-3.5 py-2.5 text-xs text-slate-800"
                   />
                 </div>
 
@@ -676,7 +858,7 @@ export default function Expenses() {
                   <select
                     value={category}
                     onChange={(e) => setCategory(e.target.value)}
-                    className="w-full glass-input rounded-lg px-3.5 py-2.5 text-xs text-slate-800 bg-white "
+                    className="w-full glass-input rounded-lg px-3.5 py-2.5 text-xs text-slate-800 bg-white"
                   >
                     {(transactionType === 'وارد' ? inflowCategories : outflowCategories).map(cat => (
                       <option key={cat} value={cat}>{cat}</option>
@@ -692,7 +874,7 @@ export default function Expenses() {
                   <select
                     value={paymentMethod}
                     onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
-                    className="w-full glass-input rounded-lg px-3.5 py-2.5 text-xs text-slate-800 bg-white "
+                    className="w-full glass-input rounded-lg px-3.5 py-2.5 text-xs text-slate-800 bg-white"
                   >
                     <option value="نقدي">نقدي (كاش الصندوق)</option>
                     <option value="تحويل">تحويل بنكي / صك</option>
@@ -712,7 +894,7 @@ export default function Expenses() {
                     required
                     value={employeeId}
                     onChange={(e) => setEmployeeId(e.target.value)}
-                    className="w-full glass-input rounded-lg px-3.5 py-2.5 text-xs text-slate-800 bg-white "
+                    className="w-full glass-input rounded-lg px-3.5 py-2.5 text-xs text-slate-800 bg-white"
                   >
                     <option value="" disabled>اختر اسم الموظف...</option>
                     {employees.map(emp => (
@@ -737,7 +919,7 @@ export default function Expenses() {
                   }
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  className="w-full glass-input rounded-lg px-3.5 py-2.5 text-xs text-slate-800 "
+                  className="w-full glass-input rounded-lg px-3.5 py-2.5 text-xs text-slate-800"
                 />
               </div>
 
@@ -751,16 +933,16 @@ export default function Expenses() {
                   placeholder="مثال: REC-402, INV-1002, صك 9841..."
                   value={referenceNumber}
                   onChange={(e) => setReferenceNumber(e.target.value)}
-                  className="w-full glass-input rounded-lg px-3.5 py-2.5 text-xs font-mono tabular-nums text-slate-800 "
+                  className="w-full glass-input rounded-lg px-3.5 py-2.5 text-xs font-mono tabular-nums text-slate-800"
                 />
               </div>
 
               {/* Footer / Actions */}
-              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100 ">
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 text-xs font-bold rounded-xl text-slate-600 hover:bg-slate-100 :bg-slate-800 transition-all duration-150 ease-out "
+                  className="px-4 py-2 text-xs font-bold rounded-xl text-slate-600 hover:bg-slate-100 transition-all duration-150 ease-out"
                 >
                   إلغاء
                 </button>

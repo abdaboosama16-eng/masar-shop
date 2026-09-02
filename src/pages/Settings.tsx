@@ -38,6 +38,7 @@ import {
   WifiOff,
   Headphones,
   PhoneCall,
+  Search,
   Mail,
   Clock,
   Activity,
@@ -49,13 +50,18 @@ import {
   Users,
   Key,
   Plus,
-  ChevronRight
+  ChevronRight,
+  Edit2,
+  Tag,
+  Boxes,
+  FolderTree
 } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
-import { EmployeeRole, RolePermission } from '../types';
+import { EmployeeRole, RolePermission, DynamicServiceConfig } from '../types';
 import { isSupabaseConfigured } from '../lib/supabaseClient';
+import PageManagerTab from '../components/settings/PageManagerTab';
 
-type SettingsTab = 'basic' | 'security' | 'rbac' | 'invoice' | 'appearance' | 'supabase' | 'backup' | 'support' | 'commissions';
+type SettingsTab = 'pages' | 'basic' | 'services' | 'security' | 'rbac' | 'invoice' | 'appearance' | 'supabase' | 'backup' | 'support' | 'commissions';
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -77,7 +83,11 @@ export default function Settings() {
     pendingSyncCount,
     lastSyncTime,
     syncNow,
-    updateSystemSettings
+    updateSystemSettings,
+    addServiceConfig,
+    updateServiceConfig,
+    deleteServiceConfig,
+    resetServicesConfig
   } = useAppContext();
 
   const [activeTab, setActiveTab] = useState<SettingsTab>('basic');
@@ -89,6 +99,16 @@ export default function Settings() {
   const [wipeSupabaseTables, setWipeSupabaseTables] = useState(true);
   const [isWipingInProgress, setIsWipingInProgress] = useState(false);
   const [wipeErrorMessage, setWipeErrorMessage] = useState<string | null>(null);
+
+  // Dynamic Services & Cost Templates State
+  const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
+  const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
+  const [serviceFormName, setServiceFormName] = useState('');
+  const [serviceFormCostItems, setServiceFormCostItems] = useState<string[]>([]);
+  const [newCostItemTag, setNewCostItemTag] = useState('');
+  const [serviceSearchTerm, setServiceSearchTerm] = useState('');
+  const [inlineCostInputs, setInlineCostInputs] = useState<Record<string, string>>({});
+  const [activeInlineAddingId, setActiveInlineAddingId] = useState<string | null>(null);
   
   // Basic info local form state
   const [shopName, setShopName] = useState(settings.shopInfo.name);
@@ -481,8 +501,113 @@ export default function Settings() {
     showToast('تم حذف الدور المهني بنجاح');
   };
 
+  // Dynamic Services Handlers
+  const handleOpenAddService = () => {
+    setEditingServiceId(null);
+    setServiceFormName('');
+    setServiceFormCostItems(['تكلفة التصميم', 'تكلفة الطباعة']);
+    setNewCostItemTag('');
+    setIsServiceModalOpen(true);
+  };
+
+  const handleOpenEditService = (srv: DynamicServiceConfig) => {
+    setEditingServiceId(srv.id);
+    setServiceFormName(srv.name);
+    setServiceFormCostItems([...srv.costItems]);
+    setNewCostItemTag('');
+    setIsServiceModalOpen(true);
+  };
+
+  const handleAddCostItemTag = () => {
+    const trimmed = newCostItemTag.trim();
+    if (!trimmed) return;
+    if (serviceFormCostItems.includes(trimmed)) {
+      showToast('بند التكلفة موجود مسبقاً');
+      return;
+    }
+    setServiceFormCostItems([...serviceFormCostItems, trimmed]);
+    setNewCostItemTag('');
+  };
+
+  const handleRemoveCostItemTag = (index: number) => {
+    setServiceFormCostItems(serviceFormCostItems.filter((_, i) => i !== index));
+  };
+
+  const handleSaveServiceSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmedName = serviceFormName.trim();
+    if (!trimmedName) {
+      showToast('يرجى كتابة اسم نوع الخدمة');
+      return;
+    }
+
+    if (serviceFormCostItems.length === 0) {
+      showToast('يرجى إضافة بند تكلفة واحد على الأقل');
+      return;
+    }
+
+    if (editingServiceId) {
+      updateServiceConfig(editingServiceId, {
+        name: trimmedName,
+        costItems: serviceFormCostItems,
+      });
+      showToast('تم تحديث قالب الخدمة وبنود التكلفة بنجاح');
+    } else {
+      addServiceConfig({
+        name: trimmedName,
+        costItems: serviceFormCostItems,
+      });
+      showToast('تمت إضافة قالب الخدمة الجديد بنجاح');
+    }
+
+    setIsServiceModalOpen(false);
+  };
+
+  const handleDeleteServiceItem = (id: string, name: string) => {
+    if (window.confirm(`هل أنت متأكد من حذف قالب الخدمة "${name}"؟`)) {
+      deleteServiceConfig(id);
+      showToast('تم حذف قالب الخدمة');
+    }
+  };
+
+  const handleInlineAddCostItem = (serviceId: string, customItemName?: string) => {
+    const srv = (settings.servicesConfig || []).find(s => s.id === serviceId);
+    if (!srv) return;
+    const itemToAdd = (customItemName || inlineCostInputs[serviceId] || '').trim();
+    if (!itemToAdd) {
+      showToast('يرجى كتابة اسم بند التكلفة');
+      return;
+    }
+    if (srv.costItems.includes(itemToAdd)) {
+      showToast('بند التكلفة موجود مسبقاً في هذه الخدمة');
+      return;
+    }
+    const updatedItems = [...srv.costItems, itemToAdd];
+    updateServiceConfig(serviceId, { costItems: updatedItems });
+    setInlineCostInputs(prev => ({ ...prev, [serviceId]: '' }));
+    setActiveInlineAddingId(null);
+    showToast(`تمت إضافة بند "${itemToAdd}" إلى خدمة ${srv.name}`);
+  };
+
+  const handleInlineRemoveCostItem = (serviceId: string, itemNameToRemove: string) => {
+    const srv = (settings.servicesConfig || []).find(s => s.id === serviceId);
+    if (!srv) return;
+    const updatedItems = srv.costItems.filter(ci => ci !== itemNameToRemove);
+    updateServiceConfig(serviceId, { costItems: updatedItems });
+    showToast(`تم حذف بند "${itemNameToRemove}" من خدمة ${srv.name}`);
+  };
+
+  const handleResetServicesToDefault = () => {
+    if (window.confirm('هل أنت متأكد من استعادة كافة قوالب الخدمات وبنود التكلفة الافتراضية؟')) {
+      resetServicesConfig();
+      showToast('تمت استعادة قوالب الخدمات الافتراضية بنجاح');
+    }
+  };
+
   const navTabs = [
+    { id: 'pages' as SettingsTab, label: 'إدارة الصفحات والقوالب', icon: FolderTree, desc: 'التحكم المطلق بهيكل الصفحات، المكونات، القوالب، الترتيب والإخفاء' },
     { id: 'basic' as SettingsTab, label: 'البيانات الأساسية', icon: Building2, desc: 'اسم المنشأة، الشعار، العنوان وهواتف التواصل' },
+    { id: 'services' as SettingsTab, label: 'قوالب الخدمات والتكاليف', icon: Layers, desc: 'إدارة أنواع الخدمات وتحديد بنود التكلفة المخصصة لكل خدمة' },
     { id: 'security' as SettingsTab, label: 'الحماية والأمان', icon: Lock, desc: 'كلمة مرور المنظومة وتشفير الوصول' },
     { id: 'rbac' as SettingsTab, label: 'العاملين والصلاحيات', icon: Sliders, desc: 'إدارة الموظفين والأدوار المخصصة' },
     { id: 'invoice' as SettingsTab, label: 'تخصيص الفواتير', icon: FileText, desc: 'ملاحظة أسفل الفاتورة، الترويسة وبنود الضمان A4' },
@@ -490,12 +615,12 @@ export default function Settings() {
     { id: 'supabase' as SettingsTab, label: 'المزامنة السحابية (Supabase)', icon: Database, desc: 'قواعد البيانات السحابية، المزامنة الذكية بدون إنترنت' },
     { id: 'backup' as SettingsTab, label: 'النسخ الاحتياطي', icon: Download, desc: 'تصدير واستيراد البيانات وحفظ قواعد السجلات' },
     { id: 'support' as SettingsTab, label: 'الدعم الفني', icon: Headphones, desc: 'قنوات التواصل المباشر، التذاكر وحالة النظام' },
-      { id: 'commissions' as SettingsTab, label: 'إدارة العمولات', icon: Coins, desc: 'تحديد أساس احتساب العمولة للموظفين' },
+    { id: 'commissions' as SettingsTab, label: 'إدارة العمولات', icon: Coins, desc: 'تحديد أساس احتساب العمولة للموظفين' },
   ];
 
   const rbacModules: { key: keyof RolePermission; name: string; desc: string }[] = [
     { key: 'dashboard', name: 'لوحة التحكم ومؤشرات الأرباح', desc: 'استعراض الإحصائيات المالية والأرباح وصافي المداخيل' },
-    { key: 'sales', name: 'المبيعات والطلبيات', desc: 'استعراض سجل الطلبيات ومتابعة أسماء العملاء والمقاسات' },
+    { key: 'sales', name: 'سجل المبيعات', desc: 'استعراض سجل الطلبيات ومتابعة أسماء العملاء والمقاسات' },
     { key: 'designs', name: 'إرفاق واعتماد التصاميم', desc: 'رفع ملفات التصميم واعتماد البروفات قبل التصنيع' },
     { key: 'installation', name: 'تفاصيل ومواقع التركيب الميداني', desc: 'معاينة عناوين التركيب، تكلفة الرافعة ومواعيد التسليم' },
     { key: 'inventory', name: 'المخزون والمواد الخام', desc: 'متابعة كميات ألواح الأكريليك، الفينيل، وليدات الإضاءة' },
@@ -583,6 +708,11 @@ export default function Settings() {
 
         {/* Right / Main Tab Content Container */}
         <div className="lg:col-span-8 xl:col-span-9">
+          {/* TAB 0: PAGES & COMPONENTS MANAGER */}
+          {activeTab === 'pages' && (
+            <PageManagerTab />
+          )}
+
           {/* TAB 1: BASIC INFO */}
           {activeTab === 'basic' && (
             <div className="glass-panel p-6 sm:p-8 rounded-xl border border-slate-200/80 shadow-sm animate-in fade-in duration-150">
@@ -742,7 +872,235 @@ export default function Settings() {
             </div>
           )}
 
-          {/* TAB 2: SECURITY & PASSWORDS */}
+          {/* TAB 2: DYNAMIC SERVICES & COST TEMPLATES */}
+          {activeTab === 'services' && (
+            <div className="glass-panel p-6 sm:p-8 rounded-xl border border-slate-200/80 shadow-sm animate-in fade-in duration-150 space-y-6">
+              {/* Tab Header */}
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-4 border-b border-slate-100">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 border border-blue-200 flex items-center justify-center">
+                    <Layers size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900">قوالب الخدمات والتكاليف الديناميكية</h3>
+                    <p className="text-xs text-slate-600">إدارة أنواع الخدمات وتحديد بنود التكلفة الخاصة بكل خدمة لتتغير حقول التكلفة تلقائياً عند إضافة الطلبيات</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2.5 w-full sm:w-auto">
+                  <button
+                    type="button"
+                    onClick={handleResetServicesToDefault}
+                    className="px-3 py-2 rounded-xl text-xs font-bold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 transition-colors flex items-center gap-1.5"
+                    title="استعادة القوالب الافتراضية"
+                  >
+                    <RotateCcw size={14} />
+                    <span>استعادة الافتراضي</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleOpenAddService}
+                    className="btn-primary px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm"
+                  >
+                    <Plus size={15} />
+                    <span>إضافة نوع خدمة جديد</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Search Bar */}
+              <div className="relative">
+                <Search size={15} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={serviceSearchTerm}
+                  onChange={(e) => setServiceSearchTerm(e.target.value)}
+                  placeholder="ابحث عن نوع خدمة أو بند تكلفة..."
+                  className="w-full glass-input rounded-xl pr-10 pl-4 py-2.5 text-xs bg-slate-50 border-slate-200"
+                />
+              </div>
+
+              {/* Services List Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {(settings.servicesConfig || []).filter(srv => {
+                  if (!serviceSearchTerm.trim()) return true;
+                  const term = serviceSearchTerm.toLowerCase();
+                  return srv.name.toLowerCase().includes(term) || srv.costItems.some(ci => ci.toLowerCase().includes(term));
+                }).map((srv) => (
+                  <div 
+                    key={srv.id}
+                    className="p-5 rounded-2xl bg-white border border-slate-200/90 hover:border-slate-300 shadow-xs transition-all space-y-4 group text-right"
+                  >
+                    {/* Card Header */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-9 h-9 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center font-bold shrink-0">
+                          <Tag size={17} className="text-slate-600" />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-black text-slate-900">{srv.name}</h4>
+                          <span className="text-[11px] text-slate-500 font-bold">
+                            {srv.costItems.length} بنود تكلفة محددة
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditService(srv)}
+                          className="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                          title="تعديل قالب الخدمة"
+                        >
+                          <Edit2 size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteServiceItem(srv.id, srv.name)}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                          title="حذف قالب الخدمة"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Cost Items Tags List */}
+                    <div className="space-y-2 pt-1 border-t border-slate-100">
+                      <span className="text-[11px] font-bold text-slate-600 block">بنود التكلفة الخاصة بالخدمة:</span>
+                      
+                      {srv.costItems.length === 0 ? (
+                        <div className="text-[11px] text-slate-400 italic py-1">
+                          لا توجد بنود تكلفة حالياً لهذا القالب
+                        </div>
+                      ) : (
+                        <div className="flex flex-wrap gap-1.5">
+                          {srv.costItems.map((item, idx) => (
+                            <span 
+                              key={idx}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 text-slate-800 border border-slate-200 group/tag"
+                            >
+                              <span className="w-1.5 h-1.5 rounded-full bg-blue-600 shrink-0"></span>
+                              <span>{item}</span>
+                              <button
+                                type="button"
+                                onClick={() => handleInlineRemoveCostItem(srv.id, item)}
+                                className="text-slate-400 hover:text-rose-600 transition-colors p-0.5 rounded"
+                                title={`حذف بند "${item}"`}
+                              >
+                                <X size={12} />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Inline Add Cost Item Section */}
+                    <div className="pt-2 border-t border-slate-100 space-y-2">
+                      {activeInlineAddingId === srv.id ? (
+                        <div className="space-y-2 animate-in fade-in duration-100">
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="text"
+                              autoFocus
+                              value={inlineCostInputs[srv.id] || ''}
+                              onChange={(e) => setInlineCostInputs(prev => ({ ...prev, [srv.id]: e.target.value }))}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  handleInlineAddCostItem(srv.id);
+                                } else if (e.key === 'Escape') {
+                                  setActiveInlineAddingId(null);
+                                }
+                              }}
+                              placeholder="اكتب اسم بند التكلفة (مثلاً: مصمم، كاتب محتوى، تركيب)..."
+                              className="flex-1 glass-input rounded-lg px-3 py-1.5 text-xs bg-slate-50 border-slate-200"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleInlineAddCostItem(srv.id)}
+                              className="btn-primary px-3 py-1.5 rounded-lg text-xs font-bold shrink-0"
+                            >
+                              إضافة
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setActiveInlineAddingId(null)}
+                              className="px-2.5 py-1.5 rounded-lg text-xs text-slate-500 hover:bg-slate-100"
+                            >
+                              إلغاء
+                            </button>
+                          </div>
+
+                          {/* Quick presets for this service */}
+                          <div className="flex flex-wrap items-center gap-1 text-[10px]">
+                            <span className="text-slate-400 font-bold">اقتراحات سريعة:</span>
+                            {['مصمم', 'كاتب محتوى', 'تركيب', 'قص وتغليف', 'مواد خام', 'طباعة', 'إعلانات ممولة', 'استضافة ونطاق', 'عمولة وسيط'].filter(p => !srv.costItems.includes(p)).slice(0, 5).map(preset => (
+                              <button
+                                key={preset}
+                                type="button"
+                                onClick={() => handleInlineAddCostItem(srv.id, preset)}
+                                className="px-2 py-0.5 rounded bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-600 border border-slate-200 transition-colors"
+                              >
+                                + {preset}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveInlineAddingId(srv.id);
+                              setInlineCostInputs(prev => ({ ...prev, [srv.id]: '' }));
+                            }}
+                            className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-700 hover:text-blue-800 bg-blue-50 hover:bg-blue-100/80 px-3 py-1.5 rounded-lg border border-blue-200 transition-colors"
+                          >
+                            <Plus size={14} />
+                            <span>+ إضافة بند تكلفة</span>
+                          </button>
+
+                          {/* Quick single-click presets */}
+                          <div className="flex flex-wrap items-center gap-1">
+                            {['مصمم', 'كاتب محتوى', 'تركيب', 'مواد خام'].filter(p => !srv.costItems.includes(p)).slice(0, 3).map(preset => (
+                              <button
+                                key={preset}
+                                type="button"
+                                onClick={() => handleInlineAddCostItem(srv.id, preset)}
+                                className="text-[10px] px-2 py-0.5 rounded bg-slate-50 hover:bg-blue-50 hover:text-blue-700 text-slate-500 border border-slate-200 transition-colors"
+                                title={`إضافة سريعة لبند "${preset}"`}
+                              >
+                                + {preset}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {(settings.servicesConfig || []).length === 0 && (
+                <div className="p-8 rounded-xl border border-dashed border-slate-300 text-center space-y-3">
+                  <Layers size={32} className="mx-auto text-slate-400" />
+                  <p className="text-xs font-bold text-slate-700">لا توجد قوالب خدمات معرفة حالياً</p>
+                  <button
+                    type="button"
+                    onClick={handleResetServicesToDefault}
+                    className="btn-primary px-4 py-2 rounded-xl text-xs font-bold"
+                  >
+                    استعادة القوالب الافتراضية
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 3: SECURITY & PASSWORDS */}
           {activeTab === 'security' && (
             <div className="glass-panel p-6 sm:p-8 rounded-xl border border-slate-200/80 shadow-sm animate-in fade-in duration-150 space-y-6">
               <div className="flex items-center justify-between pb-4 border-b border-slate-100 ">
@@ -1895,6 +2253,174 @@ export default function Settings() {
                 إغلاق الواجهة
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* DYNAMIC SERVICE CONFIGURATION MODAL */}
+      {isServiceModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-150">
+          <div className="relative w-full max-w-lg bg-[#f8fafc] border border-slate-200/80 rounded-xl shadow-2xl overflow-hidden p-6 sm:p-7 space-y-5 animate-in zoom-in-95 duration-150 text-right">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-200/80">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                  <Layers size={18} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">
+                    {editingServiceId ? 'تعديل نوع الخدمة وبنود التكلفة' : 'إضافة نوع خدمة جديد'}
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    تحديد بنود التكلفة المرتبطة التي ستظهر تلقائياً عند اختيار هذه الخدمة
+                  </p>
+                </div>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => setIsServiceModalOpen(false)} 
+                className="w-8 h-8 rounded-lg bg-slate-200 text-slate-600 hover:text-slate-800 flex items-center justify-center transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveServiceSubmit} className="space-y-4">
+              {/* Service Name */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700 block">
+                  اسم نوع الخدمة <span className="text-rose-500">*</span>
+                </label>
+                <input 
+                  type="text" 
+                  required 
+                  value={serviceFormName} 
+                  onChange={(e) => setServiceFormName(e.target.value)} 
+                  placeholder="مثال: إدارة صفحات، تنفيذ لافتات، تصوير فوتوغرافي..." 
+                  className="w-full glass-input rounded-lg px-4 py-2.5 text-sm font-bold bg-white" 
+                />
+              </div>
+
+              {/* Cost Items Builder */}
+              <div className="space-y-2 pt-2 border-t border-slate-200">
+                <label className="text-xs font-bold text-slate-700 block">
+                  بنود التكلفة الخاصة بهذه الخدمة ({serviceFormCostItems.length})
+                </label>
+                <p className="text-[11px] text-slate-500">
+                  أضف كل بند تكلفة على حدة (مثل: تكلفة المصمم، تكلفة كاتب المحتوى، تكلفة القص، مواد خام)
+                </p>
+
+                {/* Add Item Input Bar */}
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newCostItemTag}
+                    onChange={(e) => setNewCostItemTag(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddCostItemTag();
+                      }
+                    }}
+                    placeholder="اكتب اسم بند التكلفة واضغط إضافة..."
+                    className="flex-1 glass-input rounded-lg px-3 py-2 text-xs bg-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddCostItemTag}
+                    className="btn-primary px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1 shrink-0"
+                  >
+                    <Plus size={14} />
+                    <span>إضافة بند</span>
+                  </button>
+                </div>
+
+                {/* Quick Presets */}
+                <div className="space-y-1 pt-1">
+                  <span className="text-[10px] text-slate-400 font-bold block">اقتراحات سريعة للإضافة:</span>
+                  <div className="flex flex-wrap gap-1">
+                    {[
+                      'تكلفة المصمم',
+                      'تكلفة كاتب المحتوى',
+                      'تكلفة القص',
+                      'تكلفة التركيب',
+                      'مواد خام',
+                      'تكلفة الطباعة',
+                      'تكلفة التصميم',
+                      'إعلانات ممولة',
+                      'تكلفة المصور',
+                      'استضافة ونطاق',
+                      'عمولة وسيط'
+                    ].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => {
+                          if (!serviceFormCostItems.includes(preset)) {
+                            setServiceFormCostItems([...serviceFormCostItems, preset]);
+                          }
+                        }}
+                        className={`text-[10px] px-2 py-0.5 rounded border transition-colors ${
+                          serviceFormCostItems.includes(preset)
+                            ? 'bg-slate-200 text-slate-500 border-slate-300 cursor-default'
+                            : 'bg-white text-slate-700 border-slate-300 hover:border-blue-500 hover:text-blue-600'
+                        }`}
+                        disabled={serviceFormCostItems.includes(preset)}
+                      >
+                        + {preset}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Active Cost Items List */}
+                <div className="p-3 rounded-xl bg-slate-100/80 border border-slate-200 min-h-[70px] space-y-1.5">
+                  <span className="text-[10px] font-bold text-slate-500 block">البنود المعتمدة في هذا القالب:</span>
+                  {serviceFormCostItems.length === 0 ? (
+                    <span className="text-xs text-slate-400 italic block py-2 text-center">
+                      لم تتم إضافة أي بند تكلفة بعد. يرجى إضافة بند تكلفة واحد على الأقل.
+                    </span>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5">
+                      {serviceFormCostItems.map((tag, idx) => (
+                        <div 
+                          key={idx}
+                          className="flex items-center gap-1.5 bg-white border border-slate-300 text-slate-800 px-2.5 py-1 rounded-lg text-xs font-bold shadow-2xs"
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+                          <span>{tag}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveCostItemTag(idx)}
+                            className="text-slate-400 hover:text-rose-600 p-0.5 rounded transition-colors"
+                            title="إزالة هذا البند"
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex justify-end gap-2.5 pt-4 border-t border-slate-200">
+                <button 
+                  type="button" 
+                  onClick={() => setIsServiceModalOpen(false)} 
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-200 transition-colors"
+                >
+                  إلغاء
+                </button>
+                <button 
+                  type="submit" 
+                  className="btn-primary px-6 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm"
+                >
+                  <Save size={15} />
+                  <span>{editingServiceId ? 'حفظ التعديلات' : 'إضافة القالب'}</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

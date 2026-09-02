@@ -1,0 +1,118 @@
+import React from 'react';
+import { 
+  LayoutDashboard, 
+  ShoppingCart, 
+  Activity, 
+  Box, 
+  Receipt, 
+  Users, 
+  Wallet, 
+  Badge, 
+  FileBarChart, 
+  Settings, 
+  Sparkles, 
+  Layers, 
+  FileText, 
+  CheckSquare, 
+  Calendar, 
+  DollarSign, 
+  TrendingUp, 
+  Briefcase, 
+  ShieldCheck, 
+  Package, 
+  ClipboardList, 
+  Grid, 
+  BarChart2, 
+  Cpu, 
+  Wrench, 
+  Truck, 
+  Tag, 
+  Sliders, 
+  Search, 
+  Folder, 
+  Compass, 
+  HelpCircle, 
+  Boxes,
+  PieChart,
+  ListTodo,
+  Layers3,
+  Flame,
+  Star
+} from 'lucide-react';
+
+const iconMap: Record<string, React.ElementType> = {
+  LayoutDashboard,
+  ShoppingCart,
+  Activity,
+  Box,
+  Receipt,
+  Users,
+  Wallet,
+  Badge,
+  FileBarChart,
+  Settings,
+  Sparkles,
+  Layers,
+  FileText,
+  CheckSquare,
+  Calendar,
+  DollarSign,
+  TrendingUp,
+  Briefcase,
+  ShieldCheck,
+  Package,
+  ClipboardList,
+  Grid,
+  BarChart2,
+  Cpu,
+  Wrench,
+  Truck,
+  Tag,
+  Sliders,
+  Search,
+  Folder,
+  Compass,
+  HelpCircle,
+  Boxes,
+  PieChart,
+  ListTodo,
+  Layers3,
+  Flame,
+  Star
+};
+
+interface DynamicIconProps {
+  name: string;
+  size?: number;
+  className?: string;
+}
+
+export default function DynamicIcon({ name, size = 19, className }: DynamicIconProps) {
+  const IconComponent = iconMap[name] || LayoutDashboard;
+  return <IconComponent size={size} className={className} />;
+}
+
+export const availableIconsList = [
+  { key: 'LayoutDashboard', label: 'لوحة التحكم' },
+  { key: 'ShoppingCart', label: 'المبيعات' },
+  { key: 'Activity', label: 'النشاط والإنتاج' },
+  { key: 'Box', label: 'المخزون' },
+  { key: 'Receipt', label: 'المالية والفواتير' },
+  { key: 'Users', label: 'العملاء والجهات' },
+  { key: 'Wallet', label: 'الخزينة والمصارف' },
+  { key: 'Badge', label: 'شؤون الموظفين' },
+  { key: 'FileBarChart', label: 'التقارير والإحصائيات' },
+  { key: 'Sparkles', label: 'التحليلات الذكية' },
+  { key: 'ClipboardList', label: 'المهام والجداول' },
+  { key: 'ListTodo', label: 'قوائم المتابعة' },
+  { key: 'Package', label: 'الطرود والشحنات' },
+  { key: 'Briefcase', label: 'المشاريع والأعمال' },
+  { key: 'DollarSign', label: 'السيولة والتدفقات' },
+  { key: 'TrendingUp', label: 'الأرباح والنمو' },
+  { key: 'PieChart', label: 'الرسوم البيانية' },
+  { key: 'Layers', label: 'القوالب والطبقات' },
+  { key: 'FileText', label: 'المستندات والعقود' },
+  { key: 'Settings', label: 'الإعدادات والنظام' },
+  { key: 'ShieldCheck', label: 'الأمان والرقابة' },
+  { key: 'Grid', label: 'الشبكات والوحدات' }
+];

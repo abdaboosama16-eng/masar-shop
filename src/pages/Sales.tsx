@@ -14,8 +14,10 @@ import { format } from 'date-fns';
 import DesignAttachmentModal from '../components/DesignAttachmentModal';
 import InvoicePrintModal from '../components/InvoicePrintModal';
 import WhatsAppShareModal from '../components/WhatsAppShareModal';
+import MonthlySalesGrid from '../components/MonthlySalesGrid';
+import OrderDetailsModal from '../components/OrderDetailsModal';
 
-type SalesActiveTab = 'new_order' | 'invoices' | 'kanban';
+type SalesActiveTab = 'monthly_grid' | 'invoices' | 'new_order' | 'kanban';
 
 export default function Sales() {
   const { 
@@ -31,11 +33,12 @@ export default function Sales() {
     toggleKioskMode 
   } = useAppContext();
 
-  // Active Tab State (3 Principal Tabs)
-  const [activeTab, setActiveTab] = useState<SalesActiveTab>('invoices');
+  // Active Tab State (4 Principal Tabs)
+  const [activeTab, setActiveTab] = useState<SalesActiveTab>('monthly_grid');
 
   // Modals state
   const [selectedOrderForDesign, setSelectedOrderForDesign] = useState<Order | null>(null);
+  const [selectedOrderForDetails, setSelectedOrderForDetails] = useState<Order | null>(null);
   const [printingOrder, setPrintingOrder] = useState<Order | null>(null);
   const [whatsAppOrder, setWhatsAppOrder] = useState<Order | null>(null);
 
@@ -54,7 +57,34 @@ export default function Sales() {
   const [customSerial, setCustomSerial] = useState('');
   
   // 2. نوع الخدمة
-  const [serviceType, setServiceType] = useState<ServiceType>('لافتة إعلانية');
+  const availableServices = useMemo(() => {
+    if (settings.servicesConfig && settings.servicesConfig.length > 0) {
+      return settings.servicesConfig;
+    }
+    return [
+      { id: 'srv-1', name: 'إدارة صفحات سوشيال ميديا', costItems: ['تكلفة المصمم', 'تكلفة كاتب المحتوى', 'إعلانات ممولة'] },
+      { id: 'srv-2', name: 'لافتة إعلانية', costItems: ['تكلفة التصميم', 'تكلفة الطباعة', 'التكلفة الخارجية', 'مواد خام'] },
+      { id: 'srv-3', name: 'تنفيذ لافتات', costItems: ['تكلفة القص', 'تكلفة التركيب', 'مواد خام'] },
+      { id: 'srv-4', name: 'تصميم موقع إلكتروني', costItems: ['تكلفة المبرمج', 'تكلفة التصميم UI/UX', 'استضافة ونطاق'] },
+      { id: 'srv-5', name: 'خدمات طباعة', costItems: ['تكلفة الورق والمواد', 'تكلفة ماكينة الطباعة', 'تكلفة التغليف والتوصيل'] },
+    ];
+  }, [settings.servicesConfig]);
+
+  const [serviceType, setServiceType] = useState<string>('لافتة إعلانية');
+  const [dynamicCostValues, setDynamicCostValues] = useState<Record<string, string>>({});
+  const [dynamicCostExecutors, setDynamicCostExecutors] = useState<Record<string, string>>({});
+  const [customCostItemInput, setCustomCostItemInput] = useState('');
+
+  // Active service config and its cost items
+  const currentServiceConfig = useMemo(() => {
+    return availableServices.find(s => s.name === serviceType) || availableServices[0];
+  }, [availableServices, serviceType]);
+
+  const currentCostItems = useMemo(() => {
+    const baseItems = currentServiceConfig?.costItems || ['تكلفة التصميم', 'تكلفة الطباعة', 'التكلفة الخارجية', 'مواد خام'];
+    const customKeys = Object.keys(dynamicCostValues).filter(k => !baseItems.includes(k));
+    return [...baseItems, ...customKeys];
+  }, [currentServiceConfig, dynamicCostValues]);
   
   // 3. اسم الزبون
   const [clientName, setClientName] = useState('');
@@ -66,10 +96,10 @@ export default function Sales() {
   const [description, setDescription] = useState('');
   
   // 6. التكلفة و التوقع للربح
-  
   const [cost, setCost] = useState('');
   
   // Detailed costs
+  const [designCost, setDesignCost] = useState('');
   const [materialCost, setMaterialCost] = useState('');
   const [printingCost, setPrintingCost] = useState('');
   const [externalCost, setExternalCost] = useState('');
@@ -77,7 +107,6 @@ export default function Sales() {
   const [otherCosts, setOtherCosts] = useState('');
   const [costCenter, setCostCenter] = useState('');
 
-  
   // 7. الجهة المنفذة (الموظف المسؤول)
   const [assignedEmployee, setAssignedEmployee] = useState('');
 
@@ -89,6 +118,7 @@ export default function Sales() {
   const [height, setHeight] = useState('');
   const [installationAddress, setInstallationAddress] = useState('');
   const [craneCost, setCraneCost] = useState('');
+  const [notes, setNotes] = useState('');
   const [showAdvancedFields, setShowAdvancedFields] = useState(false);
 
   // Raw Materials Auto-Deduction State
@@ -111,16 +141,26 @@ export default function Sales() {
   // Dynamic calculations in form
   const parsedPrice = parseFloat(price) || 0;
   
-    const mCost = parseFloat(materialCost) || 0;
-    const pCost = parseFloat(printingCost) || 0;
-    const eCost = parseFloat(externalCost) || 0;
-    const cCost = parseFloat(commissionCost) || 0;
-    const oCost = parseFloat(otherCosts) || 0;
-    const directCostInput = parseFloat(cost) || 0;
-    
-    // If detailed costs are provided, sum them, else use direct input cost
-    const totalDetailedCost = mCost + pCost + eCost + cCost + oCost;
-    const parsedCost = totalDetailedCost > 0 ? totalDetailedCost : directCostInput;
+  const dCost = parseFloat(designCost) || 0;
+  const mCost = parseFloat(materialCost) || 0;
+  const pCost = parseFloat(printingCost) || 0;
+  const eCost = parseFloat(externalCost) || 0;
+  const cCost = parseFloat(commissionCost) || 0;
+  const oCost = parseFloat(otherCosts) || 0;
+  const directCostInput = parseFloat(cost) || 0;
+  
+  // Calculate total from dynamic cost values
+  const totalDynamicCost = useMemo(() => {
+    return Object.values(dynamicCostValues).reduce((sum: number, v: string) => {
+      const num = parseFloat(v);
+      return sum + (isNaN(num) ? 0 : num);
+    }, 0);
+  }, [dynamicCostValues]);
+
+  // If dynamic costs or detailed legacy costs are provided, calculate accordingly
+  const totalDetailedCost = dCost + mCost + pCost + eCost + cCost + oCost;
+  const effectiveCostSum = totalDynamicCost > 0 ? totalDynamicCost : totalDetailedCost;
+  const parsedCost = effectiveCostSum > 0 ? effectiveCostSum : directCostInput;
 
   const expectedProfit = parsedPrice - parsedCost;
   const profitMargin = parsedPrice > 0 ? ((expectedProfit / parsedPrice) * 100).toFixed(1) : '0';
@@ -131,6 +171,18 @@ export default function Sales() {
 
   const parsedDeposit = parseFloat(deposit) || 0;
   const remainingAmount = Math.max(0, parsedPrice - parsedDeposit);
+
+  // Dynamic Cost Summary string
+  const costBreakdownSummary = useMemo(() => {
+    const parts: string[] = [];
+    Object.entries(dynamicCostValues).forEach(([item, val]) => {
+      const num = parseFloat(String(val));
+      if (!isNaN(num) && num > 0) {
+        parts.push(`${item}: ${num.toLocaleString()} ${settings.shopInfo.currency}`);
+      }
+    });
+    return parts.join(' | ');
+  }, [dynamicCostValues, settings.shopInfo.currency]);
 
   // Filtered orders for Invoices Tab
   const filteredOrders = useMemo(() => {
@@ -180,12 +232,16 @@ export default function Sales() {
 
   const resetForm = () => {
     setCustomSerial('');
-    setServiceType('لافتة إعلانية');
+    setServiceType(availableServices[0]?.name || 'لافتة إعلانية');
+    setDynamicCostValues({});
+    setDynamicCostExecutors({});
+    setCustomCostItemInput('');
     setClientName('');
     setPrice('');
     setDescription('');
     
     setCost('');
+    setDesignCost('');
     setMaterialCost('');
     setPrintingCost('');
     setExternalCost('');
@@ -201,6 +257,7 @@ export default function Sales() {
     setHeight('');
     setInstallationAddress('');
     setCraneCost('');
+    setNotes('');
     setShowAdvancedFields(false);
     setUsedMaterials([]);
     setSelectedMaterialId('');
@@ -252,20 +309,75 @@ export default function Sales() {
 
     const parsedCraneCost = craneCost ? parseFloat(craneCost) : 0;
 
+    // Numerical breakdown of dynamic costs
+    const numericCostBreakdown: Record<string, number> = {};
+    Object.entries(dynamicCostValues).forEach(([k, v]) => {
+      const num = parseFloat(String(v));
+      if (!isNaN(num) && num > 0) {
+        numericCostBreakdown[k] = num;
+      }
+    });
+
+    // Clean dynamic executors mapping
+    const cleanCostExecutors: Record<string, string> = {};
+    Object.entries(dynamicCostExecutors).forEach(([k, v]) => {
+      const valStr = String(v || '');
+      if (valStr.trim()) {
+        cleanCostExecutors[k] = valStr.trim();
+      }
+    });
+
+    let autoDesign = 0;
+    let autoPrinting = 0;
+    let autoExternal = 0;
+    let autoMaterial = 0;
+    let detectedDesigner: string | undefined = undefined;
+    let detectedPrinter: string | undefined = undefined;
+    let detectedExternal: string | undefined = undefined;
+
+    Object.entries(numericCostBreakdown).forEach(([k, v]) => {
+      if (k.includes('تصميم') || k.includes('مصمم')) {
+        autoDesign += v;
+        if (!detectedDesigner && cleanCostExecutors[k]) detectedDesigner = cleanCostExecutors[k];
+      } else if (k.includes('طباعة')) {
+        autoPrinting += v;
+        if (!detectedPrinter && cleanCostExecutors[k]) detectedPrinter = cleanCostExecutors[k];
+      } else if (k.includes('خارج')) {
+        autoExternal += v;
+        if (!detectedExternal && cleanCostExecutors[k]) detectedExternal = cleanCostExecutors[k];
+      } else if (k.includes('مادة') || k.includes('خام') || k.includes('قص') || k.includes('تركيب')) {
+        autoMaterial += v;
+      }
+    });
+
+    // Also check non-numeric executor assignments if present
+    Object.entries(cleanCostExecutors).forEach(([k, v]) => {
+      if ((k.includes('تصميم') || k.includes('مصمم')) && !detectedDesigner) detectedDesigner = v;
+      if (k.includes('طباعة') && !detectedPrinter) detectedPrinter = v;
+      if (k.includes('خارج') && !detectedExternal) detectedExternal = v;
+    });
+
     addOrder({
       serialNumber: currentSerialNumber,
-      serviceType,
+      serviceType: serviceType as ServiceType,
       clientName: clientName.trim(),
       description: description.trim(),
       
       price: parsedPrice,
       cost: parsedCost,
-      materialCost: mCost,
-      printingCost: pCost,
-      externalCost: eCost,
+      designCost: autoDesign > 0 ? autoDesign : dCost,
+      designerName: detectedDesigner,
+      materialCost: autoMaterial > 0 ? autoMaterial : mCost,
+      printingCost: autoPrinting > 0 ? autoPrinting : pCost,
+      printerName: detectedPrinter,
+      externalCost: autoExternal > 0 ? autoExternal : eCost,
+      externalExecutor: detectedExternal,
       commissionCost: cCost,
       otherCosts: oCost,
       costCenter: costCenter.trim() || undefined,
+      costBreakdown: Object.keys(numericCostBreakdown).length > 0 ? numericCostBreakdown : undefined,
+      costExecutors: Object.keys(cleanCostExecutors).length > 0 ? cleanCostExecutors : undefined,
+      costBreakdownSummary: costBreakdownSummary || undefined,
 
       expectedProfit,
       assignedEmployee: assignedEmployee || (employees.length > 0 ? employees[0].name : 'إدارة الورشة'),
@@ -278,6 +390,7 @@ export default function Sales() {
       remaining: remainingAmount,
       installationAddress: installationAddress.trim() || undefined,
       craneCost: parsedCraneCost,
+      notes: notes.trim() || undefined,
       usedMaterials: usedMaterials.length > 0 ? usedMaterials : undefined
     }, currentSerialNumber);
 
@@ -379,7 +492,7 @@ export default function Sales() {
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 no-print">
         <div>
-          <h2 className="text-2xl font-black text-slate-900 tracking-tight">المبيعات والطلبيات</h2>
+          <h2 className="text-2xl font-black text-slate-900 tracking-tight">سجل المبيعات</h2>
           <p className="text-xs text-slate-600 mt-1">
             إدارة العقود، تسجيل الفواتير، كشف حسابات الزبائن، ومتابعة مسارات الإنتاج والتنفيذ
           </p>
@@ -421,28 +534,28 @@ export default function Sales() {
         </div>
       )}
 
-      {/* Tabs Navigation (3 Primary Tabs) */}
+      {/* Tabs Navigation (4 Primary Tabs) */}
       <div className="flex items-center gap-2 p-1.5 bg-slate-100/90 rounded-xl border border-slate-200/80 shadow-xs no-print">
         
-        {/* Tab 1: إضافة طلبية جديدة */}
+        {/* Tab 1: السجل الشهري للطلبيات */}
         <button
           type="button"
-          onClick={() => setActiveTab('new_order')}
-          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-bold transition-all duration-150 ease-out ${
-            activeTab === 'new_order'
-              ? 'bg-white text-emerald-800 shadow-sm border border-slate-200/80 '
+          onClick={() => setActiveTab('monthly_grid')}
+          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-150 ease-out ${
+            activeTab === 'monthly_grid'
+              ? 'bg-white text-indigo-700 shadow-sm border border-slate-200/80 '
               : 'text-slate-600 hover:text-slate-900 :text-white'
           }`}
         >
-          <Plus size={16} className={activeTab === 'new_order' ? 'text-emerald-600' : 'text-slate-400'} />
-          <span>إضافة طلبية جديدة</span>
+          <FileSpreadsheet size={16} className={activeTab === 'monthly_grid' ? 'text-indigo-600' : 'text-slate-400'} />
+          <span>السجل الشهري للطلبيات</span>
         </button>
 
         {/* Tab 2: سجل الفواتير */}
         <button
           type="button"
           onClick={() => setActiveTab('invoices')}
-          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-bold transition-all duration-150 ease-out ${
+          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-150 ease-out ${
             activeTab === 'invoices'
               ? 'bg-white text-slate-900 shadow-sm border border-slate-200/80 '
               : 'text-slate-600 hover:text-slate-900 :text-white'
@@ -452,11 +565,25 @@ export default function Sales() {
           <span>سجل الفواتير ({orders.length})</span>
         </button>
 
-        {/* Tab 3: مسار الإنتاج Kanban */}
+        {/* Tab 3: إضافة طلبية جديدة */}
+        <button
+          type="button"
+          onClick={() => setActiveTab('new_order')}
+          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-150 ease-out ${
+            activeTab === 'new_order'
+              ? 'bg-white text-emerald-800 shadow-sm border border-slate-200/80 '
+              : 'text-slate-600 hover:text-slate-900 :text-white'
+          }`}
+        >
+          <Plus size={16} className={activeTab === 'new_order' ? 'text-emerald-600' : 'text-slate-400'} />
+          <span>إضافة طلبية جديدة</span>
+        </button>
+
+        {/* Tab 4: مسار الإنتاج Kanban */}
         <button
           type="button"
           onClick={() => setActiveTab('kanban')}
-          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-bold transition-all duration-150 ease-out ${
+          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-150 ease-out ${
             activeTab === 'kanban'
               ? 'bg-white text-blue-700 shadow-sm border border-slate-200/80 '
               : 'text-slate-600 hover:text-slate-900 :text-white'
@@ -466,6 +593,21 @@ export default function Sales() {
           <span>مسار الإنتاج Kanban</span>
         </button>
       </div>
+
+      {/* ========================================================================= */}
+      {/* TAB 0: السجل الشهري للطلبيات (Monthly Data Grid) */}
+      {/* ========================================================================= */}
+      {activeTab === 'monthly_grid' && (
+        <MonthlySalesGrid
+          orders={orders}
+          currency={settings.shopInfo.currency}
+          onUpdateStatus={updateOrderStatus}
+          onPrintOrder={setPrintingOrder}
+          onShareWhatsApp={setWhatsAppOrder}
+          onViewDesign={setSelectedOrderForDesign}
+          onViewOrderDetails={setSelectedOrderForDetails}
+        />
+      )}
 
       {/* ========================================================================= */}
       {/* TAB 1: إضافة طلبية جديدة (New Order Form) */}
@@ -518,23 +660,27 @@ export default function Sales() {
                 </div>
               </div>
 
-              {/* 2. نوع الخدمة: قائمة منسدلة */}
+              {/* 2. نوع الخدمة: قائمة منسدلة ديناميكية */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1.5">
-                  <Layers size={14} className="text-slate-600" />
-                  <span>2. نوع الخدمة</span>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Layers size={14} className="text-slate-600" />
+                    <span>2. نوع الخدمة (القوالب الديناميكية)</span>
+                  </span>
+                  <span className="text-[10px] text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
+                    {currentCostItems.length} بنود تكلفة مقترنة
+                  </span>
                 </label>
                 <div className="relative">
                   <select
                     value={serviceType}
-                    onChange={(e) => setServiceType(e.target.value as ServiceType)}
+                    onChange={(e) => setServiceType(e.target.value)}
                     className="w-full glass-input rounded-lg px-4 py-2.5 text-sm font-bold text-slate-900 appearance-none bg-white cursor-pointer pr-4 pl-10"
                     required
                   >
-                    <option value="لافتة إعلانية">لافتة إعلانية</option>
-                    <option value="إدارة صفحات سوشيال ميديا">إدارة صفحات سوشيال ميديا</option>
-                    <option value="تصميم موقع إلكتروني">تصميم موقع إلكتروني</option>
-                    <option value="خدمات طباعة">خدمات طباعة</option>
+                    {availableServices.map(s => (
+                      <option key={s.id} value={s.name}>{s.name}</option>
+                    ))}
                   </select>
                   <ChevronDown size={16} className="absolute left-3 top-3 text-slate-400 pointer-events-none" />
                 </div>
@@ -679,42 +825,189 @@ export default function Sales() {
               )}
             </div>
 
-            {/* Field 6: التكلفة و التوقع للربح */}
-            <div className="p-5 rounded-xl bg-slate-50/90 border border-slate-200/80 space-y-3">
-              <div className="flex items-center justify-between">
+            {/* Field 6: بنود التكلفة الديناميكية الخاصة بنوع الخدمة وصافي الربح */}
+            <div className="p-5 rounded-xl bg-slate-50/90 border border-slate-200/80 space-y-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
                 <label className="block text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                  <Calculator size={15} className="text-emerald-700 " />
-                  <span>6. التكلفة والتوقع للربح (تكلفة التنفيذ الفعلية)</span>
+                  <Calculator size={15} className="text-emerald-700" />
+                  <span>6. بنود التكلفة الديناميكية لقالب: <strong className="text-blue-700">({serviceType})</strong></span>
                 </label>
-                <span className="text-[10px] font-semibold text-slate-600 ">
-                  بيانات داخلية خاصة بالإدارة
+                <span className="text-[10px] font-bold text-slate-500 bg-white px-2.5 py-1 rounded-lg border border-slate-200">
+                  تتغير حقول التكلفة تلقائياً وفقاً للخدمة المختارة
                 </span>
               </div>
               
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 items-center">
-                <div>
-                  <span className="text-[11px] text-slate-600 block mb-1">تكلفة التنفيذ (المواد والعمالة):</span>
+              {/* Dynamic Cost Inputs Grid with Executor Fields */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                {currentCostItems.map((itemKey) => {
+                  const isDesign = itemKey.includes('تصميم') || itemKey.includes('مصمم') || itemKey.includes('UI');
+                  const isPrinting = itemKey.includes('طباعة') || itemKey.includes('مطبعة');
+                  const isExternal = itemKey.includes('خارج') || itemKey.includes('ورشة') || itemKey.includes('موقع');
+                  const isLaser = itemKey.includes('قص') || itemKey.includes('ليزر');
+                  const isInstallation = itemKey.includes('تركيب');
+                  const isDev = itemKey.includes('مطور') || itemKey.includes('مبرمج');
+                  const isContent = itemKey.includes('محتوى') || itemKey.includes('كتابة');
+
+                  const executorPlaceholder = isDesign
+                    ? 'اسم المصمم (مثال: أحمد)...'
+                    : isPrinting
+                    ? 'اسم فني الطباعة (مثال: سالم)...'
+                    : isLaser
+                    ? 'اسم فني القص/الماكينة...'
+                    : isInstallation
+                    ? 'اسم فني أو فريق التركيب...'
+                    : isDev
+                    ? 'اسم المطور...'
+                    : isContent
+                    ? 'اسم كاتب المحتوى...'
+                    : isExternal
+                    ? 'اسم الورشة / الجهة الخارجية...'
+                    : 'اسم الموظف / المنفذ...';
+
+                  const executorLabel = isDesign
+                    ? 'اسم المصمم'
+                    : isPrinting
+                    ? 'اسم فني الطباعة'
+                    : isLaser
+                    ? 'فني القص/الليزر'
+                    : isInstallation
+                    ? 'فني التركيب'
+                    : isExternal
+                    ? 'الجهة المنفذة'
+                    : 'اسم المنفذ/الموظف';
+
+                  return (
+                    <div key={itemKey} className="p-3.5 rounded-xl bg-white border border-slate-200/90 space-y-2.5 shadow-2xs">
+                      <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
+                        <span className="text-xs font-black text-slate-800">{itemKey}</span>
+                        <span className="text-[10px] text-slate-400 font-mono font-bold">{settings.shopInfo.currency}</span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        {/* Amount Field */}
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-500 block mb-1">المبلغ المطلوب</label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={dynamicCostValues[itemKey] || ''}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setDynamicCostValues(prev => ({
+                                ...prev,
+                                [itemKey]: val
+                              }));
+                            }}
+                            className="w-full glass-input rounded-lg px-2.5 py-1.5 text-xs font-mono tabular-nums font-bold text-slate-900 bg-slate-50/70"
+                            placeholder="0.00"
+                          />
+                        </div>
+
+                        {/* Executor / Employee Field */}
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-500 block mb-1">{executorLabel}</label>
+                          <input
+                            type="text"
+                            list="order-employees-datalist"
+                            value={dynamicCostExecutors[itemKey] || ''}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setDynamicCostExecutors(prev => ({
+                                ...prev,
+                                [itemKey]: val
+                              }));
+                            }}
+                            className="w-full glass-input rounded-lg px-2.5 py-1.5 text-xs text-slate-800 bg-slate-50/70 placeholder:text-slate-400"
+                            placeholder={executorPlaceholder}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Datalist for Employee autocomplete suggestions */}
+              <datalist id="order-employees-datalist">
+                {employees.map(emp => (
+                  <option key={emp.id} value={emp.name}>{emp.name} ({emp.role})</option>
+                ))}
+                <option value="ورشة خارجية">ورشة خارجية</option>
+                <option value="مطبعة النجوم">مطبعة النجوم</option>
+                <option value="فريق التركيبات الميدانية">فريق التركيبات الميدانية</option>
+                <option value="إدارة الورشة">إدارة الورشة</option>
+              </datalist>
+
+              {/* Add Custom On-The-Fly Cost Item */}
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <span className="text-[11px] font-bold text-slate-600">إضافة بند تكلفة مخصص لهذه الفاتورة:</span>
+                <div className="flex items-center gap-1.5 flex-1 max-w-sm">
                   <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={cost}
-                    onChange={(e) => setCost(e.target.value)}
-                    className="w-full glass-input rounded-lg px-3 py-2.5 text-sm font-mono tabular-nums font-bold text-rose-700 bg-white "
-                    placeholder="0.00"
+                    type="text"
+                    value={customCostItemInput}
+                    onChange={(e) => setCustomCostItemInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        if (customCostItemInput.trim()) {
+                          const trimmed = customCostItemInput.trim();
+                          setDynamicCostValues(prev => ({ ...prev, [trimmed]: '' }));
+                          setCustomCostItemInput('');
+                        }
+                      }
+                    }}
+                    placeholder="اسم بند التكلفة الإضافي..."
+                    className="flex-1 glass-input rounded-lg px-2.5 py-1.5 text-xs bg-white"
                   />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (customCostItemInput.trim()) {
+                        const trimmed = customCostItemInput.trim();
+                        setDynamicCostValues(prev => ({ ...prev, [trimmed]: '' }));
+                        setCustomCostItemInput('');
+                      }
+                    }}
+                    className="btn-primary px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 shrink-0"
+                  >
+                    <Plus size={13} />
+                    <span>إضافة</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Summary Calculations */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 items-center pt-3 border-t border-slate-200/80">
+                <div className="p-3.5 rounded-xl bg-white border border-slate-200/80 shadow-xs">
+                  <span className="text-[11px] font-bold text-slate-600 block mb-1">إجمالي التكلفة المحسوبة:</span>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono tabular-nums text-sm font-black text-rose-700">
+                      {parsedCost.toLocaleString()} {settings.shopInfo.currency}
+                    </span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={cost}
+                      onChange={(e) => setCost(e.target.value)}
+                      className="w-24 text-[11px] p-1 border rounded text-left font-mono bg-slate-50"
+                      placeholder="مباشر..."
+                      title="إدخال تكلفة مباشرة إجمالية بديلة"
+                    />
+                  </div>
                 </div>
 
-                <div className="p-3 rounded-xl bg-white border border-slate-200/80 text-center shadow-xs">
-                  <span className="text-[11px] text-slate-600 block mb-0.5">صافي الربح المحسوب آلياً:</span>
-                  <span className={`font-mono tabular-nums text-sm font-black ${expectedProfit >= 0 ? 'text-emerald-700 ' : 'text-rose-700 '}`}>
+                <div className="p-3.5 rounded-xl bg-emerald-50/80 border border-emerald-200/80 text-center shadow-xs">
+                  <span className="text-[11px] font-bold text-emerald-800 block mb-0.5">صافي الربح المحسوب آلياً:</span>
+                  <span className={`font-mono tabular-nums text-sm font-black ${expectedProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
                     {expectedProfit >= 0 ? `+${expectedProfit.toLocaleString()}` : expectedProfit.toLocaleString()} {settings.shopInfo.currency}
                   </span>
                 </div>
 
-                <div className="p-3 rounded-xl bg-white border border-slate-200/80 text-center shadow-xs">
-                  <span className="text-[11px] text-slate-600 block mb-0.5">نسبة هامش الربح:</span>
-                  <span className="font-mono tabular-nums text-sm font-bold text-slate-800 ">
+                <div className="p-3.5 rounded-xl bg-white border border-slate-200/80 text-center shadow-xs">
+                  <span className="text-[11px] font-bold text-slate-600 block mb-0.5">نسبة هامش الربح:</span>
+                  <span className="font-mono tabular-nums text-sm font-black text-slate-800">
                     {profitMargin}%
                   </span>
                 </div>
@@ -864,6 +1157,24 @@ export default function Sales() {
                   )}
                 </div>
               )}
+
+              {/* 8. الملاحظات والتعليمات الخاصة بالطلبية */}
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
+                <label className="block text-xs font-bold text-slate-800 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <FileText size={15} className="text-slate-600" />
+                    <span>ملاحظات إضافية وتعليمات خاصة بالطلبية</span>
+                  </span>
+                  <span className="text-[10px] font-normal text-slate-500 bg-white px-2 py-0.5 rounded border border-slate-200">اختياري</span>
+                </label>
+                <textarea
+                  rows={3}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="اكتب هنا أي ملاحظات أو تعليمات خاصة بالطلبية (مواصفات المواد، شروط التسليم، ملاحظات العميل، تفاصيل فنية، إلخ)..."
+                  className="w-full glass-input rounded-lg px-3.5 py-2.5 text-xs text-slate-900 bg-white border border-slate-200/90 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 leading-relaxed resize-y placeholder:text-slate-400"
+                />
+              </div>
             </div>
 
             {/* Form Actions */}
@@ -1146,6 +1457,13 @@ export default function Sales() {
                           تسليم: {format(new Date(order.targetDeliveryDate), 'yyyy-MM-dd')}
                         </span>
                       )}
+
+                      {order.notes && (
+                        <span className="flex items-center bg-amber-50 text-amber-800 border border-amber-200/80 px-2.5 py-1 rounded-lg text-[11px] font-bold">
+                          <FileText size={12} className="ml-1 text-amber-600" />
+                          توجد ملاحظات
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -1182,6 +1500,17 @@ export default function Sales() {
                   {/* Action Buttons */}
                   <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 border-t lg:border-t-0 lg:border-r border-slate-200/80 pt-3 lg:pt-0 lg:pr-4 shrink-0">
                     
+                    {/* View Details Modal Button */}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedOrderForDetails(order)}
+                      className="glass-button flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-slate-700 hover:bg-slate-100 border-slate-200 text-xs font-bold transition-all duration-150 ease-out"
+                      title="عرض تفاصيل الطلبية وتعديل الملاحظات"
+                    >
+                      <FileText size={15} className="text-slate-600" />
+                      <span>تفاصيل</span>
+                    </button>
+
                     {/* Design Attachment Button */}
                     <button
                       type="button"
@@ -1386,6 +1715,16 @@ export default function Sales() {
                             </span>
 
                             <div className="flex items-center gap-1.5">
+                              {/* Details Modal Button */}
+                              <button
+                                type="button"
+                                onClick={() => setSelectedOrderForDetails(order)}
+                                className="p-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200 transition-all duration-150 ease-out"
+                                title="عرض التفاصيل والملاحظات"
+                              >
+                                <FileText size={13} />
+                              </button>
+
                               {/* Attachment Button */}
                               <button
                                 type="button"
@@ -1426,6 +1765,21 @@ export default function Sales() {
           </div>
         </div>
       )}
+
+      {/* Order Details & Notes Modal */}
+      <OrderDetailsModal
+        order={selectedOrderForDetails}
+        isOpen={!!selectedOrderForDetails}
+        onClose={() => setSelectedOrderForDetails(null)}
+        onPrint={(order) => {
+          setSelectedOrderForDetails(null);
+          setPrintingOrder(order);
+        }}
+        onShareWhatsApp={(order) => {
+          setSelectedOrderForDetails(null);
+          setWhatsAppOrder(order);
+        }}
+      />
 
       {/* Design Attachment Modal */}
       <DesignAttachmentModal

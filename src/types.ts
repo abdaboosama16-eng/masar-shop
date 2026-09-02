@@ -12,8 +12,15 @@ export interface CommissionRecord {
 }
 export type OrderStatus = 'بانتظار اعتماد التصميم' | 'قيد التصميم' | 'قيد الطباعة' | 'قيد التركيب' | 'تم التسليم';
 export type PaymentMethod = 'نقدي' | 'بطاقة' | 'تحويل' | 'آجل';
-export type ServiceType = 'لافتة إعلانية' | 'إدارة صفحات سوشيال ميديا' | 'تصميم موقع إلكتروني' | 'خدمات طباعة';
+export type ServiceType = string;
 export type SyncState = 'synced' | 'syncing' | 'pending' | 'offline';
+
+export interface DynamicServiceConfig {
+  id: string;
+  name: string;
+  costItems: string[];
+  isDefault?: boolean;
+}
 
 export interface OrderMaterialUsage {
   itemId: string;
@@ -41,11 +48,18 @@ export interface Order {
   description: string;
   price: number;
   
-  // Detailed Costs
+  // Detailed Costs & Dynamic Cost Breakdown
   cost?: number; // Total direct cost
-  materialCost?: number; // تكلفة المواد
-  printingCost?: number; // تكلفة الطباعة
-  externalCost?: number; // تكاليف خارجية
+  costBreakdown?: Record<string, number>; // Dynamic cost items breakdown: { "تكلفة المصمم": 500, "تكلفة كاتب المحتوى": 300 }
+  costExecutors?: Record<string, string>; // Dynamic executor/employee mapping for cost items: { "تكلفة المصمم": "أحمد", "تكلفة الطباعة": "خالد" }
+  costBreakdownSummary?: string; // Pre-calculated or helper summary string
+  designCost?: number; // تكلفة التصميم (legacy compatibility)
+  designerName?: string; // اسم المصمم المنفذ
+  materialCost?: number; // تكلفة المواد (legacy compatibility)
+  printingCost?: number; // تكلفة الطباعة (legacy compatibility)
+  printerName?: string; // اسم فني الطباعة المنفذ
+  externalCost?: number; // تكاليف خارجية (legacy compatibility)
+  externalExecutor?: string; // اسم المنفذ الخارجي / الورشة
   commissionCost?: number; // عمولة التنفيذ
   otherCosts?: number; // مصروفات إضافية
   
@@ -63,6 +77,7 @@ export interface Order {
   usedMaterials?: OrderMaterialUsage[]; 
   attachments?: string[]; // روابط المرفقات
   auditLog?: AuditLogEntry[]; // سجل العمليات والتدقيق
+  notes?: string; // الملاحظات الإضافية والتعليمات الخاصة بالطلبية
   pendingSync?: boolean;
   commissions?: CommissionRecord[];
 }
@@ -203,6 +218,40 @@ export interface RolePermission {
   treasury: boolean;
 }
 
+export type PageComponentType = 
+  | 'metric_card' 
+  | 'chart' 
+  | 'table' 
+  | 'form_field' 
+  | 'filter_bar' 
+  | 'banner_note' 
+  | 'action_grid' 
+  | 'checklist' 
+  | 'custom_widget';
+
+export interface PageComponentConfig {
+  id: string;
+  title: string;
+  type: PageComponentType;
+  description: string;
+  visible: boolean;
+  order: number;
+  width?: 'full' | 'half' | 'third' | 'two_thirds';
+  settings?: Record<string, any>;
+}
+
+export interface PageConfig {
+  id: string;
+  name: string;
+  path: string;
+  icon: string;
+  description: string;
+  visible: boolean;
+  isSystemDefault?: boolean;
+  order: number;
+  components: PageComponentConfig[];
+}
+
 export interface SystemSettings {
   shopInfo: ShopInfo;
   security: SystemSecurity;
@@ -214,4 +263,6 @@ export interface SystemSettings {
   };
   theme: 'light' | 'dark';
   commissionBasis?: CommissionBasis;
+  servicesConfig?: DynamicServiceConfig[];
+  pagesConfig?: PageConfig[];
 }

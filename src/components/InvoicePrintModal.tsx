@@ -208,7 +208,13 @@ export default function InvoicePrintModal({ order, isOpen, onClose }: InvoicePri
                         )}
                       </td>
                       <td className="p-3 text-slate-700 leading-relaxed whitespace-pre-line align-top">
-                        {order.description}
+                        <div>{order.description}</div>
+                        {order.notes && (
+                          <div className="mt-2 pt-2 border-t border-slate-100 text-[11px] text-slate-600 bg-slate-50/80 p-2 rounded">
+                            <strong className="text-slate-800">ملاحظات: </strong>
+                            <span>{order.notes}</span>
+                          </div>
+                        )}
                       </td>
                       <td className="p-3 text-left font-mono tabular-nums font-black text-slate-900 text-sm align-top">
                         {order.price.toLocaleString()} {settings.shopInfo.currency}

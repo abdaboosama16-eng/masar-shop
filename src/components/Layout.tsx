@@ -1,21 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { 
-  LayoutDashboard, Users, Truck, Wallet, ShoppingCart, Box, Receipt, Badge, 
   LogOut, Menu, X, Settings as SettingsIcon, 
-  Sun, Moon, Minimize2, Tv, ChevronRight, ChevronLeft,
-  FileBarChart, Activity
+  Sun, Moon, Minimize2, Tv, ChevronRight, ChevronLeft
 } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import LoginScreen from './LoginScreen';
 import SyncStatusBadge from './SyncStatusBadge';
 import GlobalSearch from './GlobalSearch';
+import DynamicIcon from './DynamicIcon';
 
 export default function Layout() {
   const { 
     currentUser, 
     logout, 
     settings, 
+    pagesConfig,
     toggleTheme, 
     isKioskMode, 
     toggleKioskMode 
@@ -36,21 +36,15 @@ export default function Layout() {
     return <LoginScreen />;
   }
 
-  // All primary navigation items unconditionally visible
-  const navItems = [
-    { name: 'لوحة التحكم', path: '/', icon: <LayoutDashboard size={19} /> },
-    { name: 'المبيعات والطلبيات', path: '/sales', icon: <ShoppingCart size={19} /> },
-    { name: 'مسار العمليات', path: '/kanban', icon: <Activity size={19} /> },
-    { name: 'المخزون والمواد', path: '/inventory', icon: <Box size={19} /> },
-    { name: 'المالية', path: '/expenses', icon: <Receipt size={19} /> },
-    { name: 'العملاء', path: '/customers', icon: <Users size={19} /> },
-    { name: 'الموردين', path: '/suppliers', icon: <Truck size={19} /> },
-    { name: 'الخزينة والمالية', path: '/treasury', icon: <Wallet size={19} /> },
-
-    { name: 'شؤون العاملين', path: '/employees', icon: <Badge size={19} /> },
-    { name: 'التقارير', path: '/audit', icon: <FileBarChart size={19} /> },
-    { name: 'الإعدادات العامة', path: '/settings', icon: <SettingsIcon size={19} /> },
-  ];
+  // Dynamic Navigation items directly derived from pagesConfig state
+  const navItems = (pagesConfig || [])
+    .filter(page => page.visible !== false)
+    .sort((a, b) => (a.order || 0) - (b.order || 0))
+    .map(page => ({
+      name: page.name,
+      path: page.path,
+      icon: <DynamicIcon name={page.icon} size={19} />
+    }));
 
   return (
     <div className={`min-h-screen bg-texture flex ${isKioskMode ? 'flex-col' : 'flex-col md:flex-row'} text-slate-900 dark:text-slate-100 selection:bg-emerald-500/20 selection:text-emerald-800 dark:selection:text-emerald-200`}>
@@ -225,7 +219,7 @@ export default function Layout() {
               <SyncStatusBadge />
             </div>
 
-            {/* Top Action Icons: Geometric Icons Only without texts */}
+            {/* Top Action Icons: Clean & Accessible */}
             <div className="flex items-center gap-2">
               <button
                 onClick={toggleTheme}
