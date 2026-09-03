@@ -26,8 +26,9 @@ export default function Sales() {
     deleteOrder, 
     getNextSerialNumber, 
     updateOrderStatus, 
+    toggleOrderPaidStatus,
     employees, 
-    settings,
+    settings, 
     inventory,
     isKioskMode,
     toggleKioskMode 
@@ -606,6 +607,7 @@ export default function Sales() {
           onShareWhatsApp={setWhatsAppOrder}
           onViewDesign={setSelectedOrderForDesign}
           onViewOrderDetails={setSelectedOrderForDetails}
+          onTogglePaid={toggleOrderPaidStatus}
         />
       )}
 
@@ -934,7 +936,6 @@ export default function Sales() {
                   <option key={emp.id} value={emp.name}>{emp.name} ({emp.role})</option>
                 ))}
                 <option value="ورشة خارجية">ورشة خارجية</option>
-                <option value="مطبعة النجوم">مطبعة النجوم</option>
                 <option value="فريق التركيبات الميدانية">فريق التركيبات الميدانية</option>
                 <option value="إدارة الورشة">إدارة الورشة</option>
               </datalist>
@@ -1471,8 +1472,22 @@ export default function Sales() {
                   <div className="flex items-center gap-4 bg-slate-50/90 p-3.5 rounded-xl border border-slate-200/80 shrink-0">
                     <div className="text-right">
                       <span className="text-[10px] text-slate-600 block font-bold">سعر الفاتورة:</span>
-                      <div className="text-base font-black text-slate-900 font-mono tabular-nums">
-                        {order.price.toLocaleString()} {settings.shopInfo.currency}
+                      <div className="flex items-center gap-2">
+                        <div className="text-base font-black text-slate-900 font-mono tabular-nums">
+                          {order.price.toLocaleString()} {settings.shopInfo.currency}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => toggleOrderPaidStatus(order.id)}
+                          className={`inline-flex items-center justify-center w-7 h-7 rounded-lg transition-all duration-200 shadow-xs ${
+                            order.isPaid
+                              ? "bg-amber-400/20 text-amber-500 border border-amber-400/50 hover:bg-amber-400/30 hover:border-amber-400"
+                              : "bg-slate-100 text-slate-400 border border-slate-200 hover:text-slate-600 hover:border-slate-300"
+                          }`}
+                          title={order.isPaid ? "الفاتورة خالصة ومدفوعة (انقر للإلغاء)" : "تأكيد خلاص ودفع الفاتورة"}
+                        >
+                          <Check size={15} strokeWidth={order.isPaid ? 3 : 2} />
+                        </button>
                       </div>
                       {order.remaining !== undefined && order.remaining > 0 && (
                         <span className="text-[10px] font-bold text-rose-700 block">

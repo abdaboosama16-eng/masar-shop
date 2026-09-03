@@ -12,6 +12,7 @@ import ProductionKanban from './pages/ProductionKanban';
 import Audit from './pages/Audit';
 
 import Customers from './pages/Customers';
+import Workshops from './pages/Workshops';
 import DynamicCustomPage from './pages/DynamicCustomPage';
 
 export default function App() {
@@ -26,6 +27,7 @@ export default function App() {
             <Route path="tasks" element={<ProductionKanban />} />
             <Route path="inventory" element={<Inventory />} />
             <Route path="expenses" element={<Expenses />} />
+            <Route path="workshops" element={<Workshops />} />
             <Route path="customers" element={<Customers />} />
             <Route path="employees" element={<Employees />} />
             <Route path="audit" element={<Audit />} />

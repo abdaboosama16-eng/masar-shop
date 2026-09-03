@@ -37,7 +37,8 @@ import {
   ListTodo,
   Layers3,
   Flame,
-  Star
+  Star,
+  Building2
 } from 'lucide-react';
 
 const iconMap: Record<string, React.ElementType> = {
@@ -67,6 +68,7 @@ const iconMap: Record<string, React.ElementType> = {
   Cpu,
   Wrench,
   Truck,
+  Building2,
   Tag,
   Sliders,
   Search,
@@ -114,5 +116,6 @@ export const availableIconsList = [
   { key: 'FileText', label: 'المستندات والعقود' },
   { key: 'Settings', label: 'الإعدادات والنظام' },
   { key: 'ShieldCheck', label: 'الأمان والرقابة' },
+  { key: 'Building2', label: 'الورش والجهات الخارجية' },
   { key: 'Grid', label: 'الشبكات والوحدات' }
 ];

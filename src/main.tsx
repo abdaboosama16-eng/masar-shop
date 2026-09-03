@@ -5,13 +5,18 @@ import './index.css';
 
 // Perform zero-data clean slate initialization on startup
 function initializeFreshClientStorage() {
-  const CLIENT_SETUP_KEY = 'masar_clean_setup_v5';
+  const CLIENT_SETUP_KEY = 'masar_clean_production_v1';
   if (!localStorage.getItem(CLIENT_SETUP_KEY)) {
     // Purge all old demo and mock records from localStorage
     localStorage.removeItem('masar_orders');
     localStorage.removeItem('masar_inventory');
     localStorage.removeItem('masar_expenses');
     localStorage.removeItem('masar_employees');
+    localStorage.removeItem('masar_workshops');
+    localStorage.removeItem('masar_customers');
+    localStorage.removeItem('masar_suppliers');
+    localStorage.removeItem('masar_treasury_accounts');
+    localStorage.removeItem('masar_treasury_transactions');
     localStorage.removeItem('masar_sync_queue');
     localStorage.removeItem('masar_last_sync_time');
     localStorage.removeItem('masar_current_user');
@@ -21,6 +26,10 @@ function initializeFreshClientStorage() {
     localStorage.setItem('masar_orders', JSON.stringify([]));
     localStorage.setItem('masar_inventory', JSON.stringify([]));
     localStorage.setItem('masar_expenses', JSON.stringify([]));
+    localStorage.setItem('masar_workshops', JSON.stringify([]));
+    localStorage.setItem('masar_customers', JSON.stringify([]));
+    localStorage.setItem('masar_suppliers', JSON.stringify([]));
+    localStorage.setItem('masar_treasury_transactions', JSON.stringify([]));
     localStorage.setItem('masar_sync_queue', JSON.stringify([]));
 
     const defaultCleanAdmin = [

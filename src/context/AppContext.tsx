@@ -11,6 +11,8 @@ import {
   SyncState, 
   Customer, 
   Supplier, 
+  Workshop,
+  WorkshopTransaction,
   TreasuryAccount, 
   TreasuryTransaction, 
   DynamicServiceConfig,
@@ -298,6 +300,36 @@ export const defaultPagesConfig: PageConfig[] = [
     ]
   },
   {
+    id: 'workshops',
+    name: 'حسابات الورش والجهات الخارجية',
+    path: '/workshops',
+    icon: 'Building2',
+    description: 'إدارة مطالبات الورش، حسابات الشركات الموردة، ومتابعة الأرصدة المتبقية وسندات الصرف',
+    visible: true,
+    isSystemDefault: true,
+    order: 6,
+    components: [
+      {
+        id: 'workshops_master_grid',
+        title: 'سجل الورش والشركات الخارجية',
+        type: 'table',
+        description: 'قائمة بأسماء الورش والشركات مع الأرصدة المتبقية وإجمالي المطالبات والمدفوعات',
+        visible: true,
+        order: 1,
+        width: 'full',
+      },
+      {
+        id: 'workshops_ledger_details',
+        title: 'كشف الحساب التفصيلي للورشة',
+        type: 'table',
+        description: 'جدول بيانات تفصيلي بحركات المطالبات والدفعات والرصيد المتبقي',
+        visible: true,
+        order: 2,
+        width: 'full',
+      }
+    ]
+  },
+  {
     id: 'customers',
     name: 'العملاء',
     path: '/customers',
@@ -305,7 +337,7 @@ export const defaultPagesConfig: PageConfig[] = [
     description: 'دليل العملاء وحساب المستحقات والمديونيات وكشوفات الحساب',
     visible: true,
     isSystemDefault: true,
-    order: 6,
+    order: 7,
     components: [
       {
         id: 'customers_kpi_receivables',
@@ -335,7 +367,7 @@ export const defaultPagesConfig: PageConfig[] = [
     description: 'سجل الموظفين والرواتب وعمولات المبيعات وساعات العمل',
     visible: true,
     isSystemDefault: true,
-    order: 7,
+    order: 8,
     components: [
       {
         id: 'employees_kpi_count',
@@ -365,7 +397,7 @@ export const defaultPagesConfig: PageConfig[] = [
     description: 'تقارير الأداء المالي، سجل الرقابة وتدقيق حركة النظام',
     visible: true,
     isSystemDefault: true,
-    order: 8,
+    order: 9,
     components: [
       {
         id: 'audit_kpi_summary',
@@ -395,7 +427,7 @@ export const defaultPagesConfig: PageConfig[] = [
     description: 'محرك التحكم المركزي بالصفحات والقوالب والصلاحيات والمزامنة',
     visible: true,
     isSystemDefault: true,
-    order: 9,
+    order: 10,
     components: [
       {
         id: 'settings_page_manager',
@@ -467,6 +499,8 @@ interface AppContextType {
   deleteOrder: (id: string) => void;
   getNextSerialNumber: () => string;
   updateOrderStatus: (id: string, status: Order['status']) => void;
+  toggleOrderPaidStatus: (id: string) => void;
+  updateOrder: (id: string, updates: Partial<Order>) => void;
   inventory: InventoryItem[];
   addInventoryItem: (item: Omit<InventoryItem, 'id'>) => void;
   updateInventoryQuantity: (id: string, delta: number) => void;
@@ -527,6 +561,13 @@ interface AppContextType {
   setCustomers: React.Dispatch<React.SetStateAction<Customer[]>>;
   suppliers: Supplier[];
   setSuppliers: React.Dispatch<React.SetStateAction<Supplier[]>>;
+  workshops: Workshop[];
+  setWorkshops: React.Dispatch<React.SetStateAction<Workshop[]>>;
+  addWorkshop: (workshop: Omit<Workshop, 'id' | 'balance' | 'totalCost' | 'totalPaid' | 'transactions'> & { initialBalance?: number }) => void;
+  updateWorkshop: (id: string, updates: Partial<Workshop>) => void;
+  deleteWorkshop: (id: string) => void;
+  addWorkshopTransaction: (workshopId: string, transaction: Omit<WorkshopTransaction, 'id' | 'balanceAfter'>) => void;
+  deleteWorkshopTransaction: (workshopId: string, transactionId: string) => void;
   treasuryAccounts: TreasuryAccount[];
   setTreasuryAccounts: React.Dispatch<React.SetStateAction<TreasuryAccount[]>>;
   treasuryTransactions: TreasuryTransaction[];
@@ -550,192 +591,8 @@ export const getNextOrderSerialNumber = (existingOrders: Order[]): string => {
   return (maxNum + 1).toString();
 };
 
-// Initial Sample Data for Orders & Services
-const initialOrders: Order[] = [
-  {
-    id: '1001',
-    serialNumber: '1001',
-    serviceType: 'إدارة صفحات سوشيال ميديا',
-    clientName: 'شركة الأفق للخدمات التقنية',
-    description: 'إدارة شاملة لحسابات التواصل الاجتماعي والحملات الممولة وتصميم 20 منشور إعلاني',
-    price: 3500,
-    cost: 1100,
-    costBreakdown: { 'تكلفة المصمم': 600, 'تكلفة كاتب المحتوى': 500 },
-    costExecutors: { 'تكلفة المصمم': 'أحمد السعيد (مصمم جرافيك)', 'تكلفة كاتب المحتوى': 'سارة منصور (كاتبة محتوى)' },
-    costBreakdownSummary: 'تكلفة المصمم: 600، تكلفة كاتب المحتوى: 500',
-    designCost: 600,
-    designerName: 'أحمد السعيد (مصمم جرافيك)',
-    printingCost: 0,
-    externalCost: 500,
-    externalExecutor: 'سارة منصور (كاتبة محتوى)',
-    materialCost: 0,
-    expectedProfit: 2400,
-    assignedEmployee: 'محمد علي (مدير المشاريع)',
-    status: 'تم التسليم',
-    paymentMethod: 'تحويل',
-    date: '2026-03-02T10:30:00.000Z',
-    deposit: 3500,
-    remaining: 0,
-  },
-  {
-    id: '1002',
-    serialNumber: '1002',
-    serviceType: 'تنفيذ لافتات',
-    clientName: 'مصحة الشفاء التخصصية',
-    description: 'واجهة كلادينج وحروف زنكور مضيئة LED للواجهة الرئيسية مع الرفع والتركيب',
-    price: 8500,
-    cost: 4600,
-    costBreakdown: { 'تكلفة القص': 1200, 'تكلفة التركيب': 1800, 'مواد خام': 1600 },
-    costExecutors: { 'تكلفة القص': 'خالد الهواري (فني ليزر)', 'تكلفة التركيب': 'فريق التركيبات الميدانية', 'مواد خام': 'مخزن الورشة' },
-    costBreakdownSummary: 'تكلفة القص: 1200، تكلفة التركيب: 1800، مواد خام: 1600',
-    designCost: 500,
-    designerName: 'محمود طارق',
-    printingCost: 1200,
-    printerName: 'خالد الهواري',
-    externalCost: 1800,
-    externalExecutor: 'فريق التركيبات الميدانية',
-    materialCost: 1100,
-    expectedProfit: 3900,
-    assignedEmployee: 'فريق التركيبات الميدانية',
-    status: 'قيد التركيب',
-    paymentMethod: 'نقدي',
-    date: '2026-03-05T14:15:00.000Z',
-    dimensions: { width: '8.5', height: '2.4' },
-    installationAddress: 'شارع الجمهورية - المقر الرئيسي',
-    deposit: 5000,
-    remaining: 3500,
-  },
-  {
-    id: '1003',
-    serialNumber: '1003',
-    serviceType: 'تصميم موقع إلكتروني',
-    clientName: 'مجموعة النماء للاستثمار العقاري',
-    description: 'تصميم وبرمجة موقع تعريفي متجاوب ونظام عرض العقارات والمشاريع المتاحة',
-    price: 6200,
-    cost: 1700,
-    costBreakdown: { 'تكلفة المطور': 1200, 'استضافة ونطاق': 500 },
-    costExecutors: { 'تكلفة المطور': 'عمر خالد (مطور ويب)', 'استضافة ونطاق': 'خادم كلاود هوست' },
-    costBreakdownSummary: 'تكلفة المطور: 1200، استضافة ونطاق: 500',
-    designCost: 1200,
-    designerName: 'عمر خالد',
-    printingCost: 0,
-    externalCost: 500,
-    externalExecutor: 'شركة الاستضافة السحابية',
-    materialCost: 0,
-    expectedProfit: 4500,
-    assignedEmployee: 'عمر خالد (مطور ويب)',
-    status: 'قيد التصميم',
-    paymentMethod: 'تحويل',
-    date: '2026-03-08T11:00:00.000Z',
-    deposit: 3100,
-    remaining: 3100,
-  },
-  {
-    id: '1004',
-    serialNumber: '1004',
-    serviceType: 'خدمات طباعة',
-    clientName: 'مطعم وكافيه الأندلس',
-    description: 'طباعة 10,000 بروشور وقوائم طعام فاخرة مقاومة للماء مع التغليف الحراري',
-    price: 2800,
-    cost: 1450,
-    costBreakdown: { 'تكلفة الطباعة': 950, 'تكلفة التصميم': 350, 'تكلفة القص والتغليف': 150 },
-    costExecutors: { 'تكلفة الطباعة': 'سالم أحمد (فني الطباعة)', 'تكلفة التصميم': 'أحمد السعيد (مصمم)', 'تكلفة القص والتغليف': 'يوسف النجار' },
-    costBreakdownSummary: 'تكلفة الطباعة: 950، تكلفة التصميم: 350، تكلفة القص والتغليف: 150',
-    designCost: 350,
-    designerName: 'أحمد السعيد',
-    printingCost: 950,
-    printerName: 'سالم أحمد',
-    externalCost: 150,
-    externalExecutor: 'ورشة التغليف',
-    materialCost: 0,
-    expectedProfit: 1350,
-    assignedEmployee: 'سالم أحمد (مسؤول الطباعة)',
-    status: 'تم التسليم',
-    paymentMethod: 'نقدي',
-    date: '2026-03-12T16:20:00.000Z',
-    deposit: 2800,
-    remaining: 0,
-  },
-  {
-    id: '1005',
-    serialNumber: '1005',
-    serviceType: 'تنفيذ لافتات',
-    clientName: 'صيدلية السلام المركزية',
-    description: 'لوحة فليكس بوكس وجهين مع إنارة داخلية وتثبيت شاسيه حديد مجلفن',
-    price: 3200,
-    cost: 1800,
-    costBreakdown: { 'تكلفة القص': 500, 'تكلفة التركيب': 500, 'مواد خام': 800 },
-    costExecutors: { 'تكلفة القص': 'خالد الهواري', 'تكلفة التركيب': 'فريق التركيبات', 'مواد خام': 'مخزن الورشة' },
-    costBreakdownSummary: 'تكلفة القص: 500، تكلفة التركيب: 500، مواد خام: 800',
-    designCost: 200,
-    designerName: 'محمود طارق',
-    printingCost: 800,
-    printerName: 'سالم أحمد',
-    externalCost: 300,
-    externalExecutor: 'ورشة الحديد',
-    materialCost: 500,
-    expectedProfit: 1400,
-    assignedEmployee: 'فريق التركيبات الميدانية',
-    status: 'قيد الطباعة',
-    paymentMethod: 'بطاقة',
-    date: '2026-03-15T09:45:00.000Z',
-    dimensions: { width: '4.0', height: '1.2' },
-    installationAddress: 'ميدان الشهداء - الفرع الجديد',
-    deposit: 2000,
-    remaining: 1200,
-  },
-  {
-    id: '1006',
-    serialNumber: '1006',
-    serviceType: 'إدارة صفحات سوشيال ميديا',
-    clientName: 'مدارس الرواد الدولية',
-    description: 'إطلاق حملة التسجيل للعام الدراسي الجديد وتصوير ومونتاج 4 فيديوهات ريلز',
-    price: 4000,
-    cost: 1300,
-    costBreakdown: { 'تكلفة المصمم': 700, 'إعلانات ممولة': 600 },
-    costExecutors: { 'تكلفة المصمم': 'أحمد السعيد (مصمم)', 'إعلانات ممولة': 'إدارة الحملات الممولة' },
-    costBreakdownSummary: 'تكلفة المصمم: 700، إعلانات ممولة: 600',
-    designCost: 700,
-    designerName: 'أحمد السعيد',
-    printingCost: 0,
-    externalCost: 600,
-    externalExecutor: 'منصة فيسبوك/إنستغرام',
-    materialCost: 0,
-    expectedProfit: 2700,
-    assignedEmployee: 'محمد علي (مصمم جرافيك)',
-    status: 'قيد التصميم',
-    paymentMethod: 'تحويل',
-    date: '2026-03-18T13:10:00.000Z',
-    deposit: 4000,
-    remaining: 0,
-  },
-  {
-    id: '1007',
-    serialNumber: '1007',
-    serviceType: 'خدمات طباعة',
-    clientName: 'شركة البنيان للمقاولات العامة',
-    description: 'طباعة رول أب ستاند عدد 4 مع فولدرات أوراق رسمية وبطاقات عمل للمهندسين',
-    price: 1950,
-    cost: 850,
-    costBreakdown: { 'تكلفة الطباعة': 500, 'تكلفة التصميم': 250, 'تكلفة القص والتغليف': 100 },
-    costExecutors: { 'تكلفة الطباعة': 'سالم أحمد', 'تكلفة التصميم': 'أحمد السعيد', 'تكلفة القص والتغليف': 'يوسف النجار' },
-    costBreakdownSummary: 'تكلفة الطباعة: 500، تكلفة التصميم: 250، تكلفة القص والتغليف: 100',
-    designCost: 250,
-    designerName: 'أحمد السعيد',
-    printingCost: 500,
-    printerName: 'سالم أحمد',
-    externalCost: 100,
-    externalExecutor: 'ورشة التغليف',
-    materialCost: 0,
-    expectedProfit: 1100,
-    assignedEmployee: 'سالم أحمد (مسؤول الطباعة)',
-    status: 'بانتظار اعتماد التصميم',
-    paymentMethod: 'نقدي',
-    date: '2026-03-22T15:30:00.000Z',
-    deposit: 1000,
-    remaining: 950,
-  }
-];
+// Clean Production State - No Mock Orders
+const initialOrders: Order[] = [];
 
 const initialInventory: InventoryItem[] = [];
 
@@ -754,6 +611,9 @@ const initialEmployees: Employee[] = [
 ];
 
 const initialExpenses: Expense[] = [];
+
+// Clean Production State - No Mock Workshops
+const initialWorkshops: Workshop[] = [];
 
 const defaultSettings: SystemSettings = {
   shopInfo: {
@@ -780,6 +640,7 @@ const defaultSettings: SystemSettings = {
       customers: true,
       suppliers: true,
       treasury: true,
+      workshops: true,
     },
   },
   invoice: {
@@ -796,7 +657,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   // Load saved state or defaults
   const [orders, setOrders] = useState<Order[]>(() => {
     const saved = localStorage.getItem('masar_orders');
-    if (!saved) return initialOrders;
+    if (!saved) return [];
     try {
       const parsed: any[] = JSON.parse(saved);
       return parsed.map((o, idx) => ({
@@ -825,12 +686,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         targetDeliveryDate: o.targetDeliveryDate,
         deposit: o.deposit,
         remaining: o.remaining,
+        isPaid: typeof o.isPaid === 'boolean' ? o.isPaid : (Boolean(o.deposit && o.deposit >= o.price) || (o.remaining !== undefined && o.remaining === 0 && o.price > 0)),
+        paidAt: o.paidAt || undefined,
         installationAddress: o.installationAddress,
         craneCost: o.craneCost,
         pendingSync: o.pendingSync,
       }));
     } catch {
-      return initialOrders;
+      return [];
     }
   });
 
@@ -841,12 +704,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const [expenses, setExpenses] = useState<Expense[]>(() => {
     const saved = localStorage.getItem('masar_expenses');
-    if (!saved) return initialExpenses;
+    if (!saved) return [];
     try {
       const parsed = JSON.parse(saved);
-      return Array.isArray(parsed) && parsed.length > 0 ? parsed : initialExpenses;
+      return Array.isArray(parsed) ? parsed : [];
     } catch {
-      return initialExpenses;
+      return [];
     }
   });
 
@@ -919,6 +782,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             if (p.id === 'sales' || p.path === '/sales') {
               return { ...p, name: 'سجل المبيعات' };
             }
+            if (p.id === 'workshops' || p.path === '/workshops') {
+              return { ...p, name: 'حسابات الورش والجهات الخارجية', icon: 'Building2' };
+            }
             if (p.id === 'expenses') {
               // Ensure expenses has the rich smart indicators components if missing
               const hasSmart = p.components?.some(c => c.id === 'expenses_smart_indicators');
@@ -931,6 +797,16 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             }
             return p;
           });
+
+        // Ensure workshops page is present
+        const hasWorkshops = filtered.some(p => p.id === 'workshops' || p.path === '/workshops');
+        if (!hasWorkshops) {
+          const defaultWorkshops = defaultPagesConfig.find(dp => dp.id === 'workshops');
+          if (defaultWorkshops) {
+            filtered.push(defaultWorkshops);
+          }
+        }
+
         return filtered.length > 0 ? filtered : defaultPagesConfig;
       }
       return defaultPagesConfig;
@@ -1126,6 +1002,128 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     return saved ? JSON.parse(saved) : [];
   });
 
+  const [workshops, setWorkshops] = useState<Workshop[]>(() => {
+    const saved = localStorage.getItem('masar_workshops');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      } catch {
+        // fallback
+      }
+    }
+    return [];
+  });
+
+  const addWorkshop = (data: Omit<Workshop, 'id' | 'balance' | 'totalCost' | 'totalPaid' | 'transactions'> & { initialBalance?: number }) => {
+    const initBal = Number(data.initialBalance) || 0;
+    const initialTxs: WorkshopTransaction[] = [];
+    if (initBal > 0) {
+      initialTxs.push({
+        id: 'tx-' + Date.now().toString(),
+        date: new Date().toISOString(),
+        description: 'رصيد افتتاحي سابق',
+        cost: initBal,
+        paid: 0,
+        balanceAfter: initBal,
+        type: 'مطالبة',
+        notes: 'تسجيل الرصيد الافتتاحي عند إضافة الجهة'
+      });
+    }
+    const newWs: Workshop = {
+      id: 'ws-' + Date.now().toString(),
+      name: data.name.trim(),
+      activity: data.activity?.trim() || '',
+      phone: data.phone?.trim() || '',
+      address: data.address?.trim() || '',
+      notes: data.notes?.trim() || '',
+      balance: initBal,
+      totalCost: initBal,
+      totalPaid: 0,
+      createdAt: new Date().toISOString(),
+      lastTransactionDate: initBal > 0 ? new Date().toISOString() : undefined,
+      transactions: initialTxs,
+    };
+    setWorkshops(prev => [newWs, ...prev]);
+  };
+
+  const updateWorkshop = (id: string, updates: Partial<Workshop>) => {
+    setWorkshops(prev => prev.map(ws => ws.id === id ? { ...ws, ...updates } : ws));
+  };
+
+  const deleteWorkshop = (id: string) => {
+    setWorkshops(prev => prev.filter(ws => ws.id !== id));
+  };
+
+  const addWorkshopTransaction = (workshopId: string, txData: Omit<WorkshopTransaction, 'id' | 'balanceAfter'>) => {
+    setWorkshops(prev => prev.map(ws => {
+      if (ws.id !== workshopId) return ws;
+      
+      const cost = Math.max(0, Number(txData.cost) || 0);
+      const paid = Math.max(0, Number(txData.paid) || 0);
+      const prevBal = Number(ws.balance) || 0;
+      const newBal = prevBal + cost - paid;
+      
+      const newTx: WorkshopTransaction = {
+        ...txData,
+        id: 'tx-' + Date.now().toString() + '-' + Math.floor(Math.random() * 1000),
+        cost,
+        paid,
+        balanceAfter: newBal,
+        date: txData.date || new Date().toISOString(),
+      };
+
+      return {
+        ...ws,
+        balance: newBal,
+        totalCost: (Number(ws.totalCost) || 0) + cost,
+        totalPaid: (Number(ws.totalPaid) || 0) + paid,
+        lastTransactionDate: newTx.date,
+        transactions: [newTx, ...ws.transactions],
+      };
+    }));
+  };
+
+  const deleteWorkshopTransaction = (workshopId: string, transactionId: string) => {
+    setWorkshops(prev => prev.map(ws => {
+      if (ws.id !== workshopId) return ws;
+      
+      const targetTx = ws.transactions.find(t => t.id === transactionId);
+      if (!targetTx) return ws;
+
+      const remainingTxs = ws.transactions.filter(t => t.id !== transactionId);
+      
+      // Recalculate running balance accurately from oldest to newest
+      const sortedOldestFirst = [...remainingTxs].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      let running = 0;
+      let recalculatedTotalCost = 0;
+      let recalculatedTotalPaid = 0;
+
+      const recalculatedTxs = sortedOldestFirst.map(t => {
+        const c = Number(t.cost) || 0;
+        const p = Number(t.paid) || 0;
+        running = running + c - p;
+        recalculatedTotalCost += c;
+        recalculatedTotalPaid += p;
+        return {
+          ...t,
+          balanceAfter: running,
+        };
+      });
+
+      const newestFirst = [...recalculatedTxs].reverse();
+
+      return {
+        ...ws,
+        balance: running,
+        totalCost: recalculatedTotalCost,
+        totalPaid: recalculatedTotalPaid,
+        lastTransactionDate: newestFirst[0]?.date || ws.createdAt,
+        transactions: newestFirst,
+      };
+    }));
+  };
+
   const [treasuryAccounts, setTreasuryAccounts] = useState<TreasuryAccount[]>(() => {
     const saved = localStorage.getItem('masar_treasury_accounts');
     return saved ? JSON.parse(saved) : [
@@ -1167,6 +1165,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     localStorage.setItem('masar_suppliers', JSON.stringify(suppliers));
   }, [suppliers]);
+
+  useEffect(() => {
+    localStorage.setItem('masar_workshops', JSON.stringify(workshops));
+  }, [workshops]);
 
   useEffect(() => {
     localStorage.setItem('masar_treasury_accounts', JSON.stringify(treasuryAccounts));
@@ -1341,6 +1343,47 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (target) {
       enqueueSync('orders', 'update', target);
     }
+  };
+
+  const toggleOrderPaidStatus = (id: string) => {
+    setOrders(prevOrders => {
+      const target = prevOrders.find(o => o.id === id);
+      if (!target) return prevOrders;
+
+      const currentlyPaid = Boolean(target.isPaid || (target.deposit && target.deposit >= target.price) || (target.remaining !== undefined && target.remaining === 0 && target.price > 0));
+      const nextPaid = !currentlyPaid;
+
+      const updated = prevOrders.map(o => {
+        if (o.id !== id) return o;
+        return {
+          ...o,
+          isPaid: nextPaid,
+          paidAt: nextPaid ? new Date().toISOString() : undefined,
+          // When marked as paid, update deposit to full price and remaining to 0 if previously unpaid
+          deposit: nextPaid ? o.price : (o.deposit === o.price ? 0 : o.deposit),
+          remaining: nextPaid ? 0 : (o.remaining === 0 ? o.price : o.remaining),
+          pendingSync: true,
+        };
+      });
+
+      const updatedTarget = updated.find(o => o.id === id);
+      if (updatedTarget) {
+        enqueueSync('orders', 'update', updatedTarget);
+      }
+
+      return updated;
+    });
+  };
+
+  const updateOrder = (id: string, updates: Partial<Order>) => {
+    setOrders(prevOrders => {
+      const updated = prevOrders.map(o => o.id === id ? { ...o, ...updates, pendingSync: true } : o);
+      const target = updated.find(o => o.id === id);
+      if (target) {
+        enqueueSync('orders', 'update', target);
+      }
+      return updated;
+    });
   };
 
   const addInventoryItem = (item: Omit<InventoryItem, 'id'>) => {
@@ -1641,6 +1684,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setOrders([]);
     setInventory([]);
     setExpenses([]);
+    setCustomers([]);
+    setSuppliers([]);
+    setWorkshops([]);
+    setTreasuryTransactions([]);
     setEmployees(initialEmployees);
     setCurrentUser(initialEmployees[0]);
     setSettings(defaultSettings);
@@ -1649,9 +1696,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     localStorage.setItem('masar_orders', JSON.stringify([]));
     localStorage.setItem('masar_inventory', JSON.stringify([]));
     localStorage.setItem('masar_expenses', JSON.stringify([]));
+    localStorage.setItem('masar_customers', JSON.stringify([]));
+    localStorage.setItem('masar_suppliers', JSON.stringify([]));
+    localStorage.setItem('masar_workshops', JSON.stringify([]));
+    localStorage.setItem('masar_treasury_transactions', JSON.stringify([]));
     localStorage.setItem('masar_employees', JSON.stringify(initialEmployees));
     localStorage.setItem('masar_current_user', JSON.stringify(initialEmployees[0]));
     localStorage.setItem('masar_settings', JSON.stringify(defaultSettings));
+    localStorage.setItem('masar_sync_queue', JSON.stringify([]));
   };
 
   const wipeAllSystemData = async (wipeSupabase = true): Promise<{ success: boolean; message: string }> => {
@@ -1660,6 +1712,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       setOrders([]);
       setInventory([]);
       setExpenses([]);
+      setCustomers([]);
+      setSuppliers([]);
+      setWorkshops([]);
+      setTreasuryTransactions([]);
       const defaultAdmin: Employee[] = [
         {
           id: '1',
@@ -1716,7 +1772,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <AppContext.Provider value={{
-      orders, addOrder, deleteOrder, getNextSerialNumber, updateOrderStatus,
+      orders, addOrder, deleteOrder, getNextSerialNumber, updateOrderStatus, toggleOrderPaidStatus, updateOrder,
       inventory, addInventoryItem, updateInventoryQuantity,
       expenses, addExpense, deleteExpense,
       employees, addEmployee, updateEmployee,
@@ -1739,7 +1795,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       resetServicesConfig,
       setTheme,
       toggleTheme,
-      customers, setCustomers, suppliers, setSuppliers, treasuryAccounts, setTreasuryAccounts, treasuryTransactions, setTreasuryTransactions,
+      customers, setCustomers, suppliers, setSuppliers, 
+      workshops, setWorkshops, addWorkshop, updateWorkshop, deleteWorkshop, addWorkshopTransaction, deleteWorkshopTransaction,
+      treasuryAccounts, setTreasuryAccounts, treasuryTransactions, setTreasuryTransactions,
       pagesConfig,
       updatePage,
       addPage,

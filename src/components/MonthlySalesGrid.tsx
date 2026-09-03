@@ -13,7 +13,8 @@ import {
   Share2, 
   ChevronDown,
   FileText,
-  MessageSquare
+  MessageSquare,
+  Check
 } from 'lucide-react';
 import { format, parseISO, startOfMonth, endOfMonth, isWithinInterval, addMonths, subMonths } from 'date-fns';
 import { ar } from 'date-fns/locale';
@@ -26,6 +27,7 @@ interface MonthlySalesGridProps {
   onShareWhatsApp: (order: Order) => void;
   onViewDesign?: (order: Order) => void;
   onViewOrderDetails?: (order: Order) => void;
+  onTogglePaid?: (orderId: string) => void;
 }
 
 // Helper to determine the role label based on cost item name
@@ -122,6 +124,7 @@ export default function MonthlySalesGrid({
   onShareWhatsApp,
   onViewDesign,
   onViewOrderDetails,
+  onTogglePaid,
 }: MonthlySalesGridProps) {
   // Selected Month state (defaults to current month or date of latest order)
   const [selectedDate, setSelectedDate] = useState<Date>(() => {
@@ -572,6 +575,11 @@ export default function MonthlySalesGrid({
                   إجمالي الفاتورة
                 </th>
 
+                {/* Column: تأكيد الدفع السريع */}
+                <th scope="col" className="py-2.5 px-2 font-bold text-center border-l border-slate-200/80 dark:border-slate-700 w-16 min-w-[64px] select-none" title="حالة دفع وخلاص الفاتورة">
+                  الدفع
+                </th>
+
                 {/* Column 6: إجمالي التكلفة */}
                 <th scope="col" className="py-2.5 px-3 font-bold text-rose-900 dark:text-rose-300 border-l border-slate-200/80 dark:border-slate-700 min-w-[105px] text-center">
                   إجمالي التكلفة
@@ -602,7 +610,7 @@ export default function MonthlySalesGrid({
             <tbody className="divide-y divide-slate-200/70 dark:divide-slate-800">
               {filteredGridOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="py-12 text-center text-slate-500 dark:text-slate-400">
+                  <td colSpan={11} className="py-12 text-center text-slate-500 dark:text-slate-400">
                     <div className="flex flex-col items-center justify-center gap-2">
                       <FileSpreadsheet size={32} className="text-slate-300 dark:text-slate-600" />
                       <span className="font-bold text-sm text-slate-700 dark:text-slate-300">
@@ -667,6 +675,22 @@ export default function MonthlySalesGrid({
                       {/* 5. إجمالي الفاتورة (Highlighted Column) */}
                       <td className="py-2.5 px-3 border-l border-slate-300/80 dark:border-slate-700 text-center font-mono tabular-nums font-black text-slate-900 dark:text-slate-100 bg-slate-100/80 dark:bg-slate-800/60">
                         {order.price.toLocaleString()} <span className="text-[10px] font-normal text-slate-500">{currency}</span>
+                      </td>
+
+                      {/* زر تأكيد الدفع السريع (Toggle Payment) */}
+                      <td className="py-2.5 px-2 border-l border-slate-200/60 dark:border-slate-800 text-center">
+                        <button
+                          type="button"
+                          onClick={() => onTogglePaid && onTogglePaid(order.id)}
+                          className={`inline-flex items-center justify-center w-8 h-8 rounded-lg transition-all duration-200 shadow-xs ${
+                            order.isPaid
+                              ? "bg-amber-400/20 text-amber-500 border border-amber-400/50 hover:bg-amber-400/30 hover:border-amber-400"
+                              : "bg-slate-100 dark:bg-slate-800/60 text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-700 hover:text-slate-600 dark:hover:text-slate-300 hover:border-slate-300"
+                          }`}
+                          title={order.isPaid ? "الفاتورة خالصة ومدفوعة (انقر للإلغاء)" : "تأكيد دفع وخلاص الفاتورة (انقر للتعيين)"}
+                        >
+                          <Check size={16} strokeWidth={order.isPaid ? 3 : 2} />
+                        </button>
                       </td>
 
                       {/* 6. إجمالي التكلفة */}
@@ -838,6 +862,11 @@ export default function MonthlySalesGrid({
                   {/* Column 5 Total: إجمالي الفواتير */}
                   <td className="py-3 px-3 text-center font-mono tabular-nums font-black text-slate-900 dark:text-slate-100 bg-slate-300/70 dark:bg-slate-700 border-l border-slate-300 dark:border-slate-600">
                     {tableTotals.sumInvoices.toLocaleString()} <span className="text-[10px] font-normal text-slate-600">{currency}</span>
+                  </td>
+
+                  {/* Payment column spacer */}
+                  <td className="py-3 px-2 text-center text-slate-400 dark:text-slate-500 border-l border-slate-300 dark:border-slate-700 text-[11px] font-medium">
+                    -
                   </td>
 
                   {/* Column 6 Total: إجمالي التكلفة */}

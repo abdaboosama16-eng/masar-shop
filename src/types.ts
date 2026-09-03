@@ -72,6 +72,8 @@ export interface Order {
   targetDeliveryDate?: string;
   deposit?: number;
   remaining?: number;
+  isPaid?: boolean; // مؤشر حالة الخلاص / الدفع السريع
+  paidAt?: string; // تاريخ وساعة تأكيد الدفع
   installationAddress?: string;
   craneCost?: number;
   usedMaterials?: OrderMaterialUsage[]; 
@@ -137,6 +139,33 @@ export interface Customer {
   totalPaid: number; // إجمالي المدفوع
   lastPaymentDate?: string;
   transactions: CustomerTransaction[];
+}
+
+export interface WorkshopTransaction {
+  id: string;
+  date: string;
+  description: string; // البيان/التفاصيل (مثال: تركيب لافتة)
+  cost: number; // إجمالي التكلفة (المطالبة المستحقة للجهة)
+  paid: number; // المبلغ المدفوع (المسدد للجهة)
+  balanceAfter?: number; // الرصيد المتبقي بعد الحركة
+  type?: 'مطالبة' | 'دفعة' | 'تسوية'; // نوع الحركة
+  notes?: string;
+  orderSerial?: string;
+}
+
+export interface Workshop {
+  id: string;
+  name: string; // اسم الورشة أو الشركة (مثل: شركة وليد، ورشة الحدادة)
+  phone?: string;
+  activity?: string; // التخصص أو النشاط (مثل: أعمال حدادة، تركيبات ورافعات، قص ليزر، مطبعة خارجية)
+  address?: string;
+  balance: number; // الرصيد المتبقي (إجمالي المديونية المستحقة لهذه الجهة)
+  totalCost: number; // إجمالي التكاليف / المطالبات
+  totalPaid: number; // إجمالي المدفوعات المسددة
+  lastTransactionDate?: string;
+  transactions: WorkshopTransaction[];
+  notes?: string;
+  createdAt?: string;
 }
 
 export interface SupplierTransaction {
@@ -216,6 +245,7 @@ export interface RolePermission {
   customers: boolean;
   suppliers: boolean;
   treasury: boolean;
+  workshops?: boolean;
 }
 
 export type PageComponentType = 
