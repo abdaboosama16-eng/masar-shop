@@ -98,10 +98,12 @@ export default function Settings() {
   const handleConfirmResetSystem = () => {
     try {
       localStorage.clear();
+      sessionStorage.clear();
+      resetAllData();
     } catch (err) {
-      console.error('Error clearing localStorage:', err);
+      console.error('Error clearing storage:', err);
     }
-    window.location.reload();
+    window.location.href = '/';
   };
 
   // Wipe System Modal State
@@ -632,13 +634,13 @@ export default function Settings() {
 
   const rbacModules: { key: keyof RolePermission; name: string; desc: string }[] = [
     { key: 'dashboard', name: 'لوحة التحكم ومؤشرات الأرباح', desc: 'استعراض الإحصائيات المالية والأرباح وصافي المداخيل' },
-    { key: 'sales', name: 'سجل المبيعات', desc: 'استعراض سجل الطلبيات ومتابعة أسماء العملاء والمقاسات' },
+    { key: 'sales', name: 'سجل الفواتير', desc: 'استعراض سجل الفواتير ومتابعة بيانات الطلبيات والعملاء' },
     { key: 'designs', name: 'إرفاق واعتماد التصاميم', desc: 'رفع ملفات التصميم واعتماد البروفات قبل التصنيع' },
     { key: 'installation', name: 'تفاصيل ومواقع التركيب الميداني', desc: 'معاينة عناوين التركيب، تكلفة الرافعة ومواعيد التسليم' },
     { key: 'inventory', name: 'المخزون والمواد الخام', desc: 'متابعة كميات ألواح الأكريليك، الفينيل، وليدات الإضاءة' },
     { key: 'expenses', name: 'المصروفات وسندات الصرف', desc: 'تقييد سندات الصرف التشغيلية وفواتير المحروقات والكهرباء' },
-    { key: 'workshops', name: 'حسابات الورش والجهات الخارجية', desc: 'متابعة مطالبات ومستحقات الورش والشركات الخارجية وسندات الصرف' },
-    { key: 'employees', name: 'شؤون العاملين والرواتب', desc: 'إدارة بطاقات العمل والرواتب وكشوفات الحساب' },
+    { key: 'workshops', name: 'جهات ذات العلاقة', desc: 'متابعة مطالبات ومستحقات الورش والشركات الخارجية وسندات الصرف' },
+    { key: 'employees', name: 'الموظفين', desc: 'إدارة بطاقات العمل والرواتب وكشوفات الحساب' },
     { key: 'settings', name: 'إعدادات المنظومة والصلاحيات', desc: 'تعديل بيانات المنشأة، كلمة المرور وتوزيع الصلاحيات' },
     { key: 'audit', name: 'تقارير الجرد', desc: 'استعراض تقارير الجرد الشهري والسنوي الشامل' },
   ];
@@ -2089,7 +2091,16 @@ export default function Settings() {
 
               <button
                 type="button"
-                onClick={handleConfirmResetSystem}
+                id="btn-confirm-wipe-system"
+                onClick={() => {
+                  try {
+                    localStorage.clear();
+                    sessionStorage.clear();
+                  } catch (err) {
+                    console.error('Error clearing localStorage:', err);
+                  }
+                  window.location.href = '/';
+                }}
                 className="w-full sm:w-auto px-6 py-2.5 rounded-xl text-xs font-black text-white bg-rose-600 hover:bg-rose-700 active:scale-[0.98] border border-rose-500 shadow-sm shadow-rose-600/30 flex items-center justify-center gap-2 transition-all cursor-pointer"
               >
                 <RotateCcw size={15} />

@@ -106,19 +106,6 @@ export default function Workshops() {
     });
   }, [workshops, searchTerm, activityFilter, statusFilter]);
 
-  // Overall KPIs
-  const totalOutstandingBalance = useMemo(() => {
-    return workshops.reduce((sum, w) => sum + (Number(w.balance) || 0), 0);
-  }, [workshops]);
-
-  const totalAllClaims = useMemo(() => {
-    return workshops.reduce((sum, w) => sum + (Number(w.totalCost) || 0), 0);
-  }, [workshops]);
-
-  const totalAllPaid = useMemo(() => {
-    return workshops.reduce((sum, w) => sum + (Number(w.totalPaid) || 0), 0);
-  }, [workshops]);
-
   const countWithDebt = useMemo(() => {
     return workshops.filter(w => (Number(w.balance) || 0) > 0).length;
   }, [workshops]);
@@ -131,7 +118,7 @@ export default function Workshops() {
         </div>
         <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100 mb-2">صلاحية غير متوفرة</h2>
         <p className="text-slate-600 dark:text-slate-400 text-center max-w-md">
-          عذراً، لا تملك الصلاحيات الكافية للوصول إلى قسم حسابات الورش والجهات الخارجية.
+          عذراً، لا تملك الصلاحيات الكافية للوصول إلى قسم جهات ذات العلاقة.
         </p>
       </div>
     );
@@ -312,73 +299,73 @@ export default function Workshops() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
             
             {/* Primary Remaining Balance Card */}
-            <div className="glass-panel p-6 rounded-xl relative overflow-hidden flex flex-col justify-between hover:-translate-y-1 transition-all duration-150 ease-out group cursor-default shadow-xs">
-              <div className="flex justify-between items-start mb-3">
-                <span className="text-slate-600 dark:text-slate-400 text-xs font-bold uppercase tracking-wider">
+            <div className="glass-panel p-6 sm:p-7 rounded-2xl relative overflow-hidden flex flex-col justify-between hover:-translate-y-1 transition-all duration-200 group cursor-default shadow-xs hover:shadow-md">
+              <div className="absolute -left-6 -bottom-6 w-32 h-32 rounded-full bg-rose-500/10 blur-2xl pointer-events-none"></div>
+              <div className="flex justify-between items-start mb-4">
+                <span className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider">
                   الرصيد المتبقي (المديونية المستحقة لهم)
                 </span>
-                <div className="w-9 h-9 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center">
-                  <Receipt size={18} />
+                <div className="w-11 h-11 rounded-2xl bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center transition-transform group-hover:scale-110 duration-200 shadow-2xs shrink-0">
+                  <Receipt size={20} />
                 </div>
               </div>
               <div>
-                <div className="text-3xl font-black text-rose-600 dark:text-rose-400 font-mono tabular-nums tracking-tight">
-                  {selectedWorkshop.balance.toLocaleString()} <span className="text-sm font-semibold text-slate-500">{settings.shopInfo.currency}</span>
+                <div className="text-3xl sm:text-4xl font-black text-rose-600 dark:text-rose-400 font-mono tabular-nums tracking-tight">
+                  {selectedWorkshop.balance.toLocaleString()} <span className="text-sm font-semibold text-slate-500 mr-1.5">{settings.shopInfo.currency}</span>
                 </div>
-                <p className="text-xs text-slate-400 dark:text-slate-500 mt-1.5">
+                <p className="text-xs text-slate-400 dark:text-slate-500 mt-2 font-medium">
                   {selectedWorkshop.balance > 0 ? 'مبلغ مستحق السداد لهذه الجهة' : 'الحساب خالص ومصفى بالكامل'}
                 </p>
               </div>
-              <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-l from-rose-500 to-transparent opacity-70"></div>
             </div>
 
             {/* Total Cost / Claims Card */}
-            <div className="glass-panel p-6 rounded-xl relative overflow-hidden flex flex-col justify-between hover:-translate-y-1 transition-all duration-150 ease-out group cursor-default shadow-xs">
-              <div className="flex justify-between items-start mb-3">
-                <span className="text-slate-600 dark:text-slate-400 text-xs font-bold uppercase tracking-wider">
+            <div className="glass-panel p-6 sm:p-7 rounded-2xl relative overflow-hidden flex flex-col justify-between hover:-translate-y-1 transition-all duration-200 group cursor-default shadow-xs hover:shadow-md">
+              <div className="absolute -left-6 -bottom-6 w-32 h-32 rounded-full bg-blue-500/10 blur-2xl pointer-events-none"></div>
+              <div className="flex justify-between items-start mb-4">
+                <span className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider">
                   إجمالي التكاليف (المطالبات)
                 </span>
-                <div className="w-9 h-9 rounded-xl bg-slate-500/10 text-slate-700 dark:text-slate-300 flex items-center justify-center">
-                  <TrendingUp size={18} />
+                <div className="w-11 h-11 rounded-2xl bg-slate-500/10 text-slate-700 dark:text-slate-300 flex items-center justify-center transition-transform group-hover:scale-110 duration-200 shadow-2xs shrink-0">
+                  <TrendingUp size={20} />
                 </div>
               </div>
               <div>
-                <div className="text-3xl font-black text-slate-900 dark:text-slate-100 font-mono tabular-nums tracking-tight">
-                  {selectedWorkshop.totalCost.toLocaleString()} <span className="text-sm font-semibold text-slate-500">{settings.shopInfo.currency}</span>
+                <div className="text-3xl sm:text-4xl font-black text-slate-900 dark:text-slate-100 font-mono tabular-nums tracking-tight">
+                  {selectedWorkshop.totalCost.toLocaleString()} <span className="text-sm font-semibold text-slate-500 mr-1.5">{settings.shopInfo.currency}</span>
                 </div>
-                <p className="text-xs text-slate-400 dark:text-slate-500 mt-1.5">
+                <p className="text-xs text-slate-400 dark:text-slate-500 mt-2 font-medium">
                   مجموع قيمة الأعمال والخدمات المسجلة
                 </p>
               </div>
-              <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-l from-slate-600 to-transparent opacity-70"></div>
             </div>
 
             {/* Total Paid Card */}
-            <div className="glass-panel p-6 rounded-xl relative overflow-hidden flex flex-col justify-between hover:-translate-y-1 transition-all duration-150 ease-out group cursor-default shadow-xs">
-              <div className="flex justify-between items-start mb-3">
-                <span className="text-slate-600 dark:text-slate-400 text-xs font-bold uppercase tracking-wider">
+            <div className="glass-panel p-6 sm:p-7 rounded-2xl relative overflow-hidden flex flex-col justify-between hover:-translate-y-1 transition-all duration-200 group cursor-default shadow-xs hover:shadow-md">
+              <div className="absolute -left-6 -bottom-6 w-32 h-32 rounded-full bg-emerald-500/10 blur-2xl pointer-events-none"></div>
+              <div className="flex justify-between items-start mb-4">
+                <span className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider">
                   إجمالي المبالغ المسددة
                 </span>
-                <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
-                  <DollarSign size={18} />
+                <div className="w-11 h-11 rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center transition-transform group-hover:scale-110 duration-200 shadow-2xs shrink-0">
+                  <DollarSign size={20} />
                 </div>
               </div>
               <div>
-                <div className="text-3xl font-black text-emerald-600 dark:text-emerald-400 font-mono tabular-nums tracking-tight">
-                  {selectedWorkshop.totalPaid.toLocaleString()} <span className="text-sm font-semibold text-slate-500">{settings.shopInfo.currency}</span>
+                <div className="text-3xl sm:text-4xl font-black text-emerald-600 dark:text-emerald-400 font-mono tabular-nums tracking-tight">
+                  {selectedWorkshop.totalPaid.toLocaleString()} <span className="text-sm font-semibold text-slate-500 mr-1.5">{settings.shopInfo.currency}</span>
                 </div>
-                <p className="text-xs text-slate-400 dark:text-slate-500 mt-1.5">
+                <p className="text-xs text-slate-400 dark:text-slate-500 mt-2 font-medium">
                   مجموع الدفعات المسددة للجهة
                 </p>
               </div>
-              <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-l from-emerald-500 to-transparent opacity-70"></div>
             </div>
 
           </div>
 
           {/* Quick Info & Contact strip */}
           {(selectedWorkshop.phone || selectedWorkshop.address || selectedWorkshop.notes) && (
-            <div className="p-4 rounded-xl glass-panel text-xs text-slate-600 dark:text-slate-300 flex flex-wrap items-center gap-6 shadow-xs">
+            <div className="p-5 rounded-2xl glass-panel text-xs text-slate-600 dark:text-slate-300 flex flex-wrap items-center gap-6 shadow-xs">
               {selectedWorkshop.phone && (
                 <span className="flex items-center gap-2">
                   <Phone size={14} className="text-slate-400" />
@@ -400,7 +387,7 @@ export default function Workshops() {
           )}
 
           {/* New Transaction Form (أعلى جدول البيانات) */}
-          <div className="glass-panel rounded-xl p-6 sm:p-7 shadow-xs no-print">
+          <div className="glass-panel rounded-2xl p-7 shadow-xs no-print">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
               <div>
                 <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
@@ -413,14 +400,14 @@ export default function Workshops() {
               </div>
 
               {/* Transaction Mode Selector */}
-              <div className="flex items-center p-1 bg-slate-100/80 dark:bg-slate-800/60 rounded-xl text-xs font-bold">
+              <div className="flex items-center p-1.5 bg-slate-500/10 dark:bg-slate-800/60 rounded-xl text-xs font-bold">
                 <button
                   type="button"
                   onClick={() => {
                     setTxType('مطالبة');
                     setTxPaid('0');
                   }}
-                  className={`px-3.5 py-1.5 rounded-lg transition-all ${
+                  className={`px-4 py-2 rounded-lg transition-all ${
                     txType === 'مطالبة'
                       ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs'
                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
@@ -434,7 +421,7 @@ export default function Workshops() {
                     setTxType('دفعة');
                     setTxCost('0');
                   }}
-                  className={`px-3.5 py-1.5 rounded-lg transition-all ${
+                  className={`px-4 py-2 rounded-lg transition-all ${
                     txType === 'دفعة'
                       ? 'bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-xs'
                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
@@ -445,7 +432,7 @@ export default function Workshops() {
                 <button
                   type="button"
                   onClick={() => setTxType('مزدوج')}
-                  className={`px-3.5 py-1.5 rounded-lg transition-all ${
+                  className={`px-4 py-2 rounded-lg transition-all ${
                     txType === 'مزدوج'
                       ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-xs'
                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
@@ -630,39 +617,43 @@ export default function Workshops() {
           </div>
 
           {/* Data Grid: كشف الحساب التفصيلي */}
-          <div className="glass-panel rounded-xl shadow-xs overflow-hidden">
-            <div className="p-5 sm:p-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 bg-slate-50/40 dark:bg-slate-900/30">
-              <div className="flex items-center gap-2.5">
-                <Receipt size={18} className="text-slate-400" />
-                <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200">
-                  سجل الحركات المالية والمطالبات
-                </h3>
-                <span className="text-xs px-2 py-0.5 rounded-full bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold">
-                  {selectedWorkshop.transactions.length}
+          <div className="glass-panel rounded-2xl shadow-xs overflow-hidden">
+            <div className="p-6 sm:p-7 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-slate-500/5">
+              <div className="flex items-center gap-3">
+                <span className="w-9 h-9 rounded-xl bg-slate-500/10 flex items-center justify-center text-slate-600 dark:text-slate-300">
+                  <Receipt size={18} />
                 </span>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                    سجل الحركات المالية والمطالبات
+                  </h3>
+                  <span className="text-[11px] text-slate-400 font-medium">
+                    {selectedWorkshop.transactions.length} حركات مسجلة
+                  </span>
+                </div>
               </div>
 
               <div className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                الرصيد المتبقي الحالي: <span className="font-bold text-rose-600 dark:text-rose-400 font-mono text-sm">{selectedWorkshop.balance.toLocaleString()} {settings.shopInfo.currency}</span>
+                الرصيد المتبقي الحالي: <span className="font-bold text-rose-600 dark:text-rose-400 font-mono text-sm mr-1">{selectedWorkshop.balance.toLocaleString()} {settings.shopInfo.currency}</span>
               </div>
             </div>
 
             <div className="overflow-x-auto">
               <table className="w-full text-right text-sm">
-                <thead className="bg-slate-100/40 dark:bg-slate-800/30 text-slate-500 dark:text-slate-400 font-bold text-xs">
+                <thead className="bg-slate-500/5 text-slate-500 dark:text-slate-400 font-bold text-xs">
                   <tr>
-                    <th className="px-6 py-4 w-32">التاريخ</th>
-                    <th className="px-6 py-4 min-w-[200px]">البيان / التفاصيل</th>
-                    <th className="px-6 py-4 w-36 text-slate-800 dark:text-slate-200">إجمالي التكلفة</th>
-                    <th className="px-6 py-4 w-36 text-emerald-700 dark:text-emerald-400">المبلغ المدفوع</th>
-                    <th className="px-6 py-4 w-40 text-rose-700 dark:text-rose-400 font-extrabold">الرصيد المتبقي</th>
-                    <th className="px-5 py-4 w-16 text-center no-print">حذف</th>
+                    <th className="px-7 py-5 w-36">التاريخ</th>
+                    <th className="px-7 py-5 min-w-[220px]">البيان / التفاصيل</th>
+                    <th className="px-7 py-5 w-40 text-slate-800 dark:text-slate-200">إجمالي التكلفة</th>
+                    <th className="px-7 py-5 w-40 text-emerald-700 dark:text-emerald-400">المبلغ المدفوع</th>
+                    <th className="px-7 py-5 w-44 text-rose-700 dark:text-rose-400 font-extrabold">الرصيد المتبقي</th>
+                    <th className="px-6 py-5 w-20 text-center no-print">حذف</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y-0">
                   {selectedWorkshop.transactions.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-6 py-14 text-center text-slate-400 dark:text-slate-500">
+                      <td colSpan={6} className="px-7 py-16 text-center text-slate-400 dark:text-slate-500">
                         لا توجد حركات مالية مسجلة لهذه الجهة حتى الآن. استخدم النموذج أعلاه لإضافة أول حركة.
                       </td>
                     </tr>
@@ -670,15 +661,15 @@ export default function Workshops() {
                     selectedWorkshop.transactions.map((tx) => (
                       <tr 
                         key={tx.id}
-                        className="hover:bg-slate-100/50 dark:hover:bg-slate-800/30 transition-colors"
+                        className="hover:bg-slate-500/5 transition-colors"
                       >
                         {/* التاريخ */}
-                        <td className="px-6 py-4 text-xs text-slate-600 dark:text-slate-300 whitespace-nowrap font-mono">
+                        <td className="px-7 py-5 text-xs text-slate-600 dark:text-slate-300 whitespace-nowrap font-mono">
                           {tx.date ? new Date(tx.date).toLocaleDateString('ar-LY') : '---'}
                         </td>
 
                         {/* البيان / التفاصيل */}
-                        <td className="px-6 py-4">
+                        <td className="px-7 py-5">
                           <div className="font-semibold text-slate-900 dark:text-slate-100">
                             {tx.description}
                           </div>
@@ -690,7 +681,7 @@ export default function Workshops() {
                         </td>
 
                         {/* إجمالي التكلفة */}
-                        <td className="px-6 py-4 font-bold text-slate-900 dark:text-slate-100 font-mono">
+                        <td className="px-7 py-5 font-bold text-slate-900 dark:text-slate-100 font-mono">
                           {tx.cost > 0 ? (
                             <span>{tx.cost.toLocaleString()} <span className="text-xs font-normal text-slate-400">{settings.shopInfo.currency}</span></span>
                           ) : (
@@ -699,7 +690,7 @@ export default function Workshops() {
                         </td>
 
                         {/* المبلغ المدفوع */}
-                        <td className="px-6 py-4 font-bold text-emerald-600 dark:text-emerald-400 font-mono">
+                        <td className="px-7 py-5 font-bold text-emerald-600 dark:text-emerald-400 font-mono">
                           {tx.paid > 0 ? (
                             <span>{tx.paid.toLocaleString()} <span className="text-xs font-normal text-slate-400">{settings.shopInfo.currency}</span></span>
                           ) : (
@@ -708,7 +699,7 @@ export default function Workshops() {
                         </td>
 
                         {/* الرصيد المتبقي (المديونية) */}
-                        <td className="px-6 py-4 font-black text-rose-600 dark:text-rose-400 font-mono text-base">
+                        <td className="px-7 py-5 font-black text-rose-600 dark:text-rose-400 font-mono text-base">
                           {typeof tx.balanceAfter === 'number' ? (
                             <span>{tx.balanceAfter.toLocaleString()} <span className="text-xs font-normal text-slate-400">{settings.shopInfo.currency}</span></span>
                           ) : (
@@ -717,7 +708,7 @@ export default function Workshops() {
                         </td>
 
                         {/* Actions (Delete) */}
-                        <td className="px-5 py-4 text-center no-print">
+                        <td className="px-6 py-5 text-center no-print">
                           <button
                             type="button"
                             onClick={() => {
@@ -725,10 +716,10 @@ export default function Workshops() {
                                 deleteWorkshopTransaction(selectedWorkshop.id, tx.id);
                               }
                             }}
-                            className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                            className="text-slate-400 hover:text-rose-600 p-2 rounded-xl hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
                             title="حذف الحركة"
                           >
-                            <Trash2 size={14} />
+                            <Trash2 size={15} />
                           </button>
                         </td>
                       </tr>
@@ -736,18 +727,18 @@ export default function Workshops() {
                   )}
                 </tbody>
                 {selectedWorkshop.transactions.length > 0 && (
-                  <tfoot className="bg-slate-100/40 dark:bg-slate-900/40 font-bold text-xs">
+                  <tfoot className="bg-slate-500/5 font-bold text-xs">
                     <tr>
-                      <td colSpan={2} className="px-6 py-4.5 text-slate-800 dark:text-slate-200">
+                      <td colSpan={2} className="px-7 py-5 text-slate-800 dark:text-slate-200">
                         المجموع الكلي للحساب
                       </td>
-                      <td className="px-6 py-4.5 text-slate-900 dark:text-slate-100 font-mono">
+                      <td className="px-7 py-5 text-slate-900 dark:text-slate-100 font-mono">
                         {selectedWorkshop.totalCost.toLocaleString()} {settings.shopInfo.currency}
                       </td>
-                      <td className="px-6 py-4.5 text-emerald-600 dark:text-emerald-400 font-mono">
+                      <td className="px-7 py-5 text-emerald-600 dark:text-emerald-400 font-mono">
                         {selectedWorkshop.totalPaid.toLocaleString()} {settings.shopInfo.currency}
                       </td>
-                      <td className="px-6 py-4.5 text-rose-600 dark:text-rose-400 text-sm font-black font-mono">
+                      <td className="px-7 py-5 text-rose-600 dark:text-rose-400 text-sm font-black font-mono">
                         {selectedWorkshop.balance.toLocaleString()} {settings.shopInfo.currency}
                       </td>
                       <td className="no-print"></td>
@@ -773,7 +764,7 @@ export default function Workshops() {
                 </div>
                 <div>
                   <h1 className="text-2xl font-black text-slate-900 dark:text-slate-100 tracking-tight">
-                    حسابات الورش والجهات الخارجية
+                    جهات ذات العلاقة
                   </h1>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                     إدارة ومتابعة مطالبات الموردين والورش الخارجية وسندات الصرف وأرصدة المديونية
@@ -793,97 +784,8 @@ export default function Workshops() {
             </button>
           </div>
 
-          {/* Master View KPI Summary Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            
-            {/* Total Balance / Debt Outstanding */}
-            <div className="glass-panel p-6 rounded-xl relative overflow-hidden flex flex-col justify-between hover:-translate-y-1 transition-all duration-150 ease-out group cursor-default shadow-xs">
-              <div className="flex justify-between items-start mb-3">
-                <span className="text-slate-600 dark:text-slate-400 text-xs font-bold uppercase tracking-wider">
-                  إجمالي المستحقات للورش (الرصيد المتبقي)
-                </span>
-                <div className="w-9 h-9 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center">
-                  <Receipt size={18} />
-                </div>
-              </div>
-              <div>
-                <div className="text-3xl font-black text-rose-600 dark:text-rose-400 font-mono tabular-nums tracking-tight">
-                  {totalOutstandingBalance.toLocaleString()} <span className="text-sm font-semibold text-slate-500">{settings.shopInfo.currency}</span>
-                </div>
-                <p className="text-xs text-slate-400 dark:text-slate-500 mt-1.5">
-                  {countWithDebt} جهات خارجية لها مستحقات متبقية
-                </p>
-              </div>
-              <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-l from-rose-500 to-transparent opacity-70"></div>
-            </div>
-
-            {/* Total Registered Workshops */}
-            <div className="glass-panel p-6 rounded-xl relative overflow-hidden flex flex-col justify-between hover:-translate-y-1 transition-all duration-150 ease-out group cursor-default shadow-xs">
-              <div className="flex justify-between items-start mb-3">
-                <span className="text-slate-600 dark:text-slate-400 text-xs font-bold uppercase tracking-wider">
-                  إجمالي الورش والشركات
-                </span>
-                <div className="w-9 h-9 rounded-xl bg-slate-500/10 text-slate-700 dark:text-slate-300 flex items-center justify-center">
-                  <Building2 size={18} />
-                </div>
-              </div>
-              <div>
-                <div className="text-3xl font-black text-slate-900 dark:text-slate-100 font-mono tabular-nums tracking-tight">
-                  {workshops.length} <span className="text-sm font-semibold text-slate-500">جهة مسجلة</span>
-                </div>
-                <p className="text-xs text-slate-400 dark:text-slate-500 mt-1.5">
-                  تشمل ورش الحدادة، القص، والرافعات
-                </p>
-              </div>
-              <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-l from-slate-600 to-transparent opacity-70"></div>
-            </div>
-
-            {/* Total Claims (Total Costs) */}
-            <div className="glass-panel p-6 rounded-xl relative overflow-hidden flex flex-col justify-between hover:-translate-y-1 transition-all duration-150 ease-out group cursor-default shadow-xs">
-              <div className="flex justify-between items-start mb-3">
-                <span className="text-slate-600 dark:text-slate-400 text-xs font-bold uppercase tracking-wider">
-                  إجمالي المطالبات المسجلة
-                </span>
-                <div className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
-                  <TrendingUp size={18} />
-                </div>
-              </div>
-              <div>
-                <div className="text-3xl font-black text-slate-900 dark:text-slate-100 font-mono tabular-nums tracking-tight">
-                  {totalAllClaims.toLocaleString()} <span className="text-sm font-semibold text-slate-500">{settings.shopInfo.currency}</span>
-                </div>
-                <p className="text-xs text-slate-400 dark:text-slate-500 mt-1.5">
-                  إجمالي تكلفة الأعمال والخدمات الخارجية
-                </p>
-              </div>
-              <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-l from-blue-500 to-transparent opacity-70"></div>
-            </div>
-
-            {/* Total Paid Out */}
-            <div className="glass-panel p-6 rounded-xl relative overflow-hidden flex flex-col justify-between hover:-translate-y-1 transition-all duration-150 ease-out group cursor-default shadow-xs">
-              <div className="flex justify-between items-start mb-3">
-                <span className="text-slate-600 dark:text-slate-400 text-xs font-bold uppercase tracking-wider">
-                  إجمالي المبالغ المسددة
-                </span>
-                <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
-                  <DollarSign size={18} />
-                </div>
-              </div>
-              <div>
-                <div className="text-3xl font-black text-emerald-600 dark:text-emerald-400 font-mono tabular-nums tracking-tight">
-                  {totalAllPaid.toLocaleString()} <span className="text-sm font-semibold text-slate-500">{settings.shopInfo.currency}</span>
-                </div>
-                <p className="text-xs text-slate-400 dark:text-slate-500 mt-1.5">
-                  سندات الصرف والدفعات المنجزة
-                </p>
-              </div>
-              <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-l from-emerald-500 to-transparent opacity-70"></div>
-            </div>
-
-          </div>
-
           {/* Search, Activity Filters & Actions Toolbar */}
-          <div className="glass-panel rounded-xl p-5 shadow-xs space-y-4">
+          <div className="glass-panel rounded-2xl p-6 sm:p-7 shadow-xs space-y-5">
             <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4">
               
               {/* Search Bar */}
@@ -893,9 +795,9 @@ export default function Workshops() {
                   placeholder="ابحث باسم الورشة، الشركة، أو نوع النشاط..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-9 pr-9 py-2.5 rounded-xl text-xs glass-input"
+                  className="w-full pl-9 pr-10 py-3 rounded-xl text-xs glass-input"
                 />
-                <Search size={15} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Search size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                 {searchTerm && (
                   <button
                     type="button"
@@ -908,11 +810,11 @@ export default function Workshops() {
               </div>
 
               {/* Status Filter Buttons */}
-              <div className="flex items-center gap-1 bg-slate-100/80 dark:bg-slate-800/60 p-1 rounded-xl text-xs font-bold">
+              <div className="flex items-center gap-1.5 bg-slate-500/10 dark:bg-slate-800/60 p-1.5 rounded-xl text-xs font-bold">
                 <button
                   type="button"
                   onClick={() => setStatusFilter('all')}
-                  className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  className={`px-4 py-2 rounded-lg transition-all cursor-pointer ${
                     statusFilter === 'all'
                       ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs'
                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
@@ -923,7 +825,7 @@ export default function Workshops() {
                 <button
                   type="button"
                   onClick={() => setStatusFilter('has_balance')}
-                  className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  className={`px-4 py-2 rounded-lg transition-all cursor-pointer ${
                     statusFilter === 'has_balance'
                       ? 'bg-white dark:bg-slate-700 text-rose-600 dark:text-rose-400 shadow-xs'
                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
@@ -934,7 +836,7 @@ export default function Workshops() {
                 <button
                   type="button"
                   onClick={() => setStatusFilter('settled')}
-                  className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  className={`px-4 py-2 rounded-lg transition-all cursor-pointer ${
                     statusFilter === 'settled'
                       ? 'bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-xs'
                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
@@ -948,15 +850,15 @@ export default function Workshops() {
 
             {/* Activity Pills */}
             {uniqueActivities.length > 0 && (
-              <div className="flex items-center gap-2 flex-wrap pt-2">
+              <div className="flex items-center gap-2 flex-wrap pt-1">
                 <span className="text-[11px] text-slate-400 font-semibold ml-1">تصنيف النشاط:</span>
                 <button
                   type="button"
                   onClick={() => setActivityFilter('الكل')}
-                  className={`px-3 py-1 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
+                  className={`px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
                     activityFilter === 'الكل'
-                      ? 'bg-slate-800 text-white dark:bg-emerald-600 dark:text-white'
-                      : 'bg-slate-100/80 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 hover:bg-slate-200/80 dark:hover:bg-slate-700/80'
+                      ? 'bg-slate-800 text-white dark:bg-emerald-600 dark:text-white shadow-2xs'
+                      : 'bg-slate-500/10 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 hover:bg-slate-500/15'
                   }`}
                 >
                   الكل
@@ -966,10 +868,10 @@ export default function Workshops() {
                     key={act}
                     type="button"
                     onClick={() => setActivityFilter(act)}
-                    className={`px-3 py-1 text-[11px] font-medium rounded-lg transition-all cursor-pointer ${
+                    className={`px-3 py-1.5 text-[11px] font-medium rounded-lg transition-all cursor-pointer ${
                       activityFilter === act
-                        ? 'bg-slate-800 text-white dark:bg-emerald-600 dark:text-white'
-                        : 'bg-slate-100/80 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 hover:bg-slate-200/80 dark:hover:bg-slate-700/80'
+                        ? 'bg-slate-800 text-white dark:bg-emerald-600 dark:text-white shadow-2xs'
+                        : 'bg-slate-500/10 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 hover:bg-slate-500/15'
                     }`}
                   >
                     {act}
@@ -980,24 +882,24 @@ export default function Workshops() {
           </div>
 
           {/* Master Data Grid Table (واجهة السجل الرئيسي) */}
-          <div className="glass-panel rounded-xl shadow-xs overflow-hidden">
+          <div className="glass-panel rounded-2xl shadow-xs overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-right text-sm">
-                <thead className="bg-slate-100/40 dark:bg-slate-800/30 text-slate-500 dark:text-slate-400 font-bold text-xs">
+                <thead className="bg-slate-500/5 text-slate-500 dark:text-slate-400 font-bold text-xs">
                   <tr>
-                    <th className="px-6 py-4">اسم الورشة / الشركة</th>
-                    <th className="px-6 py-4">النشاط / التخصص</th>
-                    <th className="px-6 py-4">هاتف التواصل</th>
-                    <th className="px-6 py-4 text-slate-800 dark:text-slate-200">إجمالي التكلفة</th>
-                    <th className="px-6 py-4 text-emerald-700 dark:text-emerald-400">المسدد</th>
-                    <th className="px-6 py-4 text-rose-700 dark:text-rose-400 font-extrabold">الرصيد المتبقي</th>
-                    <th className="px-6 py-4 text-center">الإجراء</th>
+                    <th className="px-7 py-5">اسم الورشة / الشركة</th>
+                    <th className="px-7 py-5">النشاط / التخصص</th>
+                    <th className="px-7 py-5">هاتف التواصل</th>
+                    <th className="px-7 py-5 text-slate-800 dark:text-slate-200">إجمالي التكلفة</th>
+                    <th className="px-7 py-5 text-emerald-700 dark:text-emerald-400">المسدد</th>
+                    <th className="px-7 py-5 text-rose-700 dark:text-rose-400 font-extrabold">الرصيد المتبقي</th>
+                    <th className="px-7 py-5 text-center">الإجراء</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y-0">
                   {filteredWorkshops.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-6 py-14 text-center text-slate-400 dark:text-slate-500">
+                      <td colSpan={7} className="px-7 py-16 text-center text-slate-400 dark:text-slate-500">
                         لم يتم العثور على أي جهة خارجية مطابقة لبحثك. يمكنك النقر على «جهة خارجية جديدة» لإضافة ورشة.
                       </td>
                     </tr>
@@ -1006,13 +908,13 @@ export default function Workshops() {
                       <tr 
                         key={workshop.id}
                         onClick={() => setSelectedWorkshopId(workshop.id)}
-                        className="hover:bg-slate-100/50 dark:hover:bg-slate-800/30 cursor-pointer transition-colors group"
+                        className="hover:bg-slate-500/5 cursor-pointer transition-colors group"
                       >
                         {/* Name */}
-                        <td className="px-6 py-4.5 font-bold text-slate-900 dark:text-slate-100">
-                          <div className="flex items-center gap-2.5">
-                            <span className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-300 group-hover:bg-emerald-50 dark:group-hover:bg-emerald-950/40 group-hover:text-emerald-600 transition-colors">
-                              <Building2 size={16} />
+                        <td className="px-7 py-5 font-bold text-slate-900 dark:text-slate-100">
+                          <div className="flex items-center gap-3">
+                            <span className="w-9 h-9 rounded-xl bg-slate-500/10 flex items-center justify-center text-slate-600 dark:text-slate-300 group-hover:bg-emerald-500/15 group-hover:text-emerald-600 transition-colors shrink-0">
+                              <Building2 size={17} />
                             </span>
                             <div>
                               <div className="group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
@@ -1028,9 +930,9 @@ export default function Workshops() {
                         </td>
 
                         {/* Activity */}
-                        <td className="px-6 py-4.5 text-xs text-slate-600 dark:text-slate-300">
+                        <td className="px-7 py-5 text-xs text-slate-600 dark:text-slate-300">
                           {workshop.activity ? (
-                            <span className="px-2.5 py-1 rounded-md bg-slate-100/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 font-medium">
+                            <span className="px-3 py-1 rounded-lg bg-slate-500/10 text-slate-700 dark:text-slate-300 font-medium">
                               {workshop.activity}
                             </span>
                           ) : (
@@ -1039,22 +941,22 @@ export default function Workshops() {
                         </td>
 
                         {/* Phone */}
-                        <td className="px-6 py-4.5 text-xs text-slate-600 dark:text-slate-300 font-mono">
+                        <td className="px-7 py-5 text-xs text-slate-600 dark:text-slate-300 font-mono">
                           {workshop.phone || '---'}
                         </td>
 
                         {/* Total Cost */}
-                        <td className="px-6 py-4.5 font-bold text-slate-900 dark:text-slate-100 font-mono">
+                        <td className="px-7 py-5 font-bold text-slate-900 dark:text-slate-100 font-mono">
                           {workshop.totalCost.toLocaleString()} <span className="text-xs font-normal text-slate-400">{settings.shopInfo.currency}</span>
                         </td>
 
                         {/* Total Paid */}
-                        <td className="px-6 py-4.5 font-bold text-emerald-600 dark:text-emerald-400 font-mono">
+                        <td className="px-7 py-5 font-bold text-emerald-600 dark:text-emerald-400 font-mono">
                           {workshop.totalPaid.toLocaleString()} <span className="text-xs font-normal text-slate-400">{settings.shopInfo.currency}</span>
                         </td>
 
                         {/* الرصيد المتبقي (إجمالي المديونية المستحقة لهذه الجهة) */}
-                        <td className="px-6 py-4.5">
+                        <td className="px-7 py-5">
                           <div className="flex items-center gap-1.5 font-mono">
                             <span className={`text-base font-black ${
                               workshop.balance > 0 
@@ -1079,12 +981,12 @@ export default function Workshops() {
                         </td>
 
                         {/* Action Button */}
-                        <td className="px-6 py-4.5 text-center" onClick={(e) => e.stopPropagation()}>
-                          <div className="flex items-center justify-center gap-1.5">
+                        <td className="px-7 py-5 text-center" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center justify-center gap-2">
                             <button
                               type="button"
                               onClick={() => setSelectedWorkshopId(workshop.id)}
-                              className="glass-button px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1"
+                              className="glass-button px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-2xs"
                             >
                               <Receipt size={13} />
                               كشف الحساب
@@ -1093,7 +995,7 @@ export default function Workshops() {
                             <button
                               type="button"
                               onClick={() => setEditingWorkshop(workshop)}
-                              className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 p-1.5 rounded-lg transition-colors cursor-pointer"
+                              className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 p-2 rounded-xl hover:bg-slate-500/10 transition-colors cursor-pointer"
                               title="تعديل بيانات الجهة"
                             >
                               <Edit size={14} />

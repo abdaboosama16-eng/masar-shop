@@ -9,123 +9,76 @@ import {
   Download, 
   FileSpreadsheet, 
   Calendar, 
-  Eye, 
-  Share2, 
   ChevronDown,
-  FileText,
-  MessageSquare,
-  Check
+  Plus
 } from 'lucide-react';
 import { format, parseISO, startOfMonth, endOfMonth, isWithinInterval, addMonths, subMonths } from 'date-fns';
 import { ar } from 'date-fns/locale';
+import { useAppContext } from '../context/AppContext';
+import CostItemsPopover from './CostItemsPopover';
 
 interface MonthlySalesGridProps {
   orders: Order[];
   currency: string;
-  onUpdateStatus: (orderId: string, status: OrderStatus) => void;
-  onPrintOrder: (order: Order) => void;
-  onShareWhatsApp: (order: Order) => void;
+  onUpdateStatus?: (orderId: string, status: OrderStatus) => void;
+  onUpdateOrder?: (orderId: string, updates: Partial<Order>) => void;
+  onPrintOrder?: (order: Order) => void;
+  onShareWhatsApp?: (order: Order) => void;
   onViewDesign?: (order: Order) => void;
   onViewOrderDetails?: (order: Order) => void;
   onTogglePaid?: (orderId: string) => void;
 }
 
-// Helper to determine the role label based on cost item name
-function getCostRoleLabel(costItemName: string): string {
-  const name = costItemName.toLowerCase();
-  if (name.includes('تصميم') || name.includes('مصمم') || name.includes('ui')) return 'المصمم';
-  if (name.includes('طباعة') || name.includes('مطبعة')) return 'فني الطباعة';
-  if (name.includes('تركيب')) return 'فني التركيب';
-  if (name.includes('قص') || name.includes('تشكيل') || name.includes('ليزر')) return 'فني القص والتشكيل';
-  if (name.includes('مطور') || name.includes('مبرمج') || name.includes('برمجة')) return 'المطور';
-  if (name.includes('محتوى') || name.includes('كتابة')) return 'كاتب المحتوى';
-  if (name.includes('إعلان') || name.includes('ممولة') || name.includes('حملة')) return 'مسؤول الإعلانات';
-  if (name.includes('خارج') || name.includes('ورشة')) return 'الجهة الخارجية';
-  if (name.includes('مواد') || name.includes('خام') || name.includes('مخزن')) return 'المستودع / التوريد';
-  if (name.includes('تغليف') || name.includes('توصيل')) return 'فني التغليف';
-  return 'المنفذ المسؤول';
+interface NormalizedInvoiceBadge {
+  item: string;
+  value?: string | number;
 }
 
-// Helper to resolve executor name from order data
-function getCostExecutorName(order: Order, costItemName: string): string {
-  // 1. Direct match in costExecutors map
-  if (order.costExecutors && order.costExecutors[costItemName]) {
-    return order.costExecutors[costItemName];
-  }
-
-  // 2. Fuzzy match in costExecutors
-  if (order.costExecutors) {
-    for (const [key, val] of Object.entries(order.costExecutors)) {
-      if (key.includes(costItemName) || costItemName.includes(key)) {
-        return val;
+const getNormalizedInvoiceBadges = (details?: any): NormalizedInvoiceBadge[] => {
+  if (!details) return [];
+  if (Array.isArray(details)) {
+    return details.map((d: any) => {
+      if (typeof d === 'string') {
+        if (d.includes(':')) {
+          const parts = d.split(':');
+          return { item: parts[0].trim(), value: parts.slice(1).join(':').trim() };
+        }
+        return { item: d.trim() };
       }
-    }
+      if (d && typeof d === 'object') {
+        return { item: String(d.item || '').trim(), value: d.value };
+      }
+      return { item: String(d).trim() };
+    }).filter(d => Boolean(d.item));
   }
-
-  // 3. Fallback to specialized order fields
-  const name = costItemName.toLowerCase();
-  if ((name.includes('تصميم') || name.includes('مصمم')) && order.designerName) {
-    return order.designerName;
+  if (typeof details === 'string') {
+    const trimmed = details.trim();
+    if (!trimmed) return [];
+    const lines = trimmed.split(/[\n•]+/).map(s => s.trim()).filter(Boolean);
+    return lines.map(line => {
+      if (line.includes(':')) {
+        const parts = line.split(':');
+        return { item: parts[0].trim(), value: parts.slice(1).join(':').trim() };
+      }
+      return { item: line };
+    });
   }
-  if ((name.includes('طباعة') || name.includes('مطبعة')) && order.printerName) {
-    return order.printerName;
-  }
-  if ((name.includes('خارج') || name.includes('ورشة')) && order.externalExecutor) {
-    return order.externalExecutor;
-  }
-
-  // 4. Fallback to general assignedEmployee if available
-  if (order.assignedEmployee) {
-    return order.assignedEmployee;
-  }
-
-  return 'غير محدد';
-}
-
-interface CostBadgeProps {
-  key?: string;
-  label: string;
-  amount: number;
-  role: string;
-  executor: string;
-  badgeStyle?: string;
-}
-
-function CostBadgeWithTooltip({ label, amount, role, executor, badgeStyle }: CostBadgeProps) {
-  return (
-    <div className="relative group inline-flex items-center">
-      <span 
-        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold border transition-all duration-150 cursor-help select-none ${
-          badgeStyle || 'bg-slate-100 dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-500'
-        }`}
-      >
-        <span>{label}:</span>
-        <strong className="font-mono tabular-nums">{amount.toLocaleString()}</strong>
-      </span>
-
-      {/* Floating Hover Tooltip */}
-      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:flex flex-col items-center pointer-events-none z-50 transition-all duration-200 ease-out opacity-0 group-hover:opacity-100 scale-95 group-hover:scale-100">
-        <div className="bg-slate-900/95 dark:bg-slate-900/90 dark:backdrop-blur-md text-white text-[11px] font-bold px-2.5 py-1.5 rounded-lg shadow-xl border border-slate-700/80 dark:border-slate-600/60 whitespace-nowrap flex items-center gap-1.5">
-          <span className="text-slate-400 font-medium">{role}:</span>
-          <span className="text-emerald-400 font-bold">{executor}</span>
-        </div>
-        {/* Triangle Arrow */}
-        <div className="w-2 h-2 bg-slate-900/95 dark:bg-slate-900/90 border-r border-b border-slate-700/80 dark:border-slate-600/60 transform rotate-45 -mt-1"></div>
-      </div>
-    </div>
-  );
-}
+  return [];
+};
 
 export default function MonthlySalesGrid({
   orders,
   currency,
   onUpdateStatus,
+  onUpdateOrder,
   onPrintOrder,
   onShareWhatsApp,
   onViewDesign,
   onViewOrderDetails,
   onTogglePaid,
 }: MonthlySalesGridProps) {
+  const { updateOrder: contextUpdateOrder } = useAppContext();
+
   // Selected Month state (defaults to current month or date of latest order)
   const [selectedDate, setSelectedDate] = useState<Date>(() => {
     // If there are orders, pick the latest order's month or current month
@@ -138,6 +91,66 @@ export default function MonthlySalesGrid({
     }
     return startOfMonth(new Date());
   });
+
+  // Floating Popover state for Cost Items
+  const [activePopover, setActivePopover] = useState<{
+    order: Order;
+    position: { top?: number; bottom?: number; left: number; maxHeight?: number };
+  } | null>(null);
+
+  const handleOpenPopover = (order: Order, e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    if (activePopover?.order.id === order.id) {
+      setActivePopover(null);
+      return;
+    }
+    const rect = e.currentTarget.getBoundingClientRect();
+    const popoverWidth = Math.min(370, window.innerWidth - 32);
+
+    // توجيه القائمة لتطفو وتنبثق إلى الأعلى (Top) مباشرة فوق الزر مع هامش 8 بكسل (مكافئ لـ bottom-full mb-2)
+    const spaceAbove = rect.top;
+    const spaceBelow = window.innerHeight - rect.bottom;
+
+    let position: { top?: number; bottom?: number; left: number; maxHeight?: number };
+
+    // الوضع الافتراضي الدائم: الانبثاق للأعلى (Top)
+    if (spaceAbove >= 180 || spaceAbove >= spaceBelow) {
+      const bottom = window.innerHeight - rect.top + 8; // يعادل تماماً bottom-full mb-2 فوق الزر
+      const maxHeight = Math.min(500, Math.max(260, rect.top - 20));
+      position = { bottom, left: 0, maxHeight };
+    } else {
+      // ملاذ احتياطي فقط إذا كانت المساحة العلوية ضيقة جداً (<180px) والسفلية متسعة
+      const top = rect.bottom + 8;
+      const maxHeight = Math.min(500, Math.max(260, spaceBelow - 20));
+      position = { top, left: 0, maxHeight };
+    }
+
+    let left = rect.left + (rect.width / 2) - (popoverWidth / 2);
+    if (left + popoverWidth > window.innerWidth - 16) {
+      left = window.innerWidth - popoverWidth - 16;
+    }
+    if (left < 16) {
+      left = 16;
+    }
+    position.left = left;
+
+    setActivePopover({
+      order,
+      position,
+    });
+  };
+
+  const handleSaveOrderCosts = (orderId: string, updates: Partial<Order>) => {
+    if (onUpdateOrder) {
+      onUpdateOrder(orderId, updates);
+    } else if (contextUpdateOrder) {
+      contextUpdateOrder(orderId, updates);
+    }
+    setActivePopover(prev => prev ? {
+      ...prev,
+      order: { ...prev.order, ...updates },
+    } : null);
+  };
 
   // Search and status filters within the monthly view
   const [searchTerm, setSearchTerm] = useState('');
@@ -283,15 +296,13 @@ export default function MonthlySalesGrid({
     if (filteredGridOrders.length === 0) return;
 
     const headers = [
-      'رقم الفاتورة',
-      'تاريخ الطلب',
+      'حالة الدفع',
       'نوع الخدمة',
       'اسم العميل',
       'إجمالي الفاتورة',
-      'إجمالي التكلفة',
-      'تفاصيل بنود التكلفة',
+      'تفاصيل الفاتورة',
+      'صافي الربح',
       'الملاحظات',
-      'صافي المربح',
     ];
 
     const rows = filteredGridOrders.map(order => {
@@ -301,37 +312,30 @@ export default function MonthlySalesGrid({
       const itemCostSum = dCost + prCost + exCost;
       const actualCost = itemCostSum > 0 ? itemCostSum : (order.cost || 0);
       const netProfit = order.expectedProfit !== undefined ? order.expectedProfit : (order.price - actualCost);
-      const breakdownText = order.costBreakdownSummary || (
-        order.costBreakdown 
-          ? Object.entries(order.costBreakdown).map(([k, v]) => `${k}: ${v}`).join(' | ') 
-          : ''
-      );
-      const noteContent = order.notes || order.description || '';
+      const detailBadges = getNormalizedInvoiceBadges(order.invoiceDetails || order.description);
+      const defaultInvoiceText = detailBadges.map(b => b.value !== undefined && b.value !== '' ? `${b.item}: ${b.value}` : b.item).join(' • ') || (order.description || '');
+      const noteContent = (order.notes || '').trim() || defaultInvoiceText;
 
       return [
-        `#${order.serialNumber || order.id}`,
-        format(new Date(order.date), 'yyyy-MM-dd'),
+        order.isPaid ? 'مدفوعة' : 'غير مدفوعة',
         order.serviceType || 'خدمة مخصصة',
         order.clientName,
         order.price,
-        actualCost,
-        breakdownText,
-        noteContent,
+        order.costBreakdownSummary || (actualCost > 0 ? `${actualCost} ${currency}` : '-'),
         netProfit,
+        noteContent || '-',
       ];
     });
 
     // Add Totals row
     rows.push([
+      '-',
       'الإجمالي العام',
-      '-',
-      '-',
       `${filteredGridOrders.length} طلبية`,
       tableTotals.sumInvoices,
-      tableTotals.sumTotalCosts,
-      '-',
       '-',
       tableTotals.sumNetProfit,
+      '-',
     ]);
 
     const csvContent = '\uFEFF' + [
@@ -343,7 +347,7 @@ export default function MonthlySalesGrid({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `كشف_طلبيات_شهر_${format(selectedDate, 'yyyy_MM')}.csv`);
+    link.setAttribute('download', `سجل_الفواتير_${format(selectedDate, 'yyyy_MM')}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -400,7 +404,7 @@ export default function MonthlySalesGrid({
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 tracking-tight">
-                السجل الشهري للطلبيات
+                سجل الفواتير
               </h3>
               <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-emerald-100/80 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
                 {formattedCurrentMonth}
@@ -540,7 +544,7 @@ export default function MonthlySalesGrid({
         
         {/* Printable Header (Visible only when printing) */}
         <div className="hidden print:block p-4 border-b border-slate-200 text-center">
-          <h2 className="text-xl font-bold">تقرير السجل الشهري للطلبيات والمبيعات</h2>
+          <h2 className="text-xl font-bold">تقرير سجل الفواتير الشهري</h2>
           <p className="text-sm text-slate-600 mt-1">الفترة: {formattedCurrentMonth} | إجمالي الفواتير: {tableTotals.sumInvoices.toLocaleString()} {currency} | صافي الأرباح: {tableTotals.sumNetProfit.toLocaleString()} {currency}</p>
         </div>
 
@@ -550,59 +554,39 @@ export default function MonthlySalesGrid({
             <thead>
               <tr className="bg-slate-100/90 dark:bg-slate-800/90 border-b border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold select-none">
                 
-                {/* Column 1: رقم الفاتورة */}
-                <th scope="col" className="py-2.5 px-3 font-bold border-l border-slate-200/80 dark:border-slate-700 w-24 text-center">
-                  رقم الفاتورة
+                {/* عنصر تفاعلي: مربع الدفع في بداية السطر (بدون ترويسة نصية) */}
+                <th scope="col" className="py-3 px-3 border-l border-slate-200/80 dark:border-slate-700 w-12 text-center select-none">
+                  <span className="sr-only">تأكيد الدفع</span>
                 </th>
 
-                {/* Column 2: تاريخ الطلب */}
-                <th scope="col" className="py-2.5 px-3 font-bold border-l border-slate-200/80 dark:border-slate-700 w-24 text-center">
-                  تاريخ الطلب
-                </th>
-
-                {/* Column 3: نوع الخدمة */}
-                <th scope="col" className="py-2.5 px-3 font-bold border-l border-slate-200/80 dark:border-slate-700 min-w-[140px]">
+                {/* 1. نوع الخدمة */}
+                <th scope="col" className="py-3 px-4 font-bold border-l border-slate-200/80 dark:border-slate-700 min-w-[150px]">
                   نوع الخدمة
                 </th>
 
-                {/* Column 4: اسم العميل */}
-                <th scope="col" className="py-2.5 px-3 font-bold border-l border-slate-200/80 dark:border-slate-700 min-w-[160px]">
+                {/* 2. اسم العميل */}
+                <th scope="col" className="py-3 px-4 font-bold border-l border-slate-200/80 dark:border-slate-700 min-w-[160px]">
                   اسم العميل
                 </th>
 
-                {/* Column 5: إجمالي الفاتورة (Highlighted Header) */}
-                <th scope="col" className="py-2.5 px-3 font-black text-slate-900 dark:text-slate-100 bg-slate-200/70 dark:bg-slate-700/60 border-l border-slate-300/80 dark:border-slate-600 min-w-[110px] text-center">
+                {/* 3. إجمالي الفاتورة */}
+                <th scope="col" className="py-3 px-4 font-black border-l border-slate-200/80 dark:border-slate-700 min-w-[120px] text-center">
                   إجمالي الفاتورة
                 </th>
 
-                {/* Column: تأكيد الدفع السريع */}
-                <th scope="col" className="py-2.5 px-2 font-bold text-center border-l border-slate-200/80 dark:border-slate-700 w-16 min-w-[64px] select-none" title="حالة دفع وخلاص الفاتورة">
-                  الدفع
+                {/* 4. تفاصيل الفاتورة */}
+                <th scope="col" className="py-3 px-4 font-bold border-l border-slate-200/80 dark:border-slate-700 min-w-[90px] text-center">
+                  تفاصيل الفاتورة
                 </th>
 
-                {/* Column 6: إجمالي التكلفة */}
-                <th scope="col" className="py-2.5 px-3 font-bold text-rose-900 dark:text-rose-300 border-l border-slate-200/80 dark:border-slate-700 min-w-[105px] text-center">
-                  إجمالي التكلفة
+                {/* 5. صافي الربح */}
+                <th scope="col" className="py-3 px-4 font-black border-l border-slate-200/80 dark:border-slate-700 min-w-[120px] text-center">
+                  صافي الربح
                 </th>
 
-                {/* Column 7: تفاصيل بنود التكلفة */}
-                <th scope="col" className="py-2.5 px-3 font-bold text-slate-700 dark:text-slate-300 border-l border-slate-200/80 dark:border-slate-700 min-w-[170px]">
-                  تفاصيل بنود التكلفة
-                </th>
-
-                {/* Column 8: الملاحظات (New Column with Truncate & Tooltip) */}
-                <th scope="col" className="py-2.5 px-3 font-bold text-slate-800 dark:text-slate-200 border-l border-slate-200/80 dark:border-slate-700 min-w-[160px] max-w-[220px]">
+                {/* 6. الملاحظات */}
+                <th scope="col" className="py-3 px-4 font-bold min-w-[200px]">
                   الملاحظات
-                </th>
-
-                {/* Column 9: صافي المربح (Highlighted Soft Light Green Header) */}
-                <th scope="col" className="py-2.5 px-3 font-black text-emerald-900 dark:text-emerald-200 bg-emerald-100/90 dark:bg-emerald-950/70 border-l border-emerald-300/90 dark:border-emerald-800 min-w-[125px] text-center">
-                  صافي المربح
-                </th>
-
-                {/* Column 10: خيارات (No-Print) */}
-                <th scope="col" className="py-2.5 px-3 font-bold text-center w-28 no-print">
-                  خيارات
                 </th>
               </tr>
             </thead>
@@ -610,11 +594,11 @@ export default function MonthlySalesGrid({
             <tbody className="divide-y divide-slate-200/70 dark:divide-slate-800">
               {filteredGridOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="py-12 text-center text-slate-500 dark:text-slate-400">
+                  <td colSpan={7} className="py-12 text-center text-slate-500 dark:text-slate-400">
                     <div className="flex flex-col items-center justify-center gap-2">
                       <FileSpreadsheet size={32} className="text-slate-300 dark:text-slate-600" />
                       <span className="font-bold text-sm text-slate-700 dark:text-slate-300">
-                        لا توجد طلبيات مسجلة في شهر {formattedCurrentMonth}
+                        لا توجد فواتير مسجلة في شهر {formattedCurrentMonth}
                       </span>
                       <p className="text-xs text-slate-500">
                         يمكنك إضافة طلبيات جديدة أو اختيار شهر آخر من شريط التنقل أعلاه
@@ -624,7 +608,7 @@ export default function MonthlySalesGrid({
                 </tr>
               ) : (
                 filteredGridOrders.map((order, index) => {
-                  const serial = order.serialNumber || order.id;
+                  const isChecked = Boolean(order.isPaid);
                   const dCost = order.designCost || 0;
                   const prCost = order.printingCost || 0;
                   const exCost = order.externalCost || 0;
@@ -632,209 +616,91 @@ export default function MonthlySalesGrid({
                   const actualCost = itemCostSum > 0 ? itemCostSum : (order.cost || 0);
                   const netProfit = order.expectedProfit !== undefined ? order.expectedProfit : (order.price - actualCost);
                   
-                  // Extract dynamic breakdown tags
-                  const hasBreakdownObject = order.costBreakdown && Object.keys(order.costBreakdown).length > 0;
-                  const hasSummaryText = Boolean(order.costBreakdownSummary);
-
-                  // Extract notes text for tooltip & display
-                  const orderNotes = order.notes?.trim() || '';
-                  const orderDesc = order.description?.trim() || '';
-                  const displayNote = orderNotes || orderDesc;
+                  // أولاً: ترحيل أي نصوص أو بيانات كانت تُعرض سابقاً في خانة "تفاصيل الفاتورة" لتصبح القيمة الافتراضية في "الملاحظات"
+                  const detailBadges = getNormalizedInvoiceBadges(order.invoiceDetails || order.description);
+                  const defaultInvoiceText = detailBadges.length > 0 
+                    ? detailBadges.map(b => (b.value !== undefined && b.value !== '') ? `${b.item}: ${b.value}` : b.item).join(' • ')
+                    : (order.description ? order.description.trim() : '');
+                  const rawNotes = (order.notes || '').trim();
+                  const displayedNotes = rawNotes || defaultInvoiceText;
 
                   return (
                     <tr 
                       key={order.id}
-                      className={`hover:bg-slate-50/90 dark:hover:bg-slate-800/60 transition-colors ${
-                        index % 2 === 0 ? 'bg-white dark:bg-slate-900' : 'bg-slate-50/40 dark:bg-slate-900/50'
+                      className={`transition-colors duration-150 ${
+                        isChecked 
+                          ? 'bg-yellow-100/90 dark:bg-yellow-950/45 hover:bg-yellow-200/70 dark:hover:bg-yellow-900/40 text-slate-900 dark:text-slate-100' 
+                          : `${index % 2 === 0 ? 'bg-white dark:bg-slate-900' : 'bg-slate-50/40 dark:bg-slate-900/50'} hover:bg-slate-50/90 dark:hover:bg-slate-800/60`
                       }`}
                     >
-                      {/* 1. رقم الفاتورة */}
-                      <td className="py-2.5 px-3 border-l border-slate-200/60 dark:border-slate-800 text-center font-mono tabular-nums font-black text-slate-900 dark:text-slate-100">
-                        <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700 text-xs">
-                          #{serial}
-                        </span>
+                      {/* مربع الدفع التفاعلي (Action Item في بداية السطر) */}
+                      <td className="py-3 px-3 border-l border-slate-200/60 dark:border-slate-800 text-center">
+                        <input
+                          type="checkbox"
+                          id={`order-check-${order.id}`}
+                          checked={isChecked}
+                          onChange={() => onTogglePaid && onTogglePaid(order.id)}
+                          className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-amber-500 focus:ring-amber-400 focus:ring-2 cursor-pointer transition-all accent-amber-500"
+                          title={isChecked ? 'الفاتورة مدفوعة ومحددة (انقر لإلغاء التحديد)' : 'تحديد الفاتورة كمدفوعة وخالصة'}
+                          aria-label={`تحديد حالة الدفع للفاتورة الخاصة بـ ${order.clientName}`}
+                        />
                       </td>
 
-                      {/* 2. تاريخ الطلب */}
-                      <td className="py-2.5 px-3 border-l border-slate-200/60 dark:border-slate-800 text-center font-mono tabular-nums text-slate-600 dark:text-slate-400 text-[11px]">
-                        {format(new Date(order.date), 'dd/MM/yyyy')}
-                      </td>
-
-                      {/* 3. نوع الخدمة */}
-                      <td className="py-2.5 px-3 border-l border-slate-200/60 dark:border-slate-800">
+                      {/* 1. نوع الخدمة */}
+                      <td className="py-3 px-4 border-l border-slate-200/60 dark:border-slate-800">
                         <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[11px] font-bold border ${getServiceBadgeClass(order.serviceType)}`}>
                           {order.serviceType || 'خدمة مخصصة'}
                         </span>
                       </td>
 
-                      {/* 4. اسم العميل */}
-                      <td className="py-2.5 px-3 border-l border-slate-200/60 dark:border-slate-800 font-bold text-slate-900 dark:text-slate-100 max-w-[180px] truncate" title={order.clientName}>
+                      {/* 2. اسم العميل */}
+                      <td className="py-3 px-4 border-l border-slate-200/60 dark:border-slate-800 font-bold text-slate-900 dark:text-slate-100 max-w-[180px] truncate" title={order.clientName}>
                         {order.clientName}
                       </td>
 
-                      {/* 5. إجمالي الفاتورة (Highlighted Column) */}
-                      <td className="py-2.5 px-3 border-l border-slate-300/80 dark:border-slate-700 text-center font-mono tabular-nums font-black text-slate-900 dark:text-slate-100 bg-slate-100/80 dark:bg-slate-800/60">
-                        {order.price.toLocaleString()} <span className="text-[10px] font-normal text-slate-500">{currency}</span>
+                      {/* 3. إجمالي الفاتورة */}
+                      <td className="py-3 px-4 border-l border-slate-200/60 dark:border-slate-800 text-center font-mono tabular-nums font-black text-slate-900 dark:text-slate-100">
+                        {order.price.toLocaleString()} <span className="text-[10px] font-normal text-slate-500 dark:text-slate-400">{currency}</span>
                       </td>
 
-                      {/* زر تأكيد الدفع السريع (Toggle Payment) */}
-                      <td className="py-2.5 px-2 border-l border-slate-200/60 dark:border-slate-800 text-center">
-                        <button
-                          type="button"
-                          onClick={() => onTogglePaid && onTogglePaid(order.id)}
-                          className={`inline-flex items-center justify-center w-8 h-8 rounded-lg transition-all duration-200 shadow-xs ${
-                            order.isPaid
-                              ? "bg-amber-400/20 text-amber-500 border border-amber-400/50 hover:bg-amber-400/30 hover:border-amber-400"
-                              : "bg-slate-100 dark:bg-slate-800/60 text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-700 hover:text-slate-600 dark:hover:text-slate-300 hover:border-slate-300"
-                          }`}
-                          title={order.isPaid ? "الفاتورة خالصة ومدفوعة (انقر للإلغاء)" : "تأكيد دفع وخلاص الفاتورة (انقر للتعيين)"}
-                        >
-                          <Check size={16} strokeWidth={order.isPaid ? 3 : 2} />
-                        </button>
-                      </td>
-
-                      {/* 6. إجمالي التكلفة */}
-                      <td className="py-2.5 px-3 border-l border-slate-200/60 dark:border-slate-800 text-center font-mono tabular-nums font-bold text-rose-700 dark:text-rose-400">
-                        <div className="relative group inline-block">
-                          <span className="cursor-help font-bold text-rose-700 dark:text-rose-400">
-                            {actualCost.toLocaleString()} <span className="text-[10px] font-normal text-slate-500">{currency}</span>
-                          </span>
-                          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:flex flex-col items-center pointer-events-none z-50 transition-all duration-200 opacity-0 group-hover:opacity-100 scale-95 group-hover:scale-100">
-                            <div className="bg-slate-900/95 dark:bg-slate-900/90 dark:backdrop-blur-md text-white text-[11px] font-bold px-2.5 py-1.5 rounded-lg shadow-xl border border-slate-700/80 dark:border-slate-600/60 whitespace-nowrap flex items-center gap-1.5">
-                              <span className="text-slate-400 font-medium">المسؤول:</span>
-                              <span className="text-emerald-400 font-bold">{order.assignedEmployee || 'إدارة الورشة'}</span>
-                            </div>
-                            <div className="w-2 h-2 bg-slate-900/95 dark:bg-slate-900/90 border-r border-b border-slate-700/80 dark:border-slate-600/60 transform rotate-45 -mt-1"></div>
-                          </div>
+                      {/* 4. تفاصيل الفاتورة (أفرغت من النصوص وتتضمن زراً دائرياً أنيقاً لأيقونة +) */}
+                      <td className="py-2.5 px-3 border-l border-slate-200/60 dark:border-slate-800 text-center align-middle">
+                        <div className="flex items-center justify-center">
+                          <button
+                            type="button"
+                            onClick={(e) => handleOpenPopover(order, e)}
+                            className="w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-slate-700 dark:text-slate-200 border border-gray-200/90 dark:border-gray-700 flex items-center justify-center transition-all duration-150 active:scale-95 cursor-pointer shadow-2xs"
+                            title="إدارة بنود التكلفة"
+                            aria-label={`إدارة وتعديل بنود التكلفة للفاتورة الخاصة بـ ${order.clientName}`}
+                          >
+                            <Plus size={15} />
+                          </button>
                         </div>
                       </td>
 
-                      {/* 7. تفاصيل بنود التكلفة مع التلميحات التفاعلية لأسماء المنفذين */}
-                      <td className="py-2.5 px-3 border-l border-slate-200/60 dark:border-slate-800 text-xs">
-                        {hasBreakdownObject ? (
-                          <div className="flex flex-wrap gap-1">
-                            {Object.entries(order.costBreakdown!).map(([item, val]) => {
-                              const role = getCostRoleLabel(item);
-                              const executor = getCostExecutorName(order, item);
-                              return (
-                                <CostBadgeWithTooltip
-                                  key={item}
-                                  label={item}
-                                  amount={Number(val)}
-                                  role={role}
-                                  executor={executor}
-                                />
-                              );
-                            })}
-                          </div>
-                        ) : hasSummaryText ? (
-                          <span className="text-[11px] text-slate-600 dark:text-slate-400 truncate block max-w-[160px]" title={order.costBreakdownSummary}>
-                            {order.costBreakdownSummary}
-                          </span>
-                        ) : (
-                          <div className="flex flex-wrap gap-1 text-[10px]">
-                            {dCost > 0 && (
-                              <CostBadgeWithTooltip 
-                                label="تصميم" 
-                                amount={dCost} 
-                                role="المصمم" 
-                                executor={order.designerName || getCostExecutorName(order, 'تصميم')} 
-                                badgeStyle="bg-purple-50 text-purple-800 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800/60 hover:border-purple-400" 
-                              />
-                            )}
-                            {prCost > 0 && (
-                              <CostBadgeWithTooltip 
-                                label="طباعة" 
-                                amount={prCost} 
-                                role="فني الطباعة" 
-                                executor={order.printerName || getCostExecutorName(order, 'طباعة')} 
-                                badgeStyle="bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800/60 hover:border-amber-400" 
-                              />
-                            )}
-                            {exCost > 0 && (
-                              <CostBadgeWithTooltip 
-                                label="خارجي" 
-                                amount={exCost} 
-                                role="الجهة الخارجية" 
-                                executor={order.externalExecutor || getCostExecutorName(order, 'خارجي')} 
-                                badgeStyle="bg-rose-50 text-rose-800 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800/60 hover:border-rose-400" 
-                              />
-                            )}
-                            {!dCost && !prCost && !exCost && (
-                              <span className="text-slate-400 dark:text-slate-600">تكلفة مباشرة</span>
-                            )}
-                          </div>
-                        )}
+                      {/* 5. صافي الربح */}
+                      <td className={`py-3 px-4 border-l border-slate-200/60 dark:border-slate-800 text-center font-mono tabular-nums font-black ${
+                        netProfit >= 0 
+                          ? 'text-emerald-700 dark:text-emerald-400' 
+                          : 'text-rose-700 dark:text-rose-400'
+                      }`}>
+                        {netProfit >= 0 ? `+${netProfit.toLocaleString()}` : netProfit.toLocaleString()} <span className="text-[10px] font-normal opacity-75">{currency}</span>
                       </td>
 
-                      {/* 8. الملاحظات (Clean Truncated Text with Full Tooltip) */}
-                      <td className="py-2.5 px-3 border-l border-slate-200/60 dark:border-slate-800 max-w-[200px]">
-                        {displayNote ? (
+                      {/* 6. الملاحظات (ترحيل نصوص تفاصيل الفاتورة كقيمة افتراضية) */}
+                      <td className="py-3 px-4 max-w-[260px]">
+                        {displayedNotes ? (
                           <span 
-                            className="text-[11px] text-slate-600 dark:text-slate-300 font-medium truncate block max-w-[190px] cursor-help hover:text-slate-900 dark:hover:text-white"
-                            title={displayNote}
+                            className="text-[11px] text-slate-600 dark:text-slate-300 font-medium truncate block max-w-[250px] cursor-help hover:text-slate-900 dark:hover:text-white"
+                            title={displayedNotes}
                           >
-                            {displayNote}
+                            {displayedNotes}
                           </span>
                         ) : (
                           <span className="text-[11px] text-slate-300 dark:text-slate-600 select-none">
                             —
                           </span>
                         )}
-                      </td>
-
-                      {/* 9. صافي المربح (Highlighted Soft Light Green Column) */}
-                      <td className={`py-2.5 px-3 border-l border-emerald-200 dark:border-emerald-800 text-center font-mono tabular-nums font-black ${
-                        netProfit >= 0 
-                          ? 'bg-emerald-50/90 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300' 
-                          : 'bg-rose-50/90 dark:bg-rose-950/40 text-rose-800 dark:text-rose-300'
-                      }`}>
-                        {netProfit >= 0 ? `+${netProfit.toLocaleString()}` : netProfit.toLocaleString()} <span className="text-[10px] font-normal opacity-75">{currency}</span>
-                      </td>
-
-                      {/* 10. خيارات سريعة (No-Print) */}
-                      <td className="py-2.5 px-3 text-center no-print">
-                        <div className="flex items-center justify-center gap-1">
-                          {onViewOrderDetails && (
-                            <button
-                              type="button"
-                              onClick={() => onViewOrderDetails(order)}
-                              className="p-1.5 rounded-lg text-blue-600 hover:text-blue-800 hover:bg-blue-50 dark:hover:bg-blue-950/50 transition-colors"
-                              title="عرض تفاصيل الطلبية والملاحظات"
-                            >
-                              <FileText size={13} />
-                            </button>
-                          )}
-
-                          <button
-                            type="button"
-                            onClick={() => onPrintOrder(order)}
-                            className="p-1.5 rounded-lg text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                            title="طباعة الفاتورة"
-                          >
-                            <Printer size={13} />
-                          </button>
-                          
-                          <button
-                            type="button"
-                            onClick={() => onShareWhatsApp(order)}
-                            className="p-1.5 rounded-lg text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 transition-colors"
-                            title="مشاركة الفاتورة عبر واتساب"
-                          >
-                            <Share2 size={13} />
-                          </button>
-
-                          {onViewDesign && (
-                            <button
-                              type="button"
-                              onClick={() => onViewDesign(order)}
-                              className="p-1.5 rounded-lg text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 transition-colors"
-                              title="مرفقات وتصميم الفاتورة"
-                            >
-                              <Eye size={13} />
-                            </button>
-                          )}
-                        </div>
                       </td>
                     </tr>
                   );
@@ -849,8 +715,13 @@ export default function MonthlySalesGrid({
               <tfoot>
                 <tr className="bg-slate-200/90 dark:bg-slate-800/95 font-black border-t-2 border-slate-300 dark:border-slate-700 text-xs select-none">
                   
-                  {/* Columns 1-4 Label */}
-                  <td colSpan={4} className="py-3 px-3 text-right text-slate-900 dark:text-slate-100 border-l border-slate-300 dark:border-slate-700 font-bold">
+                  {/* Checkbox column spacer */}
+                  <td className="py-3 px-3 text-center border-l border-slate-300 dark:border-slate-700 text-slate-400">
+                    -
+                  </td>
+
+                  {/* Columns 1-2: نوع الخدمة + اسم العميل Label */}
+                  <td colSpan={2} className="py-3 px-4 text-right text-slate-900 dark:text-slate-100 border-l border-slate-300 dark:border-slate-700 font-bold">
                     <div className="flex items-center justify-between">
                       <span>إجمالي الشهر ({filteredGridOrders.length} طلبية):</span>
                       <span className="text-[10px] font-normal text-slate-600 dark:text-slate-400">
@@ -859,42 +730,27 @@ export default function MonthlySalesGrid({
                     </div>
                   </td>
 
-                  {/* Column 5 Total: إجمالي الفواتير */}
-                  <td className="py-3 px-3 text-center font-mono tabular-nums font-black text-slate-900 dark:text-slate-100 bg-slate-300/70 dark:bg-slate-700 border-l border-slate-300 dark:border-slate-600">
-                    {tableTotals.sumInvoices.toLocaleString()} <span className="text-[10px] font-normal text-slate-600">{currency}</span>
+                  {/* Column 3 Total: إجمالي الفواتير */}
+                  <td className="py-3 px-4 text-center font-mono tabular-nums font-black text-slate-900 dark:text-slate-100 border-l border-slate-300 dark:border-slate-700">
+                    {tableTotals.sumInvoices.toLocaleString()} <span className="text-[10px] font-normal text-slate-600 dark:text-slate-400">{currency}</span>
                   </td>
 
-                  {/* Payment column spacer */}
-                  <td className="py-3 px-2 text-center text-slate-400 dark:text-slate-500 border-l border-slate-300 dark:border-slate-700 text-[11px] font-medium">
+                  {/* Column 4: تفاصيل الفاتورة (Footer Spacer) */}
+                  <td className="py-3 px-4 text-center text-slate-500 dark:text-slate-400 border-l border-slate-300 dark:border-slate-700">
                     -
                   </td>
 
-                  {/* Column 6 Total: إجمالي التكلفة */}
-                  <td className="py-3 px-3 text-center font-mono tabular-nums font-black text-rose-900 dark:text-rose-300 border-l border-slate-300 dark:border-slate-700">
-                    {tableTotals.sumTotalCosts.toLocaleString()} <span className="text-[10px] font-normal opacity-70">{currency}</span>
-                  </td>
-
-                  {/* Column 7: تفاصيل بنود التكلفة */}
-                  <td className="py-3 px-3 text-center text-slate-500 dark:text-slate-400 border-l border-slate-300 dark:border-slate-700">
-                    -
-                  </td>
-
-                  {/* Column 8: الملاحظات (Footer Spacer) */}
-                  <td className="py-3 px-3 text-center text-slate-500 dark:text-slate-400 border-l border-slate-300 dark:border-slate-700">
-                    -
-                  </td>
-
-                  {/* Column 9 Total: صافي المربح */}
-                  <td className={`py-3 px-3 text-center font-mono tabular-nums font-black border-l border-emerald-300 dark:border-emerald-800 ${
+                  {/* Column 5 Total: صافي الربح */}
+                  <td className={`py-3 px-4 text-center font-mono tabular-nums font-black border-l border-slate-300 dark:border-slate-700 ${
                     tableTotals.sumNetProfit >= 0 
-                      ? 'bg-emerald-200/80 dark:bg-emerald-900/60 text-emerald-950 dark:text-emerald-100' 
-                      : 'bg-rose-200/80 dark:bg-rose-900/60 text-rose-950 dark:text-rose-100'
+                      ? 'text-emerald-800 dark:text-emerald-300' 
+                      : 'text-rose-800 dark:text-rose-300'
                   }`}>
                     {tableTotals.sumNetProfit >= 0 ? `+${tableTotals.sumNetProfit.toLocaleString()}` : tableTotals.sumNetProfit.toLocaleString()} <span className="text-[10px] font-normal opacity-80">{currency}</span>
                   </td>
 
-                  {/* Column 10 (Empty for Actions) */}
-                  <td className="py-3 px-3 text-center no-print">
+                  {/* Column 6: الملاحظات (Footer Spacer) */}
+                  <td className="py-3 px-4 text-center text-slate-500 dark:text-slate-400">
                     -
                   </td>
                 </tr>
@@ -903,6 +759,17 @@ export default function MonthlySalesGrid({
           </table>
         </div>
       </div>
+
+      {/* Popover إدارة وتعديل بنود التكلفة العائم */}
+      {activePopover && (
+        <CostItemsPopover
+          order={activePopover.order}
+          currency={currency}
+          position={activePopover.position}
+          onClose={() => setActivePopover(null)}
+          onSave={handleSaveOrderCosts}
+        />
+      )}
     </div>
   );
 }

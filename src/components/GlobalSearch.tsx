@@ -2,8 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 import { 
-  Search, X, FileText, ShoppingCart, Box, User, 
-  Layers, ChevronLeft, ArrowUpRight, Hash, Boxes 
+  Search, X, ShoppingCart, User, ChevronLeft 
 } from 'lucide-react';
 
 interface GlobalSearchProps {
@@ -11,13 +10,11 @@ interface GlobalSearchProps {
 }
 
 export default function GlobalSearch({ onSelectCallback }: GlobalSearchProps) {
-  const { orders, inventory, currentUser } = useAppContext();
+  const { orders } = useAppContext();
   const [query, setQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
-
-  const isManager = currentUser?.role === 'مدير';
 
   // Close dropdown on click outside
   useEffect(() => {
@@ -54,30 +51,19 @@ export default function GlobalSearch({ onSelectCallback }: GlobalSearchProps) {
       })
       .slice(0, 4);
 
-    // 3. Materials
-    const matchedMaterials = inventory.filter(m => 
-      m.name.toLowerCase().includes(q) ||
-      m.unit.toLowerCase().includes(q)
-    ).slice(0, 4);
-
     return {
       orders: matchedOrders,
       clients: matchedClients,
-      materials: matchedMaterials
     };
-  }, [orders, inventory, query]);
+  }, [orders, query]);
 
-  const hasResults = results.orders.length > 0 || results.clients.length > 0 || results.materials.length > 0;
+  const hasResults = results.orders.length > 0 || results.clients.length > 0;
 
   const handleSelectOrder = (orderId: string) => {
     setIsOpen(false);
     setQuery('');
     if (onSelectCallback) onSelectCallback();
-    if (isManager) {
-      navigate('/sales');
-    } else {
-      navigate('/tasks');
-    }
+    navigate('/sales');
   };
 
   const handleSelectClient = (clientName: string) => {
@@ -85,13 +71,6 @@ export default function GlobalSearch({ onSelectCallback }: GlobalSearchProps) {
     setQuery('');
     if (onSelectCallback) onSelectCallback();
     navigate('/sales');
-  };
-
-  const handleSelectMaterial = (materialId: string) => {
-    setIsOpen(false);
-    setQuery('');
-    if (onSelectCallback) onSelectCallback();
-    navigate('/inventory');
   };
 
   return (
@@ -176,7 +155,7 @@ export default function GlobalSearch({ onSelectCallback }: GlobalSearchProps) {
             )}
 
             {/* Clients Category */}
-            {results.clients.length > 0 && isManager && (
+            {results.clients.length > 0 && (
               <div className="pt-2">
                 <div className="px-2 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5 mb-1">
                   <User size={12} className="text-blue-600" />
@@ -199,41 +178,6 @@ export default function GlobalSearch({ onSelectCallback }: GlobalSearchProps) {
                       <div className="flex items-center gap-2 text-xs">
                         <span className="text-[10px] text-slate-400">{client.count} فواتير سابقة</span>
                         <ChevronLeft size={14} className="text-slate-400 group-hover:text-blue-600 group-hover:-translate-x-0.5 transition-all duration-150 ease-out" />
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Materials Category */}
-            {results.materials.length > 0 && (
-              <div className="pt-2">
-                <div className="px-2 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5 mb-1">
-                  <Boxes size={12} className="text-amber-600" />
-                  <span>المخزون والمواد الخام ({results.materials.length})</span>
-                </div>
-                <div className="space-y-1">
-                  {results.materials.map(item => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => handleSelectMaterial(item.id)}
-                      className="w-full text-right p-2.5 rounded-xl hover:bg-amber-50/80 :bg-slate-800 transition-all duration-150 ease-out  flex items-center justify-between group cursor-pointer"
-                    >
-                      <div>
-                        <p className="text-xs font-bold text-slate-900 ">{item.name}</p>
-                        <p className="text-[10px] text-slate-400">الوحدة: {item.unit}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className={`text-xs font-mono tabular-nums font-bold px-2 py-0.5 rounded-lg ${
-                          item.quantity <= item.minLimit 
-                            ? 'bg-rose-100 text-rose-700 ' 
-                            : 'bg-emerald-100 text-emerald-700 '
-                        }`}>
-                          {item.quantity} {item.unit}
-                        </span>
-                        <ChevronLeft size={14} className="text-slate-400 group-hover:text-amber-600 group-hover:-translate-x-0.5 transition-all duration-150 ease-out" />
                       </div>
                     </button>
                   ))}

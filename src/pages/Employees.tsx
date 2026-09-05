@@ -134,7 +134,7 @@ export default function Employees() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 no-print">
         <div>
-          <h2 className="text-2xl font-black text-slate-900 tracking-tight">شؤون العاملين وفريق العمل</h2>
+          <h2 className="text-2xl font-black text-slate-900 tracking-tight">الموظفين</h2>
           <p className="text-xs text-slate-600 mt-1">
             إدارة بطاقات الموظفين، الرواتب، واحتساب العمولات المستحقة تلقائياً (5% من أرباح العمليات المنفذة)
           </p>

@@ -38,6 +38,13 @@ export interface AuditLogEntry {
   details?: string;
 }
 
+export interface InvoiceDetailItem {
+  item: string;
+  value?: string | number;
+}
+
+export type InvoiceDetail = string | InvoiceDetailItem;
+
 export interface Order {
   id: string;
   serialNumber?: string;
@@ -46,6 +53,7 @@ export interface Order {
   clientName: string;
   clientId?: string;
   description: string;
+  invoiceDetails?: InvoiceDetail[] | string; // تفاصيل الفاتورة (مصفوفة بنود/مواصفات أو نصوص)
   price: number;
   
   // Detailed Costs & Dynamic Cost Breakdown

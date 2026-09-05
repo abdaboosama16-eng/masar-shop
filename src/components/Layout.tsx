@@ -37,8 +37,9 @@ export default function Layout() {
   }
 
   // Dynamic Navigation items directly derived from pagesConfig state
+  // Exclude Settings from the sidebar navigation links as requested
   const navItems = (pagesConfig || [])
-    .filter(page => page.visible !== false)
+    .filter(page => page.visible !== false && page.id !== 'settings' && page.path !== '/settings')
     .sort((a, b) => (a.order || 0) - (b.order || 0))
     .map(page => ({
       name: page.name,
@@ -80,6 +81,18 @@ export default function Layout() {
               aria-label="تبديل السمة"
             >
               {settings.theme === 'dark' ? <Sun size={17} className="text-amber-400" /> : <Moon size={17} />}
+            </button>
+            <button
+              onClick={() => navigate('/settings')}
+              className={`p-2 rounded-xl border border-slate-200/60 dark:border-slate-700/60 active:scale-95 transition-all duration-150 ease-out cursor-pointer ${
+                location.pathname === '/settings'
+                  ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 font-bold'
+                  : 'text-slate-600 dark:text-slate-300 bg-slate-100/80 dark:bg-slate-800/80'
+              }`}
+              title="الإعدادات العامة"
+              aria-label="الإعدادات العامة"
+            >
+              <SettingsIcon size={17} />
             </button>
             <button
               onClick={() => setIsMobileMenuOpen(true)}
@@ -151,7 +164,7 @@ export default function Layout() {
           </div>
 
           {/* Primary Navigation items */}
-          <nav className="flex-1 px-3 py-4 space-y-1.5 overflow-y-auto">
+          <nav className="flex-1 px-3 py-4 space-y-2 overflow-y-auto">
             {navItems.map((item) => (
               <NavLink
                 key={item.path}
@@ -236,11 +249,15 @@ export default function Layout() {
               
               <button
                 onClick={() => navigate('/settings')}
-                className="w-9 h-9 flex items-center justify-center rounded-xl bg-white/90 dark:bg-slate-800/80 text-slate-700 hover:text-slate-900 dark:text-slate-200 dark:hover:text-white border border-slate-200/90 dark:border-slate-700/90 shadow-xs hover:shadow-sm transition-all duration-150 ease-out cursor-pointer"
+                className={`w-9 h-9 flex items-center justify-center rounded-xl border shadow-xs hover:shadow-sm transition-all duration-150 ease-out cursor-pointer ${
+                  location.pathname === '/settings'
+                    ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/35 font-bold shadow-xs'
+                    : 'bg-white/90 dark:bg-slate-800/80 text-slate-700 hover:text-slate-900 dark:text-slate-200 dark:hover:text-white border-slate-200/90 dark:border-slate-700/90'
+                }`}
                 title="الإعدادات العامة"
                 aria-label="الإعدادات العامة"
               >
-                <SettingsIcon size={17} className="text-slate-600 dark:text-slate-300" />
+                <SettingsIcon size={17} className={location.pathname === '/settings' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-600 dark:text-slate-300'} />
               </button>
             </div>
           </div>

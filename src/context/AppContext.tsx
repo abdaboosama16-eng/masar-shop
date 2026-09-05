@@ -24,111 +24,27 @@ import { supabase, isSupabaseConfigured, SyncQueueItem, authenticateUser } from 
 
 export const defaultPagesConfig: PageConfig[] = [
   {
-    id: 'dashboard',
-    name: 'لوحة التحكم',
-    path: '/',
-    icon: 'LayoutDashboard',
-    description: 'المركز الرئيسي للتحكم واستعراض المؤشرات المالية ومتابعة الأداء',
-    visible: true,
-    isSystemDefault: true,
-    order: 1,
-    components: [
-      {
-        id: 'kpi_sales',
-        title: 'إجمالي المبيعات',
-        type: 'metric_card',
-        description: 'بطاقة عرض إجمالي المبيعات المحققة وقيمة الفواتير المسجلة',
-        visible: true,
-        order: 1,
-        width: 'third',
-      },
-      {
-        id: 'kpi_expenses',
-        title: 'المصروفات والتكاليف',
-        type: 'metric_card',
-        description: 'إجمالي المصروفات التشغيلية وتكاليف المواد والرافعات',
-        visible: true,
-        order: 2,
-        width: 'third',
-      },
-      {
-        id: 'kpi_profit',
-        title: 'صافي الأرباح',
-        type: 'metric_card',
-        description: 'صافي الربح المحقق بعد خصم كافة التكاليف والمصروفات',
-        visible: true,
-        order: 3,
-        width: 'third',
-      },
-      {
-        id: 'time_filter',
-        title: 'شريط التصفية الزمني',
-        type: 'filter_bar',
-        description: 'أزرار التصفية السريعة (اليوم، هذا الأسبوع، هذا الشهر، مخصص، الكل)',
-        visible: true,
-        order: 4,
-        width: 'full',
-      },
-      {
-        id: 'profit_chart',
-        title: 'مخطط مقارنة الأرباح والمبيعات',
-        type: 'chart',
-        description: 'رسم بياني يوضح مبيعات وتكاليف وصافي أرباح الخدمات الإعلانية',
-        visible: true,
-        order: 5,
-        width: 'two_thirds',
-      },
-      {
-        id: 'employee_rankings',
-        title: 'كفاءة وإنجاز فريق العمل',
-        type: 'table',
-        description: 'تصنيف الموظفين وفرق العمل وفق عدد الطلبيات المنجزة والأرباح',
-        visible: true,
-        order: 6,
-        width: 'third',
-      },
-      {
-        id: 'upcoming_deliveries',
-        title: 'مواعيد التسليم المستهدفة',
-        type: 'table',
-        description: 'قائمة بأقرب 5 طلبيات قيد التجهيز ومواعيد تسليمها',
-        visible: true,
-        order: 7,
-        width: 'half',
-      },
-      {
-        id: 'low_stock_alert',
-        title: 'تنبيهات المخزون الحرج',
-        type: 'table',
-        description: 'إشعار فوري بالمواد التي انخفض رصيدها عن حد الأمان',
-        visible: true,
-        order: 8,
-        width: 'half',
-      }
-    ]
-  },
-  {
     id: 'sales',
-    name: 'سجل المبيعات',
+    name: 'سجل الفواتير',
     path: '/sales',
     icon: 'ShoppingCart',
     description: 'تسجيل ومتابعة طلبيات الدعاية واللافتات وإدارة الفواتير',
     visible: true,
     isSystemDefault: true,
-    order: 2,
+    order: 1,
     components: [
       {
         id: 'sales_monthly_grid',
-        title: 'جدول المبيعات الشهري',
+        title: 'سجل الفواتير الشهري',
         type: 'table',
-        description: 'عرض ومتابعة مبيعات الشهر بتصميم جداول العمليات الشاملة',
+        description: 'عرض ومتابعة الفواتير ومبيعات الشهر بتصميم جداول العمليات الشاملة',
         visible: true,
         order: 1,
         width: 'full',
       },
       {
         id: 'sales_quick_add',
-        title: 'نموذج إضافة طلبية جديدة',
+        title: 'نموذج إضافة بند جديد',
         type: 'form_field',
         description: 'تسجيل المواصفات والمقاسات وحساب التكاليف وعنوان التركيب والملاحظات',
         visible: true,
@@ -156,158 +72,14 @@ export const defaultPagesConfig: PageConfig[] = [
     ]
   },
   {
-    id: 'kanban',
-    name: 'مسار العمليات',
-    path: '/kanban',
-    icon: 'Activity',
-    description: 'لوحة متابعة مراحل العمل وتدفق الإنتاج في الورشة والميدان',
-    visible: true,
-    isSystemDefault: true,
-    order: 3,
-    components: [
-      {
-        id: 'kanban_board',
-        title: 'لوحة مراحل الإنتاج',
-        type: 'action_grid',
-        description: 'أعمدة كانبان من التصميم إلى الطباعة ثم التركيب والتسليم',
-        visible: true,
-        order: 1,
-        width: 'full',
-      },
-      {
-        id: 'kanban_kiosk_toggle',
-        title: 'وضع الورشة للشاشات الكبيرة',
-        type: 'custom_widget',
-        description: 'زر التبديل لشاشات المصنع بدون هوامش أو شريط جانبي',
-        visible: true,
-        order: 2,
-        width: 'half',
-      }
-    ]
-  },
-  {
-    id: 'inventory',
-    name: 'المخزون والمواد',
-    path: '/inventory',
-    icon: 'Box',
-    description: 'إدارة مخزون المواد الخام (كلادينج، زنكور، ليدات، فليكس، أكريليك)',
-    visible: true,
-    isSystemDefault: true,
-    order: 4,
-    components: [
-      {
-        id: 'inventory_kpi_total',
-        title: 'إجمالي قيمة المخزون',
-        type: 'metric_card',
-        description: 'حساب القيمة النقدية الإجمالية للمواد المتوفرة بالمخزن',
-        visible: true,
-        order: 1,
-        width: 'half',
-      },
-      {
-        id: 'inventory_low_limit',
-        title: 'المواد تحت حد الأمان',
-        type: 'metric_card',
-        description: 'عدد الأصناف التي تحتاج لإعادة طلب عاجل',
-        visible: true,
-        order: 2,
-        width: 'half',
-      },
-      {
-        id: 'inventory_table',
-        title: 'جدول المواد الخام',
-        type: 'table',
-        description: 'عرض الرصيد الفعلي، حد الطلب، وسعر التكلفة',
-        visible: true,
-        order: 3,
-        width: 'full',
-      },
-      {
-        id: 'inventory_add_item',
-        title: 'إضافة مادة خام جديدة',
-        type: 'form_field',
-        description: 'تسجيل مادة جديدة وتحديد وحدات القياس وحد الأمان',
-        visible: true,
-        order: 4,
-        width: 'full',
-      }
-    ]
-  },
-  {
-    id: 'expenses',
-    name: 'المالية',
-    path: '/expenses',
-    icon: 'Receipt',
-    description: 'المركز المالي الشامل: مؤشرات الأرباح والتحليل الذكي، المصروفات والواردات وسندات الصرف',
-    visible: true,
-    isSystemDefault: true,
-    order: 5,
-    components: [
-      {
-        id: 'expenses_smart_indicators',
-        title: 'مؤشرات التحليل الذكي وصافي الأرباح',
-        type: 'metric_card',
-        description: 'مؤشر صافي أرباح الشهر ومقارنته ومؤشر حركة المصروفات الشهرية',
-        visible: true,
-        order: 1,
-        width: 'full',
-      },
-      {
-        id: 'expenses_top_services',
-        title: 'الخدمات الأكثر طلباً',
-        type: 'action_grid',
-        description: 'ترتيب الخدمات الأكثر إقبالاً وطلباً ونسبتها من إجمالي العمليات',
-        visible: true,
-        order: 2,
-        width: 'half',
-      },
-      {
-        id: 'expenses_debt_alerts',
-        title: 'تنبيهات المديونيات المتأخرة',
-        type: 'action_grid',
-        description: 'متابعة العملاء أصحاب المديونيات المتأخرة والأرصدة المستحقة',
-        visible: true,
-        order: 3,
-        width: 'half',
-      },
-      {
-        id: 'expenses_kpi_total',
-        title: 'أرصدة الصندوق والتدفقات النقدية',
-        type: 'metric_card',
-        description: 'رصيد صافي الصندوق، إجمالي الواردات وإجمالي المصروفات',
-        visible: true,
-        order: 4,
-        width: 'full',
-      },
-      {
-        id: 'expenses_add_form',
-        title: 'سند صرف وقيد مالي جديد',
-        type: 'form_field',
-        description: 'تسجيل وارد أو مصروف مع تحديد التصنيف وطريقة الدفع والبيان',
-        visible: true,
-        order: 5,
-        width: 'two_thirds',
-      },
-      {
-        id: 'expenses_table',
-        title: 'سجل القيود والعمليات المالية',
-        type: 'table',
-        description: 'كشف تفصيلي لكافة الواردات والمصروفات مع التصفية والفرز',
-        visible: true,
-        order: 6,
-        width: 'full',
-      }
-    ]
-  },
-  {
     id: 'workshops',
-    name: 'حسابات الورش والجهات الخارجية',
+    name: 'جهات ذات العلاقة',
     path: '/workshops',
     icon: 'Building2',
-    description: 'إدارة مطالبات الورش، حسابات الشركات الموردة، ومتابعة الأرصدة المتبقية وسندات الصرف',
+    description: 'إدارة ومتابعة مطالبات الموردين والورش الخارجية وسندات الصرف وأرصدة المديونية',
     visible: true,
     isSystemDefault: true,
-    order: 6,
+    order: 2,
     components: [
       {
         id: 'workshops_master_grid',
@@ -330,44 +102,14 @@ export const defaultPagesConfig: PageConfig[] = [
     ]
   },
   {
-    id: 'customers',
-    name: 'العملاء',
-    path: '/customers',
-    icon: 'Users',
-    description: 'دليل العملاء وحساب المستحقات والمديونيات وكشوفات الحساب',
-    visible: true,
-    isSystemDefault: true,
-    order: 7,
-    components: [
-      {
-        id: 'customers_kpi_receivables',
-        title: 'إجمالي ديون العملاء',
-        type: 'metric_card',
-        description: 'مجموع المبالغ المتبقية على العملاء من الفواتير الآجلة',
-        visible: true,
-        order: 1,
-        width: 'half',
-      },
-      {
-        id: 'customers_table',
-        title: 'دليل حسابات العملاء',
-        type: 'table',
-        description: 'كشف حساب كل عميل مع إجمالي الفواتير والمدفوع والرصيد المتبقي',
-        visible: true,
-        order: 2,
-        width: 'full',
-      }
-    ]
-  },
-  {
     id: 'employees',
-    name: 'شؤون العاملين',
+    name: 'الموظفين',
     path: '/employees',
     icon: 'Badge',
-    description: 'سجل الموظفين والرواتب وعمولات المبيعات وساعات العمل',
+    description: 'إدارة بطاقات الموظفين، الرواتب، واحتساب العمولات المستحقة تلقائياً',
     visible: true,
     isSystemDefault: true,
-    order: 8,
+    order: 3,
     components: [
       {
         id: 'employees_kpi_count',
@@ -397,7 +139,7 @@ export const defaultPagesConfig: PageConfig[] = [
     description: 'تقارير الأداء المالي، سجل الرقابة وتدقيق حركة النظام',
     visible: true,
     isSystemDefault: true,
-    order: 9,
+    order: 4,
     components: [
       {
         id: 'audit_kpi_summary',
@@ -416,45 +158,6 @@ export const defaultPagesConfig: PageConfig[] = [
         visible: true,
         order: 2,
         width: 'full',
-      }
-    ]
-  },
-  {
-    id: 'settings',
-    name: 'الإعدادات العامة',
-    path: '/settings',
-    icon: 'Settings',
-    description: 'محرك التحكم المركزي بالصفحات والقوالب والصلاحيات والمزامنة',
-    visible: true,
-    isSystemDefault: true,
-    order: 10,
-    components: [
-      {
-        id: 'settings_page_manager',
-        title: 'محرك إدارة الصفحات والقوالب',
-        type: 'action_grid',
-        description: 'التحكم المطلق في هيكل الصفحات، وإعادة التسمية، وإضافة القوالب',
-        visible: true,
-        order: 1,
-        width: 'full',
-      },
-      {
-        id: 'settings_shop_info',
-        title: 'بيانات المنشأة والهوية',
-        type: 'form_field',
-        description: 'اسم المؤسسة، أرقام التواصل، العملة، والشعار الرسمي',
-        visible: true,
-        order: 2,
-        width: 'half',
-      },
-      {
-        id: 'settings_security',
-        title: 'الأمان وكلمات المرور',
-        type: 'form_field',
-        description: 'إدارة رمز الدخول السري وصلاحيات المستخدمين',
-        visible: true,
-        order: 3,
-        width: 'half',
       }
     ]
   }
@@ -612,6 +315,117 @@ const initialEmployees: Employee[] = [
 
 const initialExpenses: Expense[] = [];
 
+// Sample Mock Orders to demonstrate and test the new invoiceDetails badges column
+const sampleInitialOrders: Order[] = [
+  {
+    id: '1001',
+    serialNumber: 'INV-1001',
+    serviceType: 'تنفيذ لافتات',
+    clientName: 'مستشفى الشفاء الدولي',
+    description: 'واجهة رئيسية مضيئة 5×1.8 م',
+    invoiceDetails: [
+      { item: 'حروف بارزة زنكور دهان حراري', value: '5×1.8 م' },
+      { item: 'وجه أكريليك كوري 3 مم أبيض حليبي' },
+      { item: 'إضاءة ليد مقاومة للماء مع محولات', value: '12V 400W' },
+      { item: 'شاسيه حديد مع طاقم تركيب ورافعة' },
+    ],
+    price: 4500,
+    cost: 2600,
+    costBreakdown: {
+      'تكلفة القص': 500,
+      'تكلفة التركيب': 800,
+      'مواد خام': 1300,
+    },
+    expectedProfit: 1900,
+    assignedEmployee: 'فني التركيب',
+    status: 'قيد التركيب',
+    paymentMethod: 'نقدي',
+    isPaid: false,
+    date: new Date().toISOString(),
+    notes: 'التسليم يوم الخميس قبل الساعة 4 مساءً',
+  },
+  {
+    id: '1002',
+    serialNumber: 'INV-1002',
+    serviceType: 'إدارة صفحات سوشيال ميديا',
+    clientName: 'مطاعم وكافيهات الدانة',
+    description: 'باقة إدارة المحتوى والتسويق الرقمي',
+    invoiceDetails: [
+      { item: 'تصميم هوية بصرية كاملة وتطبيقاتها' },
+      { item: 'لوحة كليك سليم بوكس مضيئة', value: '3×1 م' },
+      { item: 'طباعة مينو ديجيتال فاخر سلوفان', value: '500 حبة' },
+    ],
+    price: 2200,
+    cost: 1100,
+    costBreakdown: {
+      'تكلفة المصمم': 500,
+      'تكلفة كاتب المحتوى': 300,
+      'إعلانات ممولة': 300,
+    },
+    expectedProfit: 1100,
+    assignedEmployee: 'مسؤول الحسابات',
+    status: 'تم التسليم',
+    paymentMethod: 'بطاقة',
+    isPaid: true,
+    paidAt: new Date().toISOString(),
+    date: new Date().toISOString(),
+    notes: 'تم استلام الدفعة بالكامل نقداً',
+  },
+  {
+    id: '1003',
+    serialNumber: 'INV-1003',
+    serviceType: 'خدمات طباعة',
+    clientName: 'مجموعة المروج العقارية',
+    description: 'مطبوعات تسويقية للمشروع السكني',
+    invoiceDetails: [
+      { item: 'بروشور ثلاثي الطيات كوشيه 300 غرام', value: '2500 نسخة' },
+      { item: 'رول أب ستاند ألومنيوم مع طباعة عالية الدقة', value: '85×200 سم' },
+      { item: 'أكياس ورقية هدايا مع سبوت UV وسلوفان حراري' },
+    ],
+    price: 3100,
+    cost: 1850,
+    costBreakdown: {
+      'تكلفة الطباعة': 1200,
+      'تكلفة التصميم': 400,
+      'تكلفة القص والتغليف': 250,
+    },
+    expectedProfit: 1250,
+    assignedEmployee: 'فني الطباعة',
+    status: 'قيد الطباعة',
+    paymentMethod: 'آجل',
+    isPaid: false,
+    date: new Date().toISOString(),
+    notes: 'الزبون معتمد للبروفة الورقية',
+  },
+  {
+    id: '1004',
+    serialNumber: 'INV-1004',
+    serviceType: 'تصميم موقع إلكتروني',
+    clientName: 'شركة النجم للخدمات واللوجستيك',
+    description: 'تطوير منصة تتبع وتطبيق ويب متجاوب',
+    invoiceDetails: [
+      { item: 'تجليد سيارات وتوزيع فينيل عاكس معتمد' },
+      { item: 'لوحات إرشادية داخلية ألومنيوم كومبوزيت' },
+      { item: 'ستائر مكتبية رول مع طباعة الشعار الملون' },
+    ],
+    price: 5800,
+    cost: 3200,
+    costBreakdown: {
+      'تكلفة المطور': 2000,
+      'تكلفة واجهات UI/UX': 800,
+      'استضافة ونطاق': 400,
+    },
+    expectedProfit: 2600,
+    assignedEmployee: 'مهندس البرمجيات',
+    status: 'قيد التصميم',
+    paymentMethod: 'تحويل',
+    isPaid: true,
+    paidAt: new Date().toISOString(),
+    date: new Date().toISOString(),
+    notes: 'الدفعة الأولى 50% مستلمة',
+  },
+];
+
 // Clean Production State - No Mock Workshops
 const initialWorkshops: Workshop[] = [];
 
@@ -657,15 +471,19 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   // Load saved state or defaults
   const [orders, setOrders] = useState<Order[]>(() => {
     const saved = localStorage.getItem('masar_orders');
-    if (!saved) return [];
+    if (!saved) return initialOrders;
     try {
       const parsed: any[] = JSON.parse(saved);
+      if (!Array.isArray(parsed)) {
+        return initialOrders;
+      }
       return parsed.map((o, idx) => ({
         id: o.id || (1001 + idx).toString(),
         serialNumber: o.serialNumber || o.id || (1001 + idx).toString(),
         serviceType: o.serviceType || 'لافتة إعلانية',
         clientName: o.clientName || 'عميل نقدي',
         description: o.description || '',
+        invoiceDetails: o.invoiceDetails || (o.description ? [o.description] : undefined),
         price: Number(o.price) || 0,
         cost: typeof o.cost === 'number' ? o.cost : (Number(o.cost) || 0),
         costBreakdown: o.costBreakdown || undefined,
@@ -767,36 +585,37 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   // Pages and Components Central Manager State
   const [pagesConfig, setPagesConfig] = useState<PageConfig[]>(() => {
+    const deletedPageIds = new Set(['dashboard', 'kanban', 'tasks', 'inventory', 'expenses', 'customers', 'treasury', 'analysis', 'settings']);
+    const deletedPaths = new Set(['/', '/kanban', '/tasks', '/inventory', '/expenses', '/customers', '/treasury', '/analysis', '/settings']);
     const saved = localStorage.getItem('masar_pages_config');
     if (!saved) return defaultPagesConfig;
     try {
       const parsed: PageConfig[] = JSON.parse(saved);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        // Filter out removed pages (treasury, analysis) and ensure clean structure
+        // Filter out deleted pages and ensure clean structure
         const filtered = parsed
-          .filter(p => p.id !== 'treasury' && p.id !== 'analysis' && p.path !== '/treasury' && p.path !== '/analysis')
+          .filter(p => !deletedPageIds.has(p.id) && !deletedPaths.has(p.path))
           .map(p => {
-            if (p.id === 'dashboard') {
-              return { ...p, name: p.name || 'لوحة التحكم' };
-            }
-            if (p.id === 'sales' || p.path === '/sales') {
-              return { ...p, name: 'سجل المبيعات' };
+            if (p.id === 'employees' || p.path === '/employees') {
+              return { ...p, name: 'الموظفين' };
             }
             if (p.id === 'workshops' || p.path === '/workshops') {
-              return { ...p, name: 'حسابات الورش والجهات الخارجية', icon: 'Building2' };
+              return { ...p, name: 'جهات ذات العلاقة', icon: 'Building2' };
             }
-            if (p.id === 'expenses') {
-              // Ensure expenses has the rich smart indicators components if missing
-              const hasSmart = p.components?.some(c => c.id === 'expenses_smart_indicators');
-              if (!hasSmart) {
-                const defaultExpenses = defaultPagesConfig.find(dp => dp.id === 'expenses');
-                if (defaultExpenses) {
-                  return { ...p, description: defaultExpenses.description, components: defaultExpenses.components };
-                }
-              }
+            if (p.id === 'sales' || p.path === '/sales') {
+              return { ...p, name: 'سجل الفواتير' };
             }
             return p;
           });
+
+        // Ensure employees page is present
+        const hasEmployees = filtered.some(p => p.id === 'employees' || p.path === '/employees');
+        if (!hasEmployees) {
+          const defaultEmployees = defaultPagesConfig.find(dp => dp.id === 'employees');
+          if (defaultEmployees) {
+            filtered.unshift(defaultEmployees);
+          }
+        }
 
         // Ensure workshops page is present
         const hasWorkshops = filtered.some(p => p.id === 'workshops' || p.path === '/workshops');

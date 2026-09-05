@@ -54,9 +54,6 @@ export default function Sales() {
   const [kanbanEmployeeFilter, setKanbanEmployeeFilter] = useState<string>('الكل');
 
   // Form Fields:
-  // 1. رقم التسلسل: حقل يولد رقماً تسلسلياً تلقائياً (#1001)
-  const [customSerial, setCustomSerial] = useState('');
-  
   // 2. نوع الخدمة
   const availableServices = useMemo(() => {
     if (settings.servicesConfig && settings.servicesConfig.length > 0) {
@@ -93,9 +90,6 @@ export default function Sales() {
   // 4. سعر الفاتورة الإجمالي
   const [price, setPrice] = useState('');
   
-  // 5. تفصيل الخدمة
-  const [description, setDescription] = useState('');
-  
   // 6. التكلفة و التوقع للربح
   const [cost, setCost] = useState('');
   
@@ -107,9 +101,6 @@ export default function Sales() {
   const [commissionCost, setCommissionCost] = useState('');
   const [otherCosts, setOtherCosts] = useState('');
   const [costCenter, setCostCenter] = useState('');
-
-  // 7. الجهة المنفذة (الموظف المسؤول)
-  const [assignedEmployee, setAssignedEmployee] = useState('');
 
   // Supplementary Fields (Payment, Delivery, Dimensions)
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('نقدي');
@@ -135,9 +126,6 @@ export default function Sales() {
     const clients = Array.from(new Set(orders.map(o => o.clientName.trim()).filter(Boolean)));
     return clients.sort();
   }, [orders]);
-
-  // Auto-calculated serial number
-  const currentSerialNumber = customSerial || getNextSerialNumber();
 
   // Dynamic calculations in form
   const parsedPrice = parseFloat(price) || 0;
@@ -232,14 +220,12 @@ export default function Sales() {
   const totalNetProfit = totalSales - totalCosts;
 
   const resetForm = () => {
-    setCustomSerial('');
     setServiceType(availableServices[0]?.name || 'لافتة إعلانية');
     setDynamicCostValues({});
     setDynamicCostExecutors({});
     setCustomCostItemInput('');
     setClientName('');
     setPrice('');
-    setDescription('');
     
     setCost('');
     setDesignCost('');
@@ -250,7 +236,6 @@ export default function Sales() {
     setOtherCosts('');
     setCostCenter('');
 
-    setAssignedEmployee('');
     setPaymentMethod('نقدي');
     setDeposit('');
     setTargetDeliveryDate('');
@@ -306,7 +291,7 @@ export default function Sales() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!clientName.trim() || !description.trim() || parsedPrice <= 0) return;
+    if (!clientName.trim() || parsedPrice <= 0) return;
 
     const parsedCraneCost = craneCost ? parseFloat(craneCost) : 0;
 
@@ -358,11 +343,14 @@ export default function Sales() {
       if (k.includes('خارج') && !detectedExternal) detectedExternal = v;
     });
 
+    const autoSerial = getNextSerialNumber();
+
     addOrder({
-      serialNumber: currentSerialNumber,
+      serialNumber: autoSerial,
       serviceType: serviceType as ServiceType,
       clientName: clientName.trim(),
-      description: description.trim(),
+      description: serviceType ? `${serviceType}` : 'طلب جديد',
+      invoiceDetails: notes.trim() ? notes.split(/[\n•]+/).map(s => s.trim()).filter(Boolean) : undefined,
       
       price: parsedPrice,
       cost: parsedCost,
@@ -381,7 +369,7 @@ export default function Sales() {
       costBreakdownSummary: costBreakdownSummary || undefined,
 
       expectedProfit,
-      assignedEmployee: assignedEmployee || (employees.length > 0 ? employees[0].name : 'إدارة الورشة'),
+      assignedEmployee: (employees.length > 0 ? employees[0].name : 'إدارة الورشة'),
       status: 'بانتظار اعتماد التصميم',
       paymentMethod,
       date: new Date().toISOString(),
@@ -393,12 +381,12 @@ export default function Sales() {
       craneCost: parsedCraneCost,
       notes: notes.trim() || undefined,
       usedMaterials: usedMaterials.length > 0 ? usedMaterials : undefined
-    }, currentSerialNumber);
+    }, autoSerial);
 
     resetForm();
     setShowSuccessToast(true);
     setTimeout(() => setShowSuccessToast(false), 3500);
-    setActiveTab('invoices');
+    setActiveTab('monthly_grid');
   };
 
   const handleDeleteOrder = (orderId: string, client: string) => {
@@ -493,27 +481,23 @@ export default function Sales() {
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 no-print">
         <div>
-          <h2 className="text-2xl font-black text-slate-900 tracking-tight">سجل المبيعات</h2>
-          <p className="text-xs text-slate-600 mt-1">
-            إدارة العقود، تسجيل الفواتير، كشف حسابات الزبائن، ومتابعة مسارات الإنتاج والتنفيذ
+          <h2 className="text-2xl font-black text-slate-900 dark:text-slate-100 tracking-tight">سجل الفواتير</h2>
+          <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
+            إدارة الفواتير، متابعة العقود، كشف حسابات الزبائن، ومتابعة مسارات الإنتاج والتنفيذ
           </p>
         </div>
 
         <div className="flex items-center gap-2 w-full sm:w-auto">
-          {/* Workshop Kiosk Toggle */}
+          {/* Add Order Button */}
           <button
             type="button"
-            onClick={toggleKioskMode}
-            className={`glass-button flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all duration-150 ease-out shadow-xs ${
-              isKioskMode 
-                ? 'bg-emerald-600 text-white hover:bg-emerald-700 border-emerald-600' 
-                : 'text-slate-700 border-slate-200/80 hover:bg-slate-100 :bg-slate-800'
-            }`}
-            title="تفعيل شاشة عرض الورشة"
-            aria-label="تفعيل شاشة عرض الورشة"
+            onClick={() => setActiveTab('new_order')}
+            className="flex items-center justify-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors shadow-xs text-xs font-bold w-full sm:w-auto"
+            title="إضافة بند"
+            aria-label="إضافة بند"
           >
-            <Tv size={15} className={isKioskMode ? 'text-white' : 'text-emerald-600 '} />
-            <span className="hidden sm:inline">{isKioskMode ? 'إلغاء وضع الورشة' : 'وضع شاشة الورشة'}</span>
+            <Plus size={16} className="text-white" />
+            <span>إضافة بند</span>
           </button>
         </div>
       </div>
@@ -535,63 +519,35 @@ export default function Sales() {
         </div>
       )}
 
-      {/* Tabs Navigation (4 Primary Tabs) */}
-      <div className="flex items-center gap-2 p-1.5 bg-slate-100/90 rounded-xl border border-slate-200/80 shadow-xs no-print">
+      {/* Tabs Navigation (Navigation Tabs Only) */}
+      <div className="flex items-center gap-2 p-1.5 bg-slate-100/90 dark:bg-slate-800/90 rounded-xl border border-slate-200/80 dark:border-slate-700 shadow-xs no-print">
         
-        {/* Tab 1: السجل الشهري للطلبيات */}
+        {/* Tab 1: سجل الفواتير */}
         <button
           type="button"
           onClick={() => setActiveTab('monthly_grid')}
           className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-150 ease-out ${
             activeTab === 'monthly_grid'
-              ? 'bg-white text-indigo-700 shadow-sm border border-slate-200/80 '
-              : 'text-slate-600 hover:text-slate-900 :text-white'
+              ? 'bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-300 shadow-sm border border-slate-200/80 dark:border-slate-600'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
           }`}
         >
-          <FileSpreadsheet size={16} className={activeTab === 'monthly_grid' ? 'text-indigo-600' : 'text-slate-400'} />
-          <span>السجل الشهري للطلبيات</span>
+          <FileSpreadsheet size={16} className={activeTab === 'monthly_grid' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'} />
+          <span>سجل الفواتير</span>
         </button>
 
-        {/* Tab 2: سجل الفواتير */}
+        {/* Tab 2: المصاريف والأرباح */}
         <button
           type="button"
           onClick={() => setActiveTab('invoices')}
           className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-150 ease-out ${
             activeTab === 'invoices'
-              ? 'bg-white text-slate-900 shadow-sm border border-slate-200/80 '
-              : 'text-slate-600 hover:text-slate-900 :text-white'
+              ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-sm border border-slate-200/80 dark:border-slate-600'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
           }`}
         >
-          <FileText size={16} className={activeTab === 'invoices' ? 'text-emerald-600' : 'text-slate-400'} />
-          <span>سجل الفواتير ({orders.length})</span>
-        </button>
-
-        {/* Tab 3: إضافة طلبية جديدة */}
-        <button
-          type="button"
-          onClick={() => setActiveTab('new_order')}
-          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-150 ease-out ${
-            activeTab === 'new_order'
-              ? 'bg-white text-emerald-800 shadow-sm border border-slate-200/80 '
-              : 'text-slate-600 hover:text-slate-900 :text-white'
-          }`}
-        >
-          <Plus size={16} className={activeTab === 'new_order' ? 'text-emerald-600' : 'text-slate-400'} />
-          <span>إضافة طلبية جديدة</span>
-        </button>
-
-        {/* Tab 4: مسار الإنتاج Kanban */}
-        <button
-          type="button"
-          onClick={() => setActiveTab('kanban')}
-          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-150 ease-out ${
-            activeTab === 'kanban'
-              ? 'bg-white text-blue-700 shadow-sm border border-slate-200/80 '
-              : 'text-slate-600 hover:text-slate-900 :text-white'
-          }`}
-        >
-          <Kanban size={16} className={activeTab === 'kanban' ? 'text-blue-600' : 'text-slate-400'} />
-          <span>مسار الإنتاج Kanban</span>
+          <FileText size={16} className={activeTab === 'invoices' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'} />
+          <span>المصاريف والأرباح</span>
         </button>
       </div>
 
@@ -628,49 +584,38 @@ export default function Sales() {
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={resetForm}
-              className="text-xs text-slate-600 hover:text-slate-800 :text-slate-200 px-3 py-1.5 rounded-lg border border-slate-200/80 transition-all duration-150 ease-out "
-            >
-              تفريغ الحقول
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setActiveTab('monthly_grid')}
+                className="text-xs text-slate-600 hover:text-slate-800 dark:text-slate-300 dark:hover:text-white px-3 py-1.5 rounded-lg border border-slate-200/80 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-150 ease-out"
+              >
+                إلغاء والعودة للسجل
+              </button>
+              <button
+                type="button"
+                onClick={resetForm}
+                className="text-xs text-slate-600 hover:text-slate-800 dark:text-slate-300 dark:hover:text-white px-3 py-1.5 rounded-lg border border-slate-200/80 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-150 ease-out"
+              >
+                تفريغ الحقول
+              </button>
+            </div>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-6 pb-24">
             
-            {/* Row 1: Field 1 (رقم التسلسل) & Field 2 (نوع الخدمة) */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {/* الصف الأساسي: نوع الخدمة، اسم الزبون، وسعر الفاتورة الإجمالي */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
               
-              {/* 1. رقم التسلسل: حقل يولد رقماً تسلسلياً تلقائياً */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1.5">
-                  <Hash size={14} className="text-slate-600" />
-                  <span>1. رقم التسلسل (توليد تلقائي)</span>
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={currentSerialNumber}
-                    onChange={(e) => setCustomSerial(e.target.value)}
-                    className="w-full glass-input rounded-lg px-4 py-2.5 text-sm font-mono tabular-nums font-black text-emerald-800 bg-emerald-50/40 border-emerald-300/80 "
-                    placeholder="#1001"
-                  />
-                  <span className="absolute left-3 top-2.5 text-[11px] font-bold text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded">
-                    رقم #{currentSerialNumber}
-                  </span>
-                </div>
-              </div>
-
-              {/* 2. نوع الخدمة: قائمة منسدلة ديناميكية */}
+              {/* نوع الخدمة: قائمة منسدلة ديناميكية */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center justify-between">
                   <span className="flex items-center gap-1.5">
                     <Layers size={14} className="text-slate-600" />
-                    <span>2. نوع الخدمة (القوالب الديناميكية)</span>
+                    <span>نوع الخدمة (القوالب الديناميكية)</span>
                   </span>
                   <span className="text-[10px] text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
-                    {currentCostItems.length} بنود تكلفة مقترنة
+                    {currentCostItems.length} بنود
                   </span>
                 </label>
                 <div className="relative">
@@ -687,16 +632,12 @@ export default function Sales() {
                   <ChevronDown size={16} className="absolute left-3 top-3 text-slate-400 pointer-events-none" />
                 </div>
               </div>
-            </div>
 
-            {/* Row 2: Field 3 (اسم الزبون) & Field 4 (سعر الفاتورة الإجمالي) */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              
-              {/* 3. اسم الزبون */}
+              {/* اسم الزبون */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1.5">
                   <User size={14} className="text-slate-600" />
-                  <span>3. اسم الزبون (الشركة أو الشخص)</span>
+                  <span>اسم الزبون (الشركة أو الشخص)</span>
                 </label>
                 <input
                   type="text"
@@ -708,11 +649,11 @@ export default function Sales() {
                 />
               </div>
 
-              {/* 4. سعر الفاتورة الإجمالي */}
+              {/* سعر الفاتورة الإجمالي */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1.5">
                   <DollarSign size={14} className="text-slate-600" />
-                  <span>4. سعر الفاتورة الإجمالي ({settings.shopInfo.currency})</span>
+                  <span>سعر الفاتورة الإجمالي ({settings.shopInfo.currency})</span>
                 </label>
                 <input
                   type="number"
@@ -725,22 +666,6 @@ export default function Sales() {
                   placeholder="0.00"
                 />
               </div>
-            </div>
-
-            {/* Field 5: تفصيل الخدمة */}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1.5">
-                <FileText size={14} className="text-slate-600" />
-                <span>5. تفصيل الخدمة والمواصفات</span>
-              </label>
-              <textarea
-                required
-                rows={3}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="w-full glass-input rounded-lg px-4 py-2.5 text-sm resize-y leading-relaxed"
-                placeholder="اكتب مواصفات العمل والبنود المتفق عليها..."
-              />
             </div>
 
             {/* Raw Materials Auto-Deduction Section */}
@@ -1015,30 +940,6 @@ export default function Sales() {
               </div>
             </div>
 
-            {/* Field 7: الجهة المنفذة */}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1.5">
-                <Briefcase size={14} className="text-slate-600" />
-                <span>7. الجهة المنفذة (الموظف المسؤول)</span>
-              </label>
-              <div className="relative">
-                <select
-                  value={assignedEmployee}
-                  onChange={(e) => setAssignedEmployee(e.target.value)}
-                  className="w-full glass-input rounded-lg px-4 py-2.5 text-sm font-bold text-slate-900 appearance-none bg-white cursor-pointer pr-4 pl-10"
-                >
-                  <option value="">اختر الموظف المسؤول عن التنفيذ...</option>
-                  {employees.map(emp => (
-                    <option key={emp.id} value={emp.name}>
-                      {emp.name} ({emp.role})
-                    </option>
-                  ))}
-                  <option value="إدارة الورشة / فريق العمل">إدارة الورشة / فريق العمل</option>
-                </select>
-                <ChevronDown size={16} className="absolute left-3 top-3 text-slate-400 pointer-events-none" />
-              </div>
-            </div>
-
             {/* Supplementary Fields Toggle */}
             <div className="pt-3 border-t border-slate-200/80 ">
               <button
@@ -1178,20 +1079,20 @@ export default function Sales() {
               </div>
             </div>
 
-            {/* Form Actions */}
-            <div className="flex justify-end gap-3 pt-4 border-t border-slate-200/80 ">
+            {/* شريط الإجراءات العائم في الزاوية السفلية من الشاشة (Fixed Floating Action Bar) */}
+            <div className="fixed bottom-4 left-4 sm:bottom-6 sm:left-6 z-50 flex items-center gap-3 p-2.5 sm:p-3 rounded-2xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200/90 dark:border-slate-800 shadow-2xl shadow-slate-950/20 dark:shadow-black/70 animate-in slide-in-from-bottom-4 duration-200">
               <button
                 type="button"
-                onClick={() => setActiveTab('invoices')}
-                className="px-5 py-2.5 text-xs font-bold rounded-xl text-slate-600 hover:text-slate-900 :text-white hover:bg-slate-100 :bg-slate-800 transition-all duration-150 ease-out "
+                onClick={() => setActiveTab('monthly_grid')}
+                className="px-4 sm:px-5 py-2.5 text-xs sm:text-sm font-bold rounded-xl text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-150 ease-out"
               >
                 إلغاء
               </button>
               <button
                 type="submit"
-                className="btn-primary px-8 py-2.5 text-xs font-bold rounded-xl shadow-sm flex items-center gap-2"
+                className="px-6 sm:px-8 py-2.5 text-xs sm:text-sm font-bold rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-xl shadow-blue-600/30 hover:shadow-blue-600/40 active:scale-[0.98] flex items-center gap-2 transition-all"
               >
-                <Check size={16} />
+                <Check size={18} />
                 <span>حفظ الطلبية وإصدار الفاتورة</span>
               </button>
             </div>
