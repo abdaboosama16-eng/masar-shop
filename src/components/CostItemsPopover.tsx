@@ -167,6 +167,27 @@ export default function CostItemsPopover({
       }
     });
 
+    // تجهيز بنود تفاصيل الفاتورة كمصفوفة لتخزينها وعرضها في الجدول
+    const detailsList: string[] = [];
+    if (parsedDesign > 0) {
+      detailsList.push(designExecutor.trim() ? `تكلفة التصميم: ${parsedDesign} (${designExecutor.trim()})` : `تكلفة التصميم: ${parsedDesign}`);
+    }
+    if (parsedPrinting > 0) {
+      detailsList.push(printingExecutor.trim() ? `تكلفة الطباعة: ${parsedPrinting} (${printingExecutor.trim()})` : `تكلفة الطباعة: ${parsedPrinting}`);
+    }
+    if (parsedExternal > 0) {
+      detailsList.push(externalExecutor.trim() ? `تكلفة خارجية: ${parsedExternal} (${externalExecutor.trim()})` : `تكلفة خارجية: ${parsedExternal}`);
+    }
+    if (parsedMaterial > 0) {
+      detailsList.push(materialExecutor.trim() ? `مواد خام: ${parsedMaterial} (${materialExecutor.trim()})` : `مواد خام: ${parsedMaterial}`);
+    }
+    customItems.forEach(item => {
+      const amt = parseFloat(item.amount) || 0;
+      if (amt > 0) {
+        detailsList.push(item.executor.trim() ? `${item.name}: ${amt} (${item.executor.trim()})` : `${item.name}: ${amt}`);
+      }
+    });
+
     const updates: Partial<Order> = {
       designCost: parsedDesign,
       designerName: designExecutor.trim() || undefined,
@@ -179,6 +200,7 @@ export default function CostItemsPopover({
       costExecutors: Object.keys(dynamicExecutors).length > 0 ? dynamicExecutors : undefined,
       cost: totalCalculatedCost > 0 ? totalCalculatedCost : 0,
       expectedProfit,
+      invoiceDetails: detailsList.length > 0 ? detailsList : undefined,
     };
 
     onSave(order.id, updates);

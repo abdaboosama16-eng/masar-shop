@@ -821,17 +821,123 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     return saved ? JSON.parse(saved) : [];
   });
 
+  const defaultInitialWorkshops: Workshop[] = [
+    {
+      id: 'ws-1',
+      name: 'ورشة الأهرام للحدادة والشاسيهات',
+      address: 'المنطقة الصناعية - قطاع ب',
+      totalCost: 14500,
+      totalPaid: 9500,
+      balance: 5000,
+      transactions: [
+        {
+          id: 'tx-1-1',
+          date: '2026-05-10T10:00:00.000Z',
+          description: 'شاسيه حديد وتيوبات مجلفنة - لافتة واجهة',
+          cost: 4500,
+          paid: 0,
+          balanceAfter: 4500,
+          type: 'مطالبة'
+        },
+        {
+          id: 'tx-1-2',
+          date: '2026-05-18T14:30:00.000Z',
+          description: 'سداد دفعة نقدية',
+          cost: 0,
+          paid: 3000,
+          balanceAfter: 1500,
+          type: 'دفعة'
+        },
+        {
+          id: 'tx-1-3',
+          date: '2026-06-02T11:15:00.000Z',
+          description: 'هيكل واجهة رئيسية لافتة 3D',
+          cost: 6000,
+          paid: 2500,
+          balanceAfter: 5000,
+          type: 'مطالبة'
+        }
+      ]
+    },
+    {
+      id: 'ws-2',
+      name: 'مطبعة الفن للبنر والفليكس الخارجي',
+      address: 'شارع التجارة - مبنى الأوائل',
+      totalCost: 28000,
+      totalPaid: 21000,
+      balance: 7000,
+      transactions: [
+        {
+          id: 'tx-2-1',
+          date: '2026-05-15T09:00:00.000Z',
+          description: 'طباعة فليكس مضيء عالي الوضوح',
+          cost: 5200,
+          paid: 3000,
+          balanceAfter: 2200,
+          type: 'مطالبة'
+        },
+        {
+          id: 'tx-2-2',
+          date: '2026-06-10T12:00:00.000Z',
+          description: 'طباعة ستيكر سيارات مع سلوفان حماية',
+          cost: 2800,
+          paid: 1500,
+          balanceAfter: 3500,
+          type: 'مطالبة'
+        }
+      ]
+    },
+    {
+      id: 'ws-3',
+      name: 'شركة الدقة لقص الليزر والأكريليك',
+      address: 'طريق المطار - مجمع الورش',
+      totalCost: 18200,
+      totalPaid: 18200,
+      balance: 0,
+      transactions: [
+        {
+          id: 'tx-3-1',
+          date: '2026-06-05T10:00:00.000Z',
+          description: 'قص ليزر أحرف بارزة مذهبة',
+          cost: 4800,
+          paid: 4800,
+          balanceAfter: 0,
+          type: 'مطالبة'
+        }
+      ]
+    },
+    {
+      id: 'ws-4',
+      name: 'مؤسسة القمة للرافعات والتركيبات الميدانية',
+      address: 'المنطقة الحرة - المدخل الشرقي',
+      totalCost: 12000,
+      totalPaid: 8000,
+      balance: 4000,
+      transactions: [
+        {
+          id: 'tx-4-1',
+          date: '2026-06-12T15:00:00.000Z',
+          description: 'رافعة هيدروليكية لتركيب لافتة برجين',
+          cost: 3800,
+          paid: 2500,
+          balanceAfter: 1300,
+          type: 'مطالبة'
+        }
+      ]
+    }
+  ];
+
   const [workshops, setWorkshops] = useState<Workshop[]>(() => {
     const saved = localStorage.getItem('masar_workshops');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       } catch {
         // fallback
       }
     }
-    return [];
+    return defaultInitialWorkshops;
   });
 
   const addWorkshop = (data: Omit<Workshop, 'id' | 'balance' | 'totalCost' | 'totalPaid' | 'transactions'> & { initialBalance?: number }) => {
@@ -852,8 +958,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     const newWs: Workshop = {
       id: 'ws-' + Date.now().toString(),
       name: data.name.trim(),
-      activity: data.activity?.trim() || '',
-      phone: data.phone?.trim() || '',
       address: data.address?.trim() || '',
       notes: data.notes?.trim() || '',
       balance: initBal,

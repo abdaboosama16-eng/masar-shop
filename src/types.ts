@@ -164,8 +164,6 @@ export interface WorkshopTransaction {
 export interface Workshop {
   id: string;
   name: string; // اسم الورشة أو الشركة (مثل: شركة وليد، ورشة الحدادة)
-  phone?: string;
-  activity?: string; // التخصص أو النشاط (مثل: أعمال حدادة، تركيبات ورافعات، قص ليزر، مطبعة خارجية)
   address?: string;
   balance: number; // الرصيد المتبقي (إجمالي المديونية المستحقة لهذه الجهة)
   totalCost: number; // إجمالي التكاليف / المطالبات

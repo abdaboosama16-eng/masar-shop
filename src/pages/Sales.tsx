@@ -1,13 +1,13 @@
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../context/AppContext';
-import { Order, OrderStatus, PaymentMethod, ServiceType, OrderMaterialUsage } from '../types';
+import { Order, OrderStatus, PaymentMethod, ServiceType } from '../types';
 import { 
   Plus, Printer, X, Inbox, Maximize, Calendar, FileImage, 
   MapPin, Hash, User, DollarSign, FileText, 
   Search, Filter, Trash2, Layers, Share2, Monitor, 
   FileSpreadsheet, ChevronDown, Calculator, Check, 
   Briefcase, MessageSquare, BookOpen, RotateCcw, 
-  Tv, PackageMinus, Boxes, Kanban, ArrowRight, 
+  Tv, Kanban, ArrowRight, 
   CheckCircle2, Clock
 } from 'lucide-react';
 import { format } from 'date-fns';
@@ -23,19 +23,22 @@ export default function Sales() {
   const { 
     orders, 
     addOrder, 
+    updateOrder,
     deleteOrder, 
     getNextSerialNumber, 
     updateOrderStatus, 
     toggleOrderPaidStatus,
     employees, 
     settings, 
-    inventory,
     isKioskMode,
     toggleKioskMode 
   } = useAppContext();
 
   // Active Tab State (4 Principal Tabs)
   const [activeTab, setActiveTab] = useState<SalesActiveTab>('monthly_grid');
+
+  // Inline table row addition state
+  const [isAddingRow, setIsAddingRow] = useState(false);
 
   // Modals state
   const [selectedOrderForDesign, setSelectedOrderForDesign] = useState<Order | null>(null);
@@ -112,11 +115,6 @@ export default function Sales() {
   const [craneCost, setCraneCost] = useState('');
   const [notes, setNotes] = useState('');
   const [showAdvancedFields, setShowAdvancedFields] = useState(false);
-
-  // Raw Materials Auto-Deduction State
-  const [usedMaterials, setUsedMaterials] = useState<OrderMaterialUsage[]>([]);
-  const [selectedMaterialId, setSelectedMaterialId] = useState('');
-  const [materialQty, setMaterialQty] = useState('');
 
   // Form Submission Success Toast
   const [showSuccessToast, setShowSuccessToast] = useState(false);
@@ -245,48 +243,6 @@ export default function Sales() {
     setCraneCost('');
     setNotes('');
     setShowAdvancedFields(false);
-    setUsedMaterials([]);
-    setSelectedMaterialId('');
-    setMaterialQty('');
-  };
-
-  const handleAddMaterialUsage = () => {
-    if (!selectedMaterialId || !materialQty || parseFloat(materialQty) <= 0) return;
-    const invItem = inventory.find(i => i.id === selectedMaterialId);
-    if (!invItem) return;
-
-    const qty = parseFloat(materialQty);
-    const uPrice = invItem.unitPrice || 0;
-    const tCost = qty * uPrice;
-
-    const newUsage: OrderMaterialUsage = {
-      itemId: invItem.id,
-      name: invItem.name,
-      quantity: qty,
-      unit: invItem.unit,
-      unitPrice: uPrice,
-      totalCost: tCost
-    };
-
-    const updatedMaterials = [...usedMaterials, newUsage];
-    setUsedMaterials(updatedMaterials);
-
-    // Auto-calculate execution cost from raw materials + crane
-    const matsCostSum = updatedMaterials.reduce((sum, m) => sum + (m.totalCost || (m.quantity * (m.unitPrice || 0))), 0);
-    const parsedCrane = parseFloat(craneCost) || 0;
-    setCost(String(matsCostSum + parsedCrane));
-
-    setSelectedMaterialId('');
-    setMaterialQty('');
-  };
-
-  const handleRemoveMaterialUsage = (index: number) => {
-    const updatedMaterials = usedMaterials.filter((_, i) => i !== index);
-    setUsedMaterials(updatedMaterials);
-    
-    const matsCostSum = updatedMaterials.reduce((sum, m) => sum + (m.totalCost || (m.quantity * (m.unitPrice || 0))), 0);
-    const parsedCrane = parseFloat(craneCost) || 0;
-    setCost(String(matsCostSum + parsedCrane));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -380,7 +336,6 @@ export default function Sales() {
       installationAddress: installationAddress.trim() || undefined,
       craneCost: parsedCraneCost,
       notes: notes.trim() || undefined,
-      usedMaterials: usedMaterials.length > 0 ? usedMaterials : undefined
     }, autoSerial);
 
     resetForm();
@@ -491,13 +446,17 @@ export default function Sales() {
           {/* Add Order Button */}
           <button
             type="button"
-            onClick={() => setActiveTab('new_order')}
-            className="flex items-center justify-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors shadow-xs text-xs font-bold w-full sm:w-auto"
+            id="btn-add-item-blue"
+            onClick={() => {
+              setIsAddingRow(true);
+              setActiveTab('monthly_grid');
+            }}
+            className="flex items-center justify-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors shadow-xs text-xs font-bold w-full sm:w-auto cursor-pointer"
             title="إضافة بند"
             aria-label="إضافة بند"
           >
             <Plus size={16} className="text-white" />
-            <span>إضافة بند</span>
+            <span>+ إضافة بند</span>
           </button>
         </div>
       </div>
@@ -507,7 +466,7 @@ export default function Sales() {
         <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-900 flex items-center justify-between animate-in fade-in slide-in-from-top-2 shadow-sm">
           <div className="flex items-center gap-2.5">
             <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
-            <span className="text-xs font-bold">تم حفظ الطلبية وإصدار الفاتورة وخصم المواد الخام من المخزن بنجاح.</span>
+            <span className="text-xs font-bold">تم حفظ الطلبية وإصدار الفاتورة بنجاح.</span>
           </div>
           <button
             type="button"
@@ -559,11 +518,14 @@ export default function Sales() {
           orders={orders}
           currency={settings.shopInfo.currency}
           onUpdateStatus={updateOrderStatus}
+          onUpdateOrder={updateOrder}
           onPrintOrder={setPrintingOrder}
           onShareWhatsApp={setWhatsAppOrder}
           onViewDesign={setSelectedOrderForDesign}
           onViewOrderDetails={setSelectedOrderForDetails}
           onTogglePaid={toggleOrderPaidStatus}
+          isAddingRow={isAddingRow}
+          setIsAddingRow={setIsAddingRow}
         />
       )}
 
@@ -580,7 +542,7 @@ export default function Sales() {
               </div>
               <div>
                 <h3 className="font-bold text-base text-slate-900 ">نموذج إضافة طلبية / فاتورة جديدة</h3>
-                <p className="text-xs text-slate-600 ">إدخال بيانات العقد، الأسعار، وحساب صافي الأرباح وخصم المخزون التلقائي</p>
+                <p className="text-xs text-slate-600 ">إدخال بيانات العقد، الأسعار، وحساب صافي الأرباح والتكاليف</p>
               </div>
             </div>
 
@@ -666,90 +628,6 @@ export default function Sales() {
                   placeholder="0.00"
                 />
               </div>
-            </div>
-
-            {/* Raw Materials Auto-Deduction Section */}
-            <div className="p-5 rounded-xl bg-slate-50/80 border border-slate-200/80 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <PackageMinus size={16} className="text-emerald-600 " />
-                  <span className="text-xs font-bold text-slate-900 ">
-                    خصم المواد الخام المستهلكة من المخزن وحساب التكلفة آلياً
-                  </span>
-                </div>
-                <span className="text-[10px] text-slate-600 ">
-                  تحديث فوري لرصيد المخزن
-                </span>
-              </div>
-
-              {/* Material selector */}
-              <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-center">
-                <div className="sm:col-span-7">
-                  <select
-                    value={selectedMaterialId}
-                    onChange={(e) => setSelectedMaterialId(e.target.value)}
-                    className="w-full glass-input rounded-lg px-3 py-2 text-xs bg-white "
-                  >
-                    <option value="">اختر مادة خام من المخزون...</option>
-                    {inventory.map(item => (
-                      <option key={item.id} value={item.id}>
-                        {item.name} (المتوفر: {item.quantity} {item.unit} | التكلفة: {item.unitPrice || 0} {settings.shopInfo.currency})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="sm:col-span-3">
-                  <input
-                    type="number"
-                    min="0.1"
-                    step="any"
-                    value={materialQty}
-                    onChange={(e) => setMaterialQty(e.target.value)}
-                    placeholder="الكمية..."
-                    className="w-full glass-input rounded-lg px-3 py-2 text-xs font-mono tabular-nums bg-white "
-                  />
-                </div>
-
-                <div className="sm:col-span-2">
-                  <button
-                    type="button"
-                    onClick={handleAddMaterialUsage}
-                    className="w-full btn-primary py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1"
-                  >
-                    <Plus size={14} />
-                    <span>إضافة</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Added materials list */}
-              {usedMaterials.length > 0 && (
-                <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-200/80 ">
-                  {usedMaterials.map((mat, idx) => (
-                    <div 
-                      key={idx}
-                      className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-900 px-3 py-1.5 rounded-xl text-xs font-bold"
-                    >
-                      <Boxes size={13} className="text-emerald-600" />
-                      <span>{mat.name}:</span>
-                      <span className="font-mono tabular-nums text-emerald-700 ">{mat.quantity} {mat.unit}</span>
-                      {mat.totalCost ? (
-                        <span className="text-[10px] font-mono tabular-nums text-slate-600 bg-white/80 px-1.5 py-0.5 rounded">
-                          ({mat.totalCost.toLocaleString()} {settings.shopInfo.currency})
-                        </span>
-                      ) : null}
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveMaterialUsage(idx)}
-                        className="text-rose-500 hover:text-rose-700 p-0.5"
-                      >
-                        <X size={13} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
 
             {/* Field 6: بنود التكلفة الديناميكية الخاصة بنوع الخدمة وصافي الربح */}
