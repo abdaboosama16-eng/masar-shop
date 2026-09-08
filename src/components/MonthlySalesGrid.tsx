@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Order, OrderStatus, ServiceType } from '../types';
+import { Order, OrderStatus, ServiceType, DynamicServiceConfig } from '../types';
 import { 
   ChevronRight, 
   ChevronLeft, 
@@ -13,11 +13,16 @@ import {
   Plus,
   Check,
   X,
-  Pencil
+  Pencil,
+  Trash2,
+  GripVertical,
+  Copy,
+  Pin,
+  Layers
 } from 'lucide-react';
 import { format, parseISO, startOfMonth, endOfMonth, isWithinInterval, addMonths, subMonths } from 'date-fns';
 import { ar } from 'date-fns/locale';
-import { useAppContext } from '../context/AppContext';
+import { useAppContext, defaultServicesConfig } from '../context/AppContext';
 import CostItemsPopover from './CostItemsPopover';
 
 interface MonthlySalesGridProps {
@@ -25,11 +30,15 @@ interface MonthlySalesGridProps {
   currency: string;
   onUpdateStatus?: (orderId: string, status: OrderStatus) => void;
   onUpdateOrder?: (orderId: string, updates: Partial<Order>) => void;
+  onDeleteOrder?: (orderId: string) => void;
+  onReorderOrders?: (newOrders: Order[]) => void;
   onPrintOrder?: (order: Order) => void;
   onShareWhatsApp?: (order: Order) => void;
   onViewDesign?: (order: Order) => void;
   onViewOrderDetails?: (order: Order) => void;
   onTogglePaid?: (orderId: string) => void;
+  onTogglePinned?: (orderId: string) => void;
+  onDuplicateOrder?: (order: Order) => void;
   isAddingRow?: boolean;
   setIsAddingRow?: (val: boolean) => void;
 }
@@ -121,6 +130,50 @@ const getOrderInvoiceDetailsList = (order: Order): string[] => {
   return list.filter(item => item !== 'طلب جديد' && item !== order.serviceType);
 };
 
+// دالة التحقق من صف الإجماليات والمجاميع (مجموع القيم المحسوبة / إجمالي الشهر) لتمييزه عن صفوف الفواتير الحقيقية
+const isSummaryOrTotalRow = (row: any): boolean => {
+  if (!row) return false;
+  if (row.isTotal || row.isSummary) return true;
+  const idStr = String(row.id || '').toLowerCase().trim();
+  if (idStr === 'total' || idStr === 'totals' || idStr === 'summary' || idStr === 'footer-total') return true;
+
+  const clientName = String(row.clientName || '').trim();
+  const serviceType = String(row.serviceType || '').trim();
+  const description = String(row.description || '').trim();
+  const notes = String(row.notes || '').trim();
+
+  if (
+    clientName.includes('مجموع القيم المحسوبة') ||
+    clientName.includes('إجمالي الشهر') ||
+    clientName.includes('مجموع الفواتير') ||
+    clientName === 'المجموع' ||
+    clientName === 'الإجمالي' ||
+    clientName === 'مجموع' ||
+    clientName === 'إجمالي'
+  ) {
+    return true;
+  }
+
+  if (
+    serviceType.includes('مجموع القيم المحسوبة') ||
+    serviceType.includes('إجمالي الشهر') ||
+    serviceType === 'المجموع' ||
+    serviceType === 'الإجمالي'
+  ) {
+    return true;
+  }
+
+  if (
+    description.includes('مجموع القيم المحسوبة') ||
+    description.includes('إجمالي الشهر') ||
+    notes.includes('مجموع القيم المحسوبة')
+  ) {
+    return true;
+  }
+
+  return false;
+};
+
 export default function MonthlySalesGrid({
   orders,
   currency,
@@ -131,21 +184,366 @@ export default function MonthlySalesGrid({
   onViewDesign,
   onViewOrderDetails,
   onTogglePaid,
+  onTogglePinned,
+  onDuplicateOrder,
+  onDeleteOrder,
+  onReorderOrders,
   isAddingRow: propIsAddingRow,
   setIsAddingRow: propSetIsAddingRow,
 }: MonthlySalesGridProps) {
   const { 
     updateOrder: contextUpdateOrder, 
     addOrder, 
+    deleteOrder,
+    setOrders,
+    reorderOrders: contextReorderOrders,
+    toggleOrderPinned: contextToggleOrderPinned,
     getNextSerialNumber, 
     settings, 
     employees 
   } = useAppContext();
 
+  // إدارة حالة الفواتير (Invoices State) لضمان الاستجابة اللحظية والتحديث المباشر واستبعاد أي صف إجماليات
+  const [invoices, setInvoicesState] = useState<Order[]>(() => {
+    try {
+      const saved = localStorage.getItem('masar_invoices') || localStorage.getItem('masar_orders');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed
+            .filter((inv: any) => !isSummaryOrTotalRow(inv))
+            .map((inv: any, idx: number) => ({
+              ...inv,
+              id: inv.id !== undefined && inv.id !== null ? String(inv.id) : (inv.serialNumber ? String(inv.serialNumber) : `inv-${idx}`)
+            }));
+        }
+      }
+    } catch (e) {
+      console.error('Failed to read invoices from localStorage:', e);
+    }
+    return (orders || [])
+      .filter((inv: any) => !isSummaryOrTotalRow(inv))
+      .map((inv: any, idx: number) => ({
+        ...inv,
+        id: inv.id !== undefined && inv.id !== null ? String(inv.id) : (inv.serialNumber ? String(inv.serialNumber) : `inv-${idx}`)
+      }));
+  });
+
+  // مزامنة حالة الفواتير عند تحديث orders من المصدر الخارجي
+  useEffect(() => {
+    if (orders) {
+      setInvoicesState(
+        orders
+          .filter((inv: any) => !isSummaryOrTotalRow(inv))
+          .map((inv: any, idx: number) => ({
+            ...inv,
+            id: inv.id !== undefined && inv.id !== null ? String(inv.id) : (inv.serialNumber ? String(inv.serialNumber) : `inv-${idx}`)
+          }))
+      );
+    }
+  }, [orders]);
+
+  // دالة تحديث الحالة (State) والـ LocalStorage مباشرة
+  const setInvoices = (updated: Order[]) => {
+    const normalized = updated.map((inv: any, idx: number) => ({
+      ...inv,
+      id: inv.id !== undefined && inv.id !== null ? String(inv.id) : (inv.serialNumber ? String(inv.serialNumber) : `inv-${idx}`)
+    }));
+    setInvoicesState(normalized);
+    try {
+      localStorage.setItem('masar_invoices', JSON.stringify(normalized));
+      localStorage.setItem('masar_orders', JSON.stringify(normalized));
+    } catch (err) {
+      console.error('Failed to update masar_invoices/masar_orders in localStorage:', err);
+    }
+    if (setOrders) {
+      setOrders(normalized);
+    }
+  };
+
+  // Local list of deleted order IDs for instantaneous UI filter response
+  const [deletedRowIds, setDeletedRowIds] = useState<string[]>([]);
+
+  // Drag and drop state for manually reordering table rows
+  const [draggedOrderId, setDraggedOrderId] = useState<string | null>(null);
+  const [dragOverOrderId, setDragOverOrderId] = useState<string | null>(null);
+
+  // Local state for persisted manual order of row IDs
+  const [customOrderIds, setCustomOrderIds] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('masar_sales_grid_order');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (err) {
+      console.error('Error reading masar_sales_grid_order from localStorage:', err);
+    }
+    return [];
+  });
+
+  // معالجات السحب والإفلات وتحديث الحالة وحفظ الترتيب فوراً
+  const handleDragStart = (e: React.DragEvent, orderId: string) => {
+    e.dataTransfer.setData('text/plain', orderId);
+    e.dataTransfer.effectAllowed = 'move';
+    setDraggedOrderId(orderId);
+  };
+
+  const handleDragOver = (e: React.DragEvent, targetId: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (targetId !== dragOverOrderId) {
+      setDragOverOrderId(targetId);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent, targetId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const sourceId = draggedOrderId || e.dataTransfer.getData('text/plain');
+    if (!sourceId || sourceId === targetId) {
+      setDraggedOrderId(null);
+      setDragOverOrderId(null);
+      return;
+    }
+
+    // 1. تحديث ترتيب المصفوفة الشاملة للطلبيات
+    const allOrdersList = [...orders];
+    const fromFullIdx = allOrdersList.findIndex((o) => o.id === sourceId);
+    const toFullIdx = allOrdersList.findIndex((o) => o.id === targetId);
+
+    if (fromFullIdx !== -1 && toFullIdx !== -1) {
+      const [movedItem] = allOrdersList.splice(fromFullIdx, 1);
+      allOrdersList.splice(toFullIdx, 0, movedItem);
+
+      // حفظ الترتيب الجديد فوراً في التخزين المحلي masar_orders
+      try {
+        localStorage.setItem('masar_orders', JSON.stringify(allOrdersList));
+      } catch (err) {
+        console.error('Error saving masar_orders to localStorage:', err);
+      }
+
+      // تحديث الحالة العامة في Context أو Props
+      if (onReorderOrders) {
+        onReorderOrders(allOrdersList);
+      } else if (contextReorderOrders) {
+        contextReorderOrders(allOrdersList);
+      }
+    }
+
+    // 2. تحديث مصفوفة الترتيب المخصص customOrderIds وحفظها في التخزين المحلي
+    const baseIds = customOrderIds.length > 0 ? [...customOrderIds] : orders.map((o) => o.id);
+    let updatedIds = [...baseIds];
+    const fromIdx = updatedIds.indexOf(sourceId);
+    const toIdx = updatedIds.indexOf(targetId);
+
+    if (fromIdx !== -1 && toIdx !== -1) {
+      const [movedId] = updatedIds.splice(fromIdx, 1);
+      updatedIds.splice(toIdx, 0, movedId);
+    } else {
+      updatedIds = updatedIds.filter((id) => id !== sourceId);
+      const targetPos = updatedIds.indexOf(targetId);
+      if (targetPos !== -1) {
+        updatedIds.splice(targetPos, 0, sourceId);
+      } else {
+        updatedIds.unshift(sourceId);
+      }
+    }
+
+    setCustomOrderIds(updatedIds);
+    try {
+      localStorage.setItem('masar_sales_grid_order', JSON.stringify(updatedIds));
+    } catch (err) {
+      console.error('Error saving masar_sales_grid_order to localStorage:', err);
+    }
+
+    setDraggedOrderId(null);
+    setDragOverOrderId(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedOrderId(null);
+    setDragOverOrderId(null);
+  };
+
+  // دالة تشغيل إضافة فاتورة جديدة في أسفل الجدول
+  const handleTriggerAddRow = () => {
+    setIsAddingRow(true);
+    setTimeout(() => {
+      const inputEl = document.getElementById('inline-input-client-name');
+      if (inputEl) {
+        inputEl.focus();
+        inputEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 100);
+  };
+
+  // دالة الحذف وتحديث الحالة (State) وحفظ المصفوفة الجديدة في localStorage مباشرة
+  const handleDelete = (orderId: string | number) => {
+    const idStr = String(orderId);
+    // 1. تحديث الحالة المحلية فورياً لإخفاء السطر في نفس اللحظة
+    setDeletedRowIds(prev => [...prev, idStr]);
+
+    // 2. تصفية المصفوفة وتحديث الحالة والـ localStorage مباشرة
+    const updated = invoices.filter(inv => String(inv.id) !== idStr);
+    setInvoices(updated);
+    try {
+      localStorage.setItem('masar_invoices', JSON.stringify(updated));
+      localStorage.setItem('masar_orders', JSON.stringify(updated));
+    } catch (err) {
+      console.error('Error saving masar_invoices to localStorage:', err);
+    }
+
+    // تنظيف معرّف الطلبية من الترتيب المخصص في localStorage إن وجد
+    const savedOrderIds = localStorage.getItem('masar_monthly_grid_order');
+    if (savedOrderIds) {
+      try {
+        const parsedIds = JSON.parse(savedOrderIds);
+        if (Array.isArray(parsedIds)) {
+          const updatedIds = parsedIds.filter((id: string) => String(id) !== idStr);
+          localStorage.setItem('masar_monthly_grid_order', JSON.stringify(updatedIds));
+          setCustomOrderIds(updatedIds);
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    // 3. تحديث الحالة العامة للتطبيق
+    if (onDeleteOrder) {
+      onDeleteOrder(idStr);
+    }
+    deleteOrder(idStr);
+  };
+  const handleDeleteRow = handleDelete;
+
+  // ثانياً: دالة نسخ / تكرار الفاتورة (Duplicate Row) وإدراج السطر المنسوخ في أسفل الجدول
+  const handleDuplicate = (orderToDuplicate: Order) => {
+    if (onDuplicateOrder) {
+      onDuplicateOrder(orderToDuplicate);
+      return;
+    }
+
+    const newSerial = getNextSerialNumber();
+    const duplicatedOrder: Omit<Order, 'id'> = {
+      ...orderToDuplicate,
+      serialNumber: newSerial,
+      // الاحتفاظ بتاريخ الشهر المعروض أو تاريخ اليوم
+      date: selectedDate ? new Date(selectedDate.getFullYear(), selectedDate.getMonth(), Math.min(new Date().getDate(), 28)).toISOString() : new Date().toISOString(),
+      isPaid: false, // يبدأ غير مدفوع كافتراضي للفاتورة الجديدة
+      paidAt: undefined,
+      pendingSync: true,
+    };
+
+    // إضافة الفاتورة المكررة، ودالة addOrder تقوم بإدراجها في أسفل الجدول [...prev, newItem]
+    addOrder(duplicatedOrder, newSerial);
+
+    // إذا كان هناك ترتيب مخصص للأعمدة، نضيف المعرف الجديد في نهاية مصفوفة الترتيب المخصص
+    if (customOrderIds.length > 0) {
+      const updatedCustomOrder = [...customOrderIds, newSerial];
+      setCustomOrderIds(updatedCustomOrder);
+      try {
+        localStorage.setItem('masar_sales_grid_order', JSON.stringify(updatedCustomOrder));
+      } catch (err) {
+        console.error('Error saving updated masar_sales_grid_order:', err);
+      }
+    }
+  };
+
+  // ثالثاً: دالة تثبيت / فك تثبيت البند (Pin Row) للأشهر القادمة مع الحفظ الفوري في LocalStorage
+  const handleTogglePin = (orderId: string) => {
+    if (onTogglePinned) {
+      onTogglePinned(orderId);
+    } else if (contextToggleOrderPinned) {
+      contextToggleOrderPinned(orderId);
+    } else {
+      // Fallback updating via contextUpdateOrder or direct localStorage
+      const target = orders.find(o => o.id === orderId);
+      if (target) {
+        const nextPinned = !Boolean(target.isPinned);
+        if (contextUpdateOrder) {
+          contextUpdateOrder(orderId, { isPinned: nextPinned });
+        }
+      }
+    }
+  };
+
   // Controlled or Internal State for adding new inline row
   const [internalIsAddingRow, setInternalIsAddingRow] = useState(false);
   const isAddingRow = propIsAddingRow !== undefined ? propIsAddingRow : internalIsAddingRow;
   const setIsAddingRow = propSetIsAddingRow || setInternalIsAddingRow;
+
+  // قائمة قوالب الخدمات المتاحة
+  const availableServices = useMemo(() => {
+    return (settings.servicesConfig && settings.servicesConfig.length > 0)
+      ? settings.servicesConfig
+      : defaultServicesConfig;
+  }, [settings.servicesConfig]);
+
+  // دالة جلب قالب الخدمة المعتمد
+  const getTemplateForService = (serviceName: string): DynamicServiceConfig => {
+    return availableServices.find(s => s.name === serviceName)
+      || availableServices.find(s => s.name === 'لافتة إعلانية')
+      || availableServices[0];
+  };
+
+  // دالة بناء وتوليد كائن بنود التكلفة costDetails ومصفوفة التفاصيل بناءً على القالب
+  const buildCostDataFromTemplate = (
+    template: DynamicServiceConfig,
+    existingCostDetails?: Record<string, any>,
+    existingBreakdown?: Record<string, number>,
+    existingExecutors?: Record<string, string>
+  ) => {
+    const costItems = template?.costItems || ['تكلفة التصميم', 'تكلفة الطباعة', 'التكلفة الخارجية', 'مواد خام'];
+    const defaultCosts = template?.defaultCosts || {};
+    const defaultExecutors = template?.defaultExecutors || {};
+
+    const costDetails: Record<string, { amount: number; executor: string }> = {};
+    const costBreakdown: Record<string, number> = {};
+    const costExecutors: Record<string, string> = {};
+
+    costItems.forEach(item => {
+      let amt = 0;
+      let exec = '';
+
+      if (existingCostDetails && existingCostDetails[item] !== undefined) {
+        const d = existingCostDetails[item];
+        if (typeof d === 'object' && d !== null) {
+          amt = Number(d.amount) || 0;
+          exec = d.executor || '';
+        } else {
+          amt = Number(d) || 0;
+        }
+      } else if (existingBreakdown && existingBreakdown[item] !== undefined) {
+        amt = Number(existingBreakdown[item]) || 0;
+        exec = existingExecutors?.[item] || '';
+      } else {
+        amt = defaultCosts[item] !== undefined ? defaultCosts[item] : 0;
+        exec = defaultExecutors[item] || '';
+      }
+
+      costDetails[item] = { amount: amt, executor: exec };
+      costBreakdown[item] = amt;
+      if (exec) {
+        costExecutors[item] = exec;
+      }
+    });
+
+    const totalCost = Object.values(costBreakdown).reduce((sum, v) => sum + (Number(v) || 0), 0);
+    const detailsList = costItems.map(item => {
+      const val = costBreakdown[item] !== undefined ? costBreakdown[item] : 0;
+      const ex = costExecutors[item];
+      return ex ? `${item}: ${val} (${ex})` : `${item}: ${val}`;
+    });
+
+    return {
+      costDetails,
+      costBreakdown,
+      costExecutors,
+      totalCost,
+      detailsList,
+    };
+  };
 
   // Form Fields for new inline row
   const [newServiceType, setNewServiceType] = useState('لافتة إعلانية');
@@ -156,6 +554,7 @@ export default function MonthlySalesGrid({
   const [newNotes, setNewNotes] = useState('');
 
   // Draft cost items when adding a new row via popover
+  const [draftCostDetails, setDraftCostDetails] = useState<Record<string, any> | undefined>(undefined);
   const [draftCostBreakdown, setDraftCostBreakdown] = useState<Record<string, number> | undefined>(undefined);
   const [draftCostExecutors, setDraftCostExecutors] = useState<Record<string, string> | undefined>(undefined);
   const [draftDetailedCosts, setDraftDetailedCosts] = useState<{
@@ -168,6 +567,31 @@ export default function MonthlySalesGrid({
     materialCost?: number;
   }>({});
 
+  // استدعاء قالب التكلفة تلقائياً عند تغيير نوع الخدمة في صف الإضافة الجديد
+  const handleNewServiceChange = (newService: string) => {
+    setNewServiceType(newService);
+    const template = getTemplateForService(newService);
+    const { costDetails, costBreakdown, costExecutors, totalCost, detailsList } = buildCostDataFromTemplate(
+      template,
+      draftCostDetails,
+      draftCostBreakdown,
+      draftCostExecutors
+    );
+
+    setDraftCostDetails(costDetails);
+    setDraftCostBreakdown(costBreakdown);
+    setDraftCostExecutors(costExecutors);
+    setNewCost(totalCost > 0 ? String(totalCost) : '');
+    setNewDetails(detailsList.join(' • '));
+  };
+
+  // عند فتح صف الإضافة، قم بتهيئة البيانات من القالب الافتراضي إذا كانت فارغة
+  useEffect(() => {
+    if (isAddingRow && (!newCost || !draftCostDetails)) {
+      handleNewServiceChange(newServiceType || availableServices[0]?.name || 'لافتة إعلانية');
+    }
+  }, [isAddingRow]);
+
   const draftNewOrder: Order = useMemo(() => ({
     id: 'draft-new-order',
     clientName: newClientName.trim() || 'طلب جديد',
@@ -176,6 +600,7 @@ export default function MonthlySalesGrid({
     description: newDetails.trim() || 'طلب جديد',
     invoiceDetails: newDetails.trim() ? newDetails.split(/[\n•,]+/).map(s => s.trim()).filter(Boolean) : undefined,
     serviceType: newServiceType,
+    costDetails: draftCostDetails,
     costBreakdown: draftCostBreakdown,
     costExecutors: draftCostExecutors,
     designCost: draftDetailedCosts.designCost,
@@ -194,6 +619,7 @@ export default function MonthlySalesGrid({
     newCost,
     newDetails,
     newServiceType,
+    draftCostDetails,
     draftCostBreakdown,
     draftCostExecutors,
     draftDetailedCosts
@@ -207,6 +633,61 @@ export default function MonthlySalesGrid({
   const [editDetails, setEditDetails] = useState('');
   const [editCost, setEditCost] = useState('');
   const [editNotes, setEditNotes] = useState('');
+
+  // الاستدعاء التلقائي (Auto-fill) ومزامنة كائن costDetails داخل الفاتورة فوراً بمجرد تغير نوع الخدمة
+  const handleServiceChange = (orderId: string, newService: string) => {
+    const targetOrder = orders.find(o => o.id === orderId);
+    if (!targetOrder) return;
+
+    const template = getTemplateForService(newService);
+    const { costDetails, costBreakdown, costExecutors, totalCost, detailsList } = buildCostDataFromTemplate(
+      template,
+      targetOrder.costDetails,
+      targetOrder.costBreakdown,
+      targetOrder.costExecutors
+    );
+
+    const price = targetOrder.price || 0;
+    const expectedProfit = price - totalCost;
+
+    const updates: Partial<Order> = {
+      serviceType: newService as ServiceType,
+      costDetails,
+      costBreakdown: Object.keys(costBreakdown).length > 0 ? costBreakdown : undefined,
+      costExecutors: Object.keys(costExecutors).length > 0 ? costExecutors : undefined,
+      cost: totalCost,
+      expectedProfit,
+      invoiceDetails: detailsList.length > 0 ? detailsList : undefined,
+    };
+
+    if (onUpdateOrder) {
+      onUpdateOrder(orderId, updates);
+    } else if (contextUpdateOrder) {
+      contextUpdateOrder(orderId, updates);
+    }
+
+    // مزامنة حالة التعديل إذا كان هذا السطر قيد التعديل المباشر
+    if (editingRowId === orderId) {
+      setEditServiceType(newService as ServiceType);
+      setEditCost(totalCost > 0 ? String(totalCost) : '');
+      setEditDetails(detailsList.join(' • '));
+    }
+
+    // مزامنة نافذة التفاصيل المنبثقة النشطة إذا كانت مفتوحة
+    setActivePopover(prev => (prev && prev.order.id === orderId) ? {
+      ...prev,
+      order: {
+        ...prev.order,
+        ...updates,
+      }
+    } : prev);
+  };
+
+  // معالجة تغيير نوع الخدمة أثناء التعديل المباشر
+  const handleEditServiceChange = (orderId: string, newService: string) => {
+    setEditServiceType(newService as ServiceType);
+    handleServiceChange(orderId, newService);
+  };
 
   // Start Inline Editing for a specific row
   const handleStartEdit = (order: Order) => {
@@ -295,6 +776,7 @@ export default function MonthlySalesGrid({
       price: parsedPrice,
       cost: parsedCost,
       expectedProfit,
+      costDetails: draftCostDetails,
       costBreakdown: draftCostBreakdown,
       costExecutors: draftCostExecutors,
       designCost: draftDetailedCosts.designCost,
@@ -313,11 +795,22 @@ export default function MonthlySalesGrid({
     }, autoSerial);
 
     // Reset inputs & close row
+    if (customOrderIds.length > 0) {
+      const updatedCustomOrder = [...customOrderIds, autoSerial];
+      setCustomOrderIds(updatedCustomOrder);
+      try {
+        localStorage.setItem('masar_sales_grid_order', JSON.stringify(updatedCustomOrder));
+      } catch (err) {
+        console.error('Error saving updated masar_sales_grid_order:', err);
+      }
+    }
+
     setNewClientName('');
     setNewPrice('');
     setNewDetails('');
     setNewCost('');
     setNewNotes('');
+    setDraftCostDetails(undefined);
     setDraftCostBreakdown(undefined);
     setDraftCostExecutors(undefined);
     setDraftDetailedCosts({});
@@ -349,6 +842,28 @@ export default function MonthlySalesGrid({
       setActivePopover(null);
       return;
     }
+
+    // ضمان ملء بنود التكلفة من القالب المعتمد للخدمة تلقائياً إذا لم تكن مهيأة
+    let hydratedOrder = { ...order };
+    const currentService = order.serviceType || availableServices[0]?.name || 'لافتة إعلانية';
+    const template = getTemplateForService(currentService);
+
+    if (!hydratedOrder.costDetails || Object.keys(hydratedOrder.costDetails).length === 0) {
+      const { costDetails, costBreakdown, costExecutors, totalCost } = buildCostDataFromTemplate(
+        template,
+        hydratedOrder.costDetails,
+        hydratedOrder.costBreakdown,
+        hydratedOrder.costExecutors
+      );
+      hydratedOrder = {
+        ...hydratedOrder,
+        costDetails,
+        costBreakdown: hydratedOrder.costBreakdown || (Object.keys(costBreakdown).length > 0 ? costBreakdown : undefined),
+        costExecutors: hydratedOrder.costExecutors || (Object.keys(costExecutors).length > 0 ? costExecutors : undefined),
+        cost: hydratedOrder.cost !== undefined ? hydratedOrder.cost : totalCost,
+      };
+    }
+
     const rect = e.currentTarget.getBoundingClientRect();
     const popoverWidth = Math.min(370, window.innerWidth - 32);
 
@@ -380,7 +895,7 @@ export default function MonthlySalesGrid({
     position.left = left;
 
     setActivePopover({
-      order,
+      order: hydratedOrder,
       position,
     });
   };
@@ -392,6 +907,9 @@ export default function MonthlySalesGrid({
       }
       if (Array.isArray(updates.invoiceDetails) && updates.invoiceDetails.length > 0) {
         setNewDetails(updates.invoiceDetails.join(' • '));
+      }
+      if (updates.costDetails !== undefined) {
+        setDraftCostDetails(updates.costDetails);
       }
       setDraftCostBreakdown(updates.costBreakdown);
       setDraftCostExecutors(updates.costExecutors);
@@ -463,8 +981,8 @@ export default function MonthlySalesGrid({
       monthMap.set(key, startOfMonth(d));
     }
 
-    // Include all months from orders
-    orders.forEach(o => {
+    // Include all months from invoices
+    invoices.forEach(o => {
       try {
         const d = parseISO(o.date);
         if (!isNaN(d.getTime())) {
@@ -485,29 +1003,53 @@ export default function MonthlySalesGrid({
         date,
         label: format(date, 'MMMM yyyy', { locale: ar }),
       }));
-  }, [orders]);
+  }, [invoices]);
 
   // Selected Month bounds
   const currentMonthStart = useMemo(() => startOfMonth(selectedDate), [selectedDate]);
   const currentMonthEnd = useMemo(() => endOfMonth(selectedDate), [selectedDate]);
   const formattedCurrentMonth = useMemo(() => format(selectedDate, 'MMMM yyyy', { locale: ar }), [selectedDate]);
 
-  // Orders filtered by the selected month
+  // Orders filtered by the selected month & excluding deleted rows (respecting manual reordering)
+  // الأهم: عند قيام المستخدم بتغيير فلتر الشهر، تظل السجلات المثبتة (isPinned: true) ظاهرة ومستمرة في الجدول
   const monthlyOrders = useMemo(() => {
-    return orders.filter(order => {
-      try {
-        const orderDate = parseISO(order.date);
-        if (isNaN(orderDate.getTime())) return false;
-        return isWithinInterval(orderDate, { start: currentMonthStart, end: currentMonthEnd });
-      } catch {
-        return false;
-      }
-    }).sort((a, b) => {
-      const dateA = new Date(a.date).getTime();
-      const dateB = new Date(b.date).getTime();
-      return dateB - dateA;
-    });
-  }, [orders, currentMonthStart, currentMonthEnd]);
+    const list = invoices
+      .filter(order => !deletedRowIds.some(dId => String(dId) === String(order.id)))
+      .filter(order => {
+        // إذا كان البند مثبت (isPinned: true)، يظل ظاهراً ومستمراً في كافة الأشهر
+        if (order.isPinned) return true;
+
+        try {
+          const orderDate = parseISO(order.date);
+          if (isNaN(orderDate.getTime())) return false;
+          return isWithinInterval(orderDate, { start: currentMonthStart, end: currentMonthEnd });
+        } catch {
+          return false;
+        }
+      });
+
+    // إذا وجد ترتيب يدوي مخصص محفوظ، يتم ترتيب الصفوف بناءً عليه بدقة
+    if (customOrderIds.length > 0) {
+      const orderIndexMap = new Map<string, number>();
+      customOrderIds.forEach((id, idx) => orderIndexMap.set(String(id), idx));
+
+      return [...list].sort((a, b) => {
+        const strA = String(a.id);
+        const strB = String(b.id);
+        const idxA = orderIndexMap.has(strA) ? orderIndexMap.get(strA)! : 999999;
+        const idxB = orderIndexMap.has(strB) ? orderIndexMap.get(strB)! : 999999;
+        if (idxA !== idxB) {
+          return idxA - idxB;
+        }
+        const dateA = new Date(a.date).getTime();
+        const dateB = new Date(b.date).getTime();
+        return dateB - dateA;
+      });
+    }
+
+    // الحفاظ على ترتيب المصفوفة الطبيعي لكي يتم إدراج الفواتير والأسطر المنسوخة في أسفل الجدول [...prev, newItem]
+    return list;
+  }, [invoices, deletedRowIds, currentMonthStart, currentMonthEnd, customOrderIds]);
 
   // Filtered orders after search & category filters
   const filteredGridOrders = useMemo(() => {
@@ -537,6 +1079,10 @@ export default function MonthlySalesGrid({
   }, [monthlyOrders, searchTerm, statusFilter, serviceFilter]);
 
   // Filtered rows totals for bottom summary row
+  const actualOrdersCount = useMemo(() => {
+    return filteredGridOrders.filter(o => !isSummaryOrTotalRow(o)).length;
+  }, [filteredGridOrders]);
+
   const tableTotals = useMemo(() => {
     let sumInvoices = 0;
     let sumTotalCosts = 0;
@@ -546,20 +1092,21 @@ export default function MonthlySalesGrid({
     let sumNetProfit = 0;
 
     filteredGridOrders.forEach(order => {
-      const p = order.price || 0;
-      const dCost = order.designCost || 0;
-      const prCost = order.printingCost || 0;
-      const exCost = order.externalCost || 0;
-      const itemCostSum = dCost + prCost + exCost;
-      const actualCost = itemCostSum > 0 ? itemCostSum : (order.cost || 0);
-      const netProfit = order.expectedProfit !== undefined ? order.expectedProfit : (p - actualCost);
+      if (isSummaryOrTotalRow(order)) return;
+      const p = Number(order.price) || 0;
+      const dCost = Number(order.designCost) || 0;
+      const prCost = Number(order.printingCost) || 0;
+      const exCost = Number(order.externalCost) || 0;
+      const itemCostSum = Number(dCost) + Number(prCost) + Number(exCost);
+      const actualCost = itemCostSum > 0 ? itemCostSum : (Number(order.cost) || 0);
+      const netProfit = order.expectedProfit !== undefined ? Number(order.expectedProfit) : (Number(p) - Number(actualCost));
 
-      sumInvoices += p;
-      sumTotalCosts += actualCost;
-      sumDesign += dCost;
-      sumPrinting += prCost;
-      sumExternal += exCost;
-      sumNetProfit += netProfit;
+      sumInvoices = Number(sumInvoices) + Number(p);
+      sumTotalCosts = Number(sumTotalCosts) + Number(actualCost);
+      sumDesign = Number(sumDesign) + Number(dCost);
+      sumPrinting = Number(sumPrinting) + Number(prCost);
+      sumExternal = Number(sumExternal) + Number(exCost);
+      sumNetProfit = Number(sumNetProfit) + Number(netProfit);
     });
 
     return {
@@ -568,70 +1115,78 @@ export default function MonthlySalesGrid({
       sumDesign,
       sumPrinting,
       sumExternal,
-      sumNetProfit,
+      sumNetProfit
     };
   }, [filteredGridOrders]);
 
-  // Export Monthly Data Grid to CSV
+  // Export Monthly Data Grid to CSV / Excel
   const handleExportCSV = () => {
-    if (filteredGridOrders.length === 0) return;
+    if (!filteredGridOrders || filteredGridOrders.length === 0) {
+      alert('سيتم تفعيل ميزة التصدير قريباً');
+      return;
+    }
 
-    const headers = [
-      'حالة الدفع',
-      'نوع الخدمة',
-      'اسم العميل',
-      'إجمالي الفاتورة',
-      'تفاصيل الفاتورة',
-      'صافي الربح',
-      'الملاحظات',
-    ];
-
-    const rows = filteredGridOrders.map(order => {
-      const dCost = order.designCost || 0;
-      const prCost = order.printingCost || 0;
-      const exCost = order.externalCost || 0;
-      const itemCostSum = dCost + prCost + exCost;
-      const actualCost = itemCostSum > 0 ? itemCostSum : (order.cost || 0);
-      const netProfit = order.expectedProfit !== undefined ? order.expectedProfit : (order.price - actualCost);
-      const detailBadges = getNormalizedInvoiceBadges(order.invoiceDetails || order.description);
-      const defaultInvoiceText = detailBadges.map(b => b.value !== undefined && b.value !== '' ? `${b.item}: ${b.value}` : b.item).join(' • ') || (order.description || '');
-      const noteContent = (order.notes || '').trim() || defaultInvoiceText;
-
-      return [
-        order.isPaid ? 'مدفوعة' : 'غير مدفوعة',
-        order.serviceType || 'خدمة مخصصة',
-        order.clientName,
-        order.price,
-        order.costBreakdownSummary || (actualCost > 0 ? `${actualCost} ${currency}` : '-'),
-        netProfit,
-        noteContent || '-',
+    try {
+      const headers = [
+        'حالة الدفع',
+        'نوع الخدمة',
+        'اسم العميل',
+        'إجمالي الفاتورة',
+        'تفاصيل الفاتورة',
+        'صافي الربح',
+        'الملاحظات',
       ];
-    });
 
-    // Add Totals row
-    rows.push([
-      '-',
-      'الإجمالي العام',
-      `${filteredGridOrders.length} طلبية`,
-      tableTotals.sumInvoices,
-      '-',
-      tableTotals.sumNetProfit,
-      '-',
-    ]);
+      const rows = filteredGridOrders.map(order => {
+        const dCost = order.designCost || 0;
+        const prCost = order.printingCost || 0;
+        const exCost = order.externalCost || 0;
+        const itemCostSum = dCost + prCost + exCost;
+        const actualCost = itemCostSum > 0 ? itemCostSum : (order.cost || 0);
+        const netProfit = order.expectedProfit !== undefined ? order.expectedProfit : (order.price - actualCost);
+        const detailBadges = getNormalizedInvoiceBadges(order.invoiceDetails || order.description);
+        const defaultInvoiceText = detailBadges.map(b => b.value !== undefined && b.value !== '' ? `${b.item}: ${b.value}` : b.item).join(' • ') || (order.description || '');
+        const noteContent = (order.notes || '').trim() || defaultInvoiceText;
 
-    const csvContent = '\uFEFF' + [
-      headers.join(','),
-      ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
-    ].join('\n');
+        return [
+          order.isPaid ? 'مدفوعة' : 'غير مدفوعة',
+          order.serviceType || 'خدمة مخصصة',
+          order.clientName,
+          order.price,
+          order.costBreakdownSummary || (actualCost > 0 ? `${actualCost} ${currency}` : '-'),
+          netProfit,
+          noteContent || '-',
+        ];
+      });
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `سجل_الفواتير_${format(selectedDate, 'yyyy_MM')}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+      // Add Totals row
+      rows.push([
+        '-',
+        'الإجمالي العام',
+        `${filteredGridOrders.length} طلبية`,
+        tableTotals.sumInvoices,
+        '-',
+        tableTotals.sumNetProfit,
+        '-',
+      ]);
+
+      const csvContent = '\uFEFF' + [
+        headers.join(','),
+        ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      ].join('\n');
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `سجل_الفواتير_${format(selectedDate, 'yyyy_MM')}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch {
+      alert('سيتم تفعيل ميزة التصدير قريباً');
+    }
   };
 
   const handlePrintGrid = () => {
@@ -664,6 +1219,21 @@ export default function MonthlySalesGrid({
         return 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/60';
       default:
         return 'bg-slate-50 text-slate-800 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700';
+    }
+  };
+
+  const getServiceSelectClass = (service?: string) => {
+    switch (service) {
+      case 'إدارة صفحات سوشيال ميديا':
+        return 'bg-blue-50/90 text-blue-900 border-blue-300 dark:bg-blue-950/60 dark:text-blue-200 dark:border-blue-800/60';
+      case 'لافتة إعلانية':
+        return 'bg-amber-50/90 text-amber-900 border-amber-300 dark:bg-amber-950/60 dark:text-amber-200 dark:border-amber-800/60';
+      case 'تصميم موقع إلكتروني':
+        return 'bg-purple-50/90 text-purple-900 border-purple-300 dark:bg-purple-950/60 dark:text-purple-200 dark:border-purple-800/60';
+      case 'خدمات طباعة':
+        return 'bg-emerald-50/90 text-emerald-900 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-200 dark:border-emerald-800/60';
+      default:
+        return 'bg-slate-50 text-slate-800 border-slate-300 dark:bg-slate-800/90 dark:text-slate-200 dark:border-slate-700';
     }
   };
 
@@ -727,7 +1297,7 @@ export default function MonthlySalesGrid({
                 type="button"
                 id="btn-prev-month"
                 onClick={handlePrevMonth}
-                className="p-1 rounded-md hover:bg-white dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors"
+                className="relative z-10 cursor-pointer p-1 rounded-md hover:bg-white dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors"
                 title="الشهر السابق"
                 aria-label="الشهر السابق"
               >
@@ -738,7 +1308,7 @@ export default function MonthlySalesGrid({
                 type="button"
                 id="btn-current-month"
                 onClick={handleCurrentMonth}
-                className="px-2 py-0.5 text-[11px] font-bold text-slate-700 dark:text-slate-300 hover:text-emerald-700 dark:hover:text-emerald-400 transition-colors"
+                className="relative z-10 cursor-pointer px-2 py-0.5 text-[11px] font-bold text-slate-700 dark:text-slate-300 hover:text-emerald-700 dark:hover:text-emerald-400 transition-colors"
                 title="الرجوع إلى الشهر الحالي"
               >
                 الحالي
@@ -748,7 +1318,7 @@ export default function MonthlySalesGrid({
                 type="button"
                 id="btn-next-month"
                 onClick={handleNextMonth}
-                className="p-1 rounded-md hover:bg-white dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors"
+                className="relative z-10 cursor-pointer p-1 rounded-md hover:bg-white dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors"
                 title="الشهر التالي"
                 aria-label="الشهر التالي"
               >
@@ -756,24 +1326,13 @@ export default function MonthlySalesGrid({
               </button>
             </div>
 
-            {/* Action Buttons: Add Row, Export Excel & Print */}
+            {/* Action Buttons: Export Excel & Print */}
             <div className="flex items-center gap-1.5 shrink-0">
-              <button
-                type="button"
-                id="btn-grid-add-row"
-                onClick={() => setIsAddingRow(true)}
-                className="btn-primary py-1.5 px-3 rounded-lg text-xs font-bold flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white shadow-2xs cursor-pointer transition-colors"
-                title="إضافة بند جديد في السجل"
-              >
-                <Plus size={14} />
-                <span>+ إضافة بند</span>
-              </button>
-
               <button
                 type="button"
                 id="btn-export-excel-grid"
                 onClick={handleExportCSV}
-                className="btn-secondary py-1.5 px-3 rounded-lg text-xs font-bold flex items-center gap-1.5 border border-slate-300 dark:border-slate-700 shadow-2xs hover:bg-slate-100 dark:hover:bg-slate-800"
+                className="relative z-10 cursor-pointer btn-secondary py-1.5 px-3 rounded-lg text-xs font-bold flex items-center gap-1.5 border border-slate-300 dark:border-slate-700 shadow-2xs hover:bg-slate-100 dark:hover:bg-slate-800"
                 title="تصدير كشف الشهر الحالي إلى ملف Excel / CSV"
               >
                 <Download size={14} className="text-emerald-600 dark:text-emerald-400" />
@@ -783,8 +1342,8 @@ export default function MonthlySalesGrid({
               <button
                 type="button"
                 id="btn-print-monthly-grid"
-                onClick={handlePrintGrid}
-                className="btn-secondary py-1.5 px-3 rounded-lg text-xs font-bold flex items-center gap-1.5 border border-slate-300 dark:border-slate-700 shadow-2xs hover:bg-slate-100 dark:hover:bg-slate-800"
+                onClick={() => window.print()}
+                className="relative z-10 cursor-pointer btn-secondary py-1.5 px-3 rounded-lg text-xs font-bold flex items-center gap-1.5 border border-slate-300 dark:border-slate-700 shadow-2xs hover:bg-slate-100 dark:hover:bg-slate-800"
                 title="طباعة السجل الشهري"
               >
                 <Printer size={14} className="text-blue-600 dark:text-blue-400" />
@@ -819,10 +1378,9 @@ export default function MonthlySalesGrid({
               className="w-full glass-input rounded-lg pr-3 pl-7 py-1.5 text-xs font-bold text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 appearance-none cursor-pointer"
             >
               <option value="الكل">كافة أنواع الخدمات</option>
-              <option value="إدارة صفحات سوشيال ميديا">إدارة صفحات سوشيال ميديا</option>
-              <option value="لافتة إعلانية">لافتة إعلانية</option>
-              <option value="تصميم موقع إلكتروني">تصميم موقع إلكتروني</option>
-              <option value="خدمات طباعة">خدمات طباعة</option>
+              {availableServices.map((srv) => (
+                <option key={srv.id || srv.name} value={srv.name}>{srv.name}</option>
+              ))}
             </select>
             <ChevronDown size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
           </div>
@@ -846,18 +1404,24 @@ export default function MonthlySalesGrid({
             <thead>
               <tr className="bg-slate-100/90 dark:bg-slate-800/90 border-b border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold select-none">
                 
+                {/* 0. أيقونة السحب والترتيب اليدوي في بداية الجدول (أقصى اليمين) */}
+                <th scope="col" className="py-3 px-2 border-l border-slate-200/80 dark:border-slate-700 w-10 text-center select-none print:hidden">
+                  <span className="sr-only">ترتيب الصفوف</span>
+                  <GripVertical size={16} className="mx-auto text-slate-400 dark:text-slate-500" />
+                </th>
+
                 {/* عنصر تفاعلي: مربع الدفع في بداية السطر (بدون ترويسة نصية) */}
                 <th scope="col" className="py-3 px-3 border-l border-slate-200/80 dark:border-slate-700 w-12 text-center select-none">
                   <span className="sr-only">تأكيد الدفع</span>
                 </th>
 
                 {/* 1. نوع الخدمة */}
-                <th scope="col" className="py-3 px-4 font-bold border-l border-slate-200/80 dark:border-slate-700 min-w-[150px]">
+                <th scope="col" className="py-3 px-4 font-bold border-l border-slate-200/80 dark:border-slate-700 min-w-[150px] text-center">
                   نوع الخدمة
                 </th>
 
                 {/* 2. اسم العميل */}
-                <th scope="col" className="py-3 px-4 font-bold border-l border-slate-200/80 dark:border-slate-700 min-w-[160px]">
+                <th scope="col" className="py-3 px-4 font-bold border-l border-slate-200/80 dark:border-slate-700 min-w-[160px] text-center">
                   اسم العميل
                 </th>
 
@@ -877,185 +1441,23 @@ export default function MonthlySalesGrid({
                 </th>
 
                 {/* 6. الملاحظات */}
-                <th scope="col" className="py-3 px-4 font-bold min-w-[200px]">
+                <th scope="col" className="py-3 px-4 font-bold min-w-[200px] border-l border-slate-200/80 dark:border-slate-700">
                   الملاحظات
+                </th>
+
+                {/* 7. إجراءات السطر في أقصى اليسار */}
+                <th scope="col" className="py-3 px-2 text-center font-bold min-w-[70px] print:hidden select-none">
+                  الإجراءات
                 </th>
               </tr>
             </thead>
 
             <tbody className="divide-y divide-slate-200/70 dark:divide-slate-800">
-              {/* أولاً: إذا كانت isAddingRow === true، اعرض السطر الجديد <tr> الذي يحتوي على حقول الإدخال */}
-              {isAddingRow && (
-                <tr className="bg-blue-50/90 dark:bg-blue-950/50 border-b-2 border-blue-400 dark:border-blue-500 animate-in fade-in slide-in-from-top-1 duration-150 shadow-inner">
-                  {/* أزرار الحفظ والإلغاء السريعة */}
-                  <td className="py-2 px-2 border-l border-blue-200 dark:border-blue-800 text-center bg-blue-100/60 dark:bg-blue-900/40">
-                    <div className="flex items-center justify-center gap-1">
-                      <button
-                        type="button"
-                        id="btn-save-inline-row-icon"
-                        onClick={handleSaveInlineRow}
-                        className="p-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-transform active:scale-95 cursor-pointer"
-                        title="حفظ الفاتورة وإدراجها في السجل"
-                        aria-label="حفظ الفاتورة"
-                      >
-                        <Check size={14} className="stroke-[3]" />
-                      </button>
-                      <button
-                        type="button"
-                        id="btn-cancel-inline-row-icon"
-                        onClick={() => setIsAddingRow(false)}
-                        className="p-1.5 rounded-lg bg-rose-100 hover:bg-rose-200 dark:bg-rose-950/80 dark:hover:bg-rose-900 text-rose-700 dark:text-rose-300 shadow-xs transition-transform active:scale-95 cursor-pointer"
-                        title="إلغاء الإضافة"
-                        aria-label="إلغاء الإضافة"
-                      >
-                        <X size={14} className="stroke-[3]" />
-                      </button>
-                    </div>
-                  </td>
-
-                  {/* 1. نوع الخدمة */}
-                  <td className="py-2 px-3 border-l border-blue-200 dark:border-blue-800">
-                    <div className="relative">
-                      <select
-                        id="inline-input-service-type"
-                        value={newServiceType}
-                        onChange={(e) => setNewServiceType(e.target.value)}
-                        className="w-full glass-input rounded-lg pr-2.5 pl-6 py-1.5 text-xs font-bold text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 border-blue-300 dark:border-blue-700 appearance-none cursor-pointer focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value="لافتة إعلانية">لافتة إعلانية</option>
-                        <option value="تصميم موقع إلكتروني">تصميم موقع إلكتروني</option>
-                        <option value="إدارة صفحات سوشيال ميديا">إدارة صفحات سوشيال ميديا</option>
-                        <option value="خدمات طباعة">خدمات طباعة</option>
-                        <option value="تنفيذ لافتات">تنفيذ لافتات</option>
-                      </select>
-                      <ChevronDown size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                    </div>
-                  </td>
-
-                  {/* 2. اسم العميل */}
-                  <td className="py-2 px-3 border-l border-blue-200 dark:border-blue-800">
-                    <input
-                      type="text"
-                      id="inline-input-client-name"
-                      value={newClientName}
-                      onChange={(e) => setNewClientName(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') handleSaveInlineRow();
-                        if (e.key === 'Escape') setIsAddingRow(false);
-                      }}
-                      placeholder="اسم العميل أو الشركة..."
-                      autoFocus
-                      className="w-full glass-input rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 border-blue-300 dark:border-blue-700 focus:ring-2 focus:ring-blue-500"
-                    />
-                  </td>
-
-                  {/* 3. إجمالي الفاتورة */}
-                  <td className="py-2 px-3 border-l border-blue-200 dark:border-blue-800 text-center">
-                    <input
-                      type="number"
-                      id="inline-input-price"
-                      step="any"
-                      value={newPrice}
-                      onChange={(e) => setNewPrice(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') handleSaveInlineRow();
-                        if (e.key === 'Escape') setIsAddingRow(false);
-                      }}
-                      placeholder="0.00"
-                      className="w-full glass-input rounded-lg px-2 py-1.5 text-xs font-mono font-black text-center text-emerald-800 dark:text-emerald-300 bg-white dark:bg-slate-800 border-blue-300 dark:border-blue-700 focus:ring-2 focus:ring-blue-500"
-                    />
-                  </td>
-
-                  {/* 4. تفاصيل الفاتورة مع زر + لفتح القائمة المنسدلة للتكاليف */}
-                  <td className="py-2 px-3 border-l border-blue-200 dark:border-blue-800 text-center align-middle">
-                    <div className="flex items-center justify-center gap-1.5">
-                      <input
-                        type="text"
-                        id="inline-input-details"
-                        value={newDetails}
-                        onChange={(e) => setNewDetails(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') handleSaveInlineRow();
-                          if (e.key === 'Escape') setIsAddingRow(false);
-                        }}
-                        placeholder="المقاس، الألوان..."
-                        className="w-full glass-input rounded-lg px-2 py-1.5 text-xs text-center text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-800 border-blue-300 dark:border-blue-700 focus:ring-2 focus:ring-blue-500"
-                      />
-                      <button
-                        type="button"
-                        id="btn-add-costs-popover-new"
-                        onClick={(e) => handleOpenPopover(draftNewOrder, e)}
-                        className="w-7 h-7 rounded-full bg-blue-100 hover:bg-blue-200 dark:bg-blue-900/60 dark:hover:bg-blue-800 text-blue-800 dark:text-blue-200 border border-blue-300 dark:border-blue-700 flex items-center justify-center transition-all shrink-0 cursor-pointer shadow-2xs"
-                        title="إدخال بنود التكاليف في القائمة المنسدلة"
-                        aria-label="إدخال بنود التكاليف في القائمة المنسدلة"
-                      >
-                        <Plus size={15} />
-                      </button>
-                    </div>
-                  </td>
-
-                  {/* 5. صافي الربح / التكلفة */}
-                  <td className="py-2 px-3 border-l border-blue-200 dark:border-blue-800 text-center">
-                    <div className="flex items-center gap-1 justify-center">
-                      <input
-                        type="number"
-                        id="inline-input-cost"
-                        step="any"
-                        value={newCost}
-                        onChange={(e) => setNewCost(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') handleSaveInlineRow();
-                          if (e.key === 'Escape') setIsAddingRow(false);
-                        }}
-                        placeholder="التكلفة"
-                        className="w-16 glass-input rounded-lg px-1.5 py-1 text-[11px] font-mono font-bold text-center text-rose-700 dark:text-rose-400 bg-white dark:bg-slate-800 border-blue-300 dark:border-blue-700"
-                        title="التكلفة الإجمالية (لحساب صافي الربح تلقائياً)"
-                      />
-                      <span className="text-[11px] font-mono font-black text-blue-700 dark:text-blue-400 whitespace-nowrap">
-                        ={(Math.max(0, (parseFloat(newPrice) || 0) - (parseFloat(newCost) || 0))).toLocaleString()}
-                      </span>
-                    </div>
-                  </td>
-
-                  {/* 6. الملاحظات وزر الإلغاء والحفظ */}
-                  <td className="py-2 px-3">
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        id="inline-input-notes"
-                        value={newNotes}
-                        onChange={(e) => setNewNotes(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') handleSaveInlineRow();
-                          if (e.key === 'Escape') setIsAddingRow(false);
-                        }}
-                        placeholder="أي ملاحظات إضافية..."
-                        className="flex-1 glass-input rounded-lg px-2.5 py-1.5 text-xs text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-800 border-blue-300 dark:border-blue-700 focus:ring-2 focus:ring-blue-500"
-                      />
-                      <button
-                        type="button"
-                        id="btn-cancel-inline-row"
-                        onClick={() => setIsAddingRow(false)}
-                        className="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white transition-colors shrink-0 cursor-pointer"
-                      >
-                        إلغاء
-                      </button>
-                      <button
-                        type="button"
-                        id="btn-save-inline-row"
-                        onClick={handleSaveInlineRow}
-                        className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-xs transition-colors shrink-0 flex items-center gap-1 cursor-pointer"
-                      >
-                        <Check size={14} />
-                        <span>حفظ</span>
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              )}
-
-              {/* ثانياً: اعرض الفواتير المسجلة مسبقاً (إن وجدت) باستخدام map */}
+              {/* أولاً: اعرض الفواتير المسجلة مسبقاً (إن وجدت) باستخدام map */}
               {filteredGridOrders.map((order, index) => {
+                const row = order;
+                const isTotalRow = isSummaryOrTotalRow(order);
+
                 // وضع التعديل المباشر (Inline Editing Mode)
                 if (editingRowId === order.id) {
                   const currentCostVal = parseFloat(editCost) || 0;
@@ -1067,14 +1469,20 @@ export default function MonthlySalesGrid({
                       key={order.id}
                       className="bg-amber-50/95 dark:bg-amber-950/40 border-y-2 border-amber-400 dark:border-amber-500 shadow-inner animate-in fade-in duration-150"
                     >
+                      {/* عمود فارغ للسحب أثناء التعديل المباشر */}
+                      <td className="py-2 px-2 border-l border-amber-200 dark:border-amber-800 text-center print:hidden"></td>
+
                       {/* أزرار التحكم بالتعديل: زر حفظ أخضر وزر إلغاء رمادي/أحمر استبدالاً لمربع الدفع */}
                       <td className="py-2 px-2 border-l border-amber-200 dark:border-amber-800 text-center bg-amber-100/70 dark:bg-amber-900/40">
                         <div className="flex items-center justify-center gap-1">
                           <button
                             type="button"
                             id={`btn-save-edit-${order.id}`}
-                            onClick={() => handleSaveEdit(order.id)}
-                            className="p-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-transform active:scale-95 cursor-pointer"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSaveEdit(order.id);
+                            }}
+                            className="relative z-10 cursor-pointer p-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-transform active:scale-95"
                             title="حفظ التعديلات"
                             aria-label="حفظ التعديلات"
                           >
@@ -1083,8 +1491,11 @@ export default function MonthlySalesGrid({
                           <button
                             type="button"
                             id={`btn-cancel-edit-${order.id}`}
-                            onClick={handleCancelEdit}
-                            className="p-1.5 rounded-lg bg-slate-200 hover:bg-rose-100 dark:bg-slate-800 dark:hover:bg-rose-950/80 text-slate-700 hover:text-rose-700 dark:text-slate-300 dark:hover:text-rose-300 shadow-xs transition-transform active:scale-95 cursor-pointer"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleCancelEdit();
+                            }}
+                            className="relative z-10 cursor-pointer p-1.5 rounded-lg bg-slate-200 hover:bg-rose-100 dark:bg-slate-800 dark:hover:bg-rose-950/80 text-slate-700 hover:text-rose-700 dark:text-slate-300 dark:hover:text-rose-300 shadow-xs transition-transform active:scale-95"
                             title="إلغاء التعديل والتراجع"
                             aria-label="إلغاء التعديل والتراجع"
                           >
@@ -1094,20 +1505,18 @@ export default function MonthlySalesGrid({
                       </td>
 
                       {/* 1. نوع الخدمة */}
-                      <td className="py-2 px-3 border-l border-amber-200 dark:border-amber-800">
+                      <td className="py-2 px-3 border-l border-amber-200 dark:border-amber-800 text-center">
                         <div className="relative">
                           <select
                             id={`edit-select-service-${order.id}`}
                             value={editServiceType}
-                            onChange={(e) => setEditServiceType(e.target.value as ServiceType)}
-                            className="w-full glass-input rounded-lg pr-2 pl-6 py-1.5 text-xs font-bold text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 border-amber-300 dark:border-amber-700 appearance-none cursor-pointer focus:ring-2 focus:ring-amber-500"
+                            onChange={(e) => handleEditServiceChange(order.id, e.target.value)}
+                            className="w-full glass-input rounded-lg pr-2 pl-6 py-1.5 text-xs font-bold text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 border-amber-300 dark:border-amber-700 appearance-none cursor-pointer focus:ring-2 focus:ring-amber-500 text-center"
                           >
-                            <option value="لافتة إعلانية">لافتة إعلانية</option>
-                            <option value="تصميم موقع إلكتروني">تصميم موقع إلكتروني</option>
-                            <option value="إدارة صفحات سوشيال ميديا">إدارة صفحات سوشيال ميديا</option>
-                            <option value="خدمات طباعة">خدمات طباعة</option>
-                            <option value="تنفيذ لافتات">تنفيذ لافتات</option>
-                            {order.serviceType && !['لافتة إعلانية', 'تصميم موقع إلكتروني', 'إدارة صفحات سوشيال ميديا', 'خدمات طباعة', 'تنفيذ لافتات'].includes(order.serviceType) && (
+                            {availableServices.map((srv) => (
+                              <option key={srv.id || srv.name} value={srv.name}>{srv.name}</option>
+                            ))}
+                            {order.serviceType && !availableServices.some(s => s.name === order.serviceType) && (
                               <option value={order.serviceType}>{order.serviceType}</option>
                             )}
                           </select>
@@ -1116,7 +1525,7 @@ export default function MonthlySalesGrid({
                       </td>
 
                       {/* 2. اسم العميل */}
-                      <td className="py-2 px-3 border-l border-amber-200 dark:border-amber-800">
+                      <td className="py-2 px-3 border-l border-amber-200 dark:border-amber-800 text-center">
                         <input
                           type="text"
                           id={`edit-input-client-${order.id}`}
@@ -1128,7 +1537,7 @@ export default function MonthlySalesGrid({
                           }}
                           placeholder="اسم العميل..."
                           autoFocus
-                          className="w-full glass-input rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 border-amber-300 dark:border-amber-700 focus:ring-2 focus:ring-amber-500"
+                          className="w-full glass-input rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 border-amber-300 dark:border-amber-700 focus:ring-2 focus:ring-amber-500 text-center"
                         />
                       </td>
 
@@ -1220,34 +1629,43 @@ export default function MonthlySalesGrid({
                           <button
                             type="button"
                             id={`btn-cancel-edit-inline-${order.id}`}
-                            onClick={handleCancelEdit}
-                            className="px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white transition-colors shrink-0 cursor-pointer"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleCancelEdit();
+                            }}
+                            className="relative z-10 cursor-pointer px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white transition-colors shrink-0"
                           >
                             إلغاء
                           </button>
                           <button
                             type="button"
                             id={`btn-save-edit-inline-${order.id}`}
-                            onClick={() => handleSaveEdit(order.id)}
-                            className="px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-xs transition-colors shrink-0 flex items-center gap-1 cursor-pointer"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSaveEdit(order.id);
+                            }}
+                            className="relative z-10 cursor-pointer px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-xs transition-colors shrink-0 flex items-center gap-1"
                           >
                             <Check size={14} />
                             <span>حفظ</span>
                           </button>
                         </div>
                       </td>
+
+                      {/* 7. عمود الإجراءات (فارغ أثناء التعديل) */}
+                      <td className="py-2 px-2 text-center print:hidden"></td>
                     </tr>
                   );
                 }
 
                 // وضع العرض العادي (Normal Display Mode)
                 const isChecked = Boolean(order.isPaid);
-                const dCost = order.designCost || 0;
-                const prCost = order.printingCost || 0;
-                const exCost = order.externalCost || 0;
-                const itemCostSum = dCost + prCost + exCost;
-                const actualCost = itemCostSum > 0 ? itemCostSum : (order.cost || 0);
-                const netProfit = order.expectedProfit !== undefined ? order.expectedProfit : (order.price - actualCost);
+                const dCost = Number(order.designCost) || 0;
+                const prCost = Number(order.printingCost) || 0;
+                const exCost = Number(order.externalCost) || 0;
+                const itemCostSum = Number(dCost) + Number(prCost) + Number(exCost);
+                const actualCost = itemCostSum > 0 ? itemCostSum : (Number(order.cost) || 0);
+                const netProfit = order.expectedProfit !== undefined ? Number(order.expectedProfit) : (Number(order.price) - Number(actualCost));
                 
                 // تفاصيل الفاتورة المحفوظة لعرضها كبطاقات عمودية نظيفة
                 const detailsItems = getOrderInvoiceDetailsList(order);
@@ -1258,47 +1676,116 @@ export default function MonthlySalesGrid({
                 return (
                   <tr 
                     key={order.id}
-                    className={`transition-colors duration-150 group ${
-                      isChecked 
-                        ? 'bg-yellow-100/90 dark:bg-yellow-950/45 hover:bg-yellow-200/70 dark:hover:bg-yellow-900/40 text-slate-900 dark:text-slate-100' 
-                        : `${index % 2 === 0 ? 'bg-white dark:bg-slate-900' : 'bg-slate-50/40 dark:bg-slate-900/50'} hover:bg-slate-50/90 dark:hover:bg-slate-800/60`
+                    onDragOver={(e) => handleDragOver(e, order.id)}
+                    onDrop={(e) => handleDrop(e, order.id)}
+                    onDragEnd={handleDragEnd}
+                    className={`transition-all duration-150 group ${
+                      dragOverOrderId === order.id && draggedOrderId !== order.id
+                        ? 'border-t-2 border-blue-500 dark:border-blue-400 bg-blue-50/70 dark:bg-blue-900/30'
+                        : ''
+                    } ${
+                      draggedOrderId === order.id
+                        ? 'opacity-40 bg-slate-100 dark:bg-slate-800'
+                        : isChecked 
+                          ? 'bg-yellow-100/90 dark:bg-yellow-950/45 hover:bg-yellow-200/70 dark:hover:bg-yellow-900/40 text-slate-900 dark:text-slate-100' 
+                          : `${index % 2 === 0 ? 'bg-white dark:bg-slate-900' : 'bg-slate-50/40 dark:bg-slate-900/50'} hover:bg-slate-50/90 dark:hover:bg-slate-800/60`
                     }`}
                   >
+                    {/* 0. أيقونة السحب Drag Handle في بداية كل صف (أقصى اليمين) */}
+                    <td 
+                      className="py-3 px-2 border-l border-slate-200/60 dark:border-slate-800 text-center print:hidden select-none"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {isTotalRow ? (
+                        <span className="text-slate-400 dark:text-slate-600 font-bold select-none">-</span>
+                      ) : (
+                        <div
+                          draggable
+                          onDragStart={(e) => {
+                            e.stopPropagation();
+                            handleDragStart(e, order.id);
+                          }}
+                          className="cursor-grab active:cursor-grabbing p-1.5 rounded-lg hover:bg-slate-200/70 dark:hover:bg-slate-700/60 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors inline-flex items-center justify-center select-none"
+                          title="اسحب لتغيير ترتيب الصف"
+                          aria-label={`اسحب لتغيير ترتيب فاتورة ${order.clientName}`}
+                        >
+                          <GripVertical size={16} />
+                        </div>
+                      )}
+                    </td>
+
                     {/* مربع الدفع التفاعلي وزر التعديل السريع بجانبه */}
                     <td className="py-3 px-2 border-l border-slate-200/60 dark:border-slate-800 text-center">
-                      <div className="flex items-center justify-center gap-1.5">
-                        <input
-                          type="checkbox"
-                          id={`order-check-${order.id}`}
-                          checked={isChecked}
-                          onChange={() => onTogglePaid && onTogglePaid(order.id)}
-                          className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-amber-500 focus:ring-amber-400 focus:ring-2 cursor-pointer transition-all accent-amber-500 shrink-0"
-                          title={isChecked ? 'الفاتورة مدفوعة ومحددة (انقر لإلغاء التحديد)' : 'تحديد الفاتورة كمدفوعة وخالصة'}
-                          aria-label={`تحديد حالة الدفع للفاتورة الخاصة بـ ${order.clientName}`}
-                        />
-                        <button
-                          type="button"
-                          id={`btn-edit-order-${order.id}`}
-                          onClick={() => handleStartEdit(order)}
-                          className="p-1 rounded-md text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-slate-800 transition-colors cursor-pointer opacity-70 group-hover:opacity-100"
-                          title="تعديل بيانات الفاتورة مباشرة من السجل"
-                          aria-label={`تعديل الفاتورة الخاصة بـ ${order.clientName}`}
-                        >
-                          <Pencil size={13} />
-                        </button>
-                      </div>
+                      {isTotalRow ? (
+                        <span className="text-slate-400 dark:text-slate-600 font-bold select-none">-</span>
+                      ) : (
+                        <div className="flex items-center justify-center gap-1.5">
+                          <input
+                            type="checkbox"
+                            id={`order-check-${order.id}`}
+                            checked={isChecked}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              onTogglePaid && onTogglePaid(order.id);
+                            }}
+                            className="relative z-10 cursor-pointer w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-amber-500 focus:ring-amber-400 focus:ring-2 transition-all accent-amber-500 shrink-0"
+                            title={isChecked ? 'الفاتورة مدفوعة ومحددة (انقر لإلغاء التحديد)' : 'تحديد الفاتورة كمدفوعة وخالصة'}
+                            aria-label={`تحديد حالة الدفع للفاتورة الخاصة بـ ${order.clientName}`}
+                          />
+                          <button
+                            type="button"
+                            id={`btn-edit-order-${order.id}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingRowId(order.id);
+                              handleStartEdit(order);
+                            }}
+                            className="relative z-10 cursor-pointer p-1 rounded-md text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-slate-800 transition-colors inline-flex items-center justify-center opacity-70 group-hover:opacity-100"
+                            title="تعديل بيانات الفاتورة مباشرة من السجل"
+                            aria-label={`تعديل الفاتورة الخاصة بـ ${order.clientName}`}
+                          >
+                            <Pencil size={13} />
+                          </button>
+                        </div>
+                      )}
                     </td>
 
                     {/* 1. نوع الخدمة */}
-                    <td className="py-3 px-4 border-l border-slate-200/60 dark:border-slate-800">
-                      <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[11px] font-bold border ${getServiceBadgeClass(order.serviceType)}`}>
-                        {order.serviceType || 'خدمة مخصصة'}
-                      </span>
+                    <td className="py-2.5 px-3 border-l border-slate-200/60 dark:border-slate-800 text-center">
+                      <div className="relative inline-block w-full max-w-[175px]">
+                        <select
+                          id={`select-service-${order.id}`}
+                          value={order.serviceType || availableServices[0]?.name || 'لافتة إعلانية'}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            handleServiceChange(order.id, e.target.value);
+                          }}
+                          className={`w-full text-center text-xs font-bold py-1.5 pr-2 pl-6 rounded-lg border appearance-none cursor-pointer transition-colors shadow-2xs focus:ring-2 focus:ring-amber-500 focus:outline-hidden ${getServiceSelectClass(order.serviceType)}`}
+                          title="تغيير نوع الخدمة واستدعاء قالب التكلفة تلقائياً"
+                        >
+                          {availableServices.map((srv) => (
+                            <option key={srv.id || srv.name} value={srv.name} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 py-1">
+                              {srv.name}
+                            </option>
+                          ))}
+                          {order.serviceType && !availableServices.some(s => s.name === order.serviceType) && (
+                            <option value={order.serviceType} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 py-1">
+                              {order.serviceType}
+                            </option>
+                          )}
+                        </select>
+                        <ChevronDown size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                      </div>
                     </td>
 
                     {/* 2. اسم العميل */}
-                    <td className="py-3 px-4 border-l border-slate-200/60 dark:border-slate-800 font-bold text-slate-900 dark:text-slate-100 max-w-[180px] truncate" title={order.clientName}>
-                      {order.clientName}
+                    <td className="py-3 px-4 border-l border-slate-200/60 dark:border-slate-800 font-bold text-slate-900 dark:text-slate-100 max-w-[180px] text-center" title={order.clientName}>
+                      <div className="flex items-center justify-center gap-1.5 truncate">
+                        {order.isPinned && (
+                          <Pin size={13} className="text-amber-500 fill-amber-500/20 shrink-0" title="بند مثبت للأشهر القادمة" />
+                        )}
+                        <span className="truncate">{order.clientName}</span>
+                      </div>
                     </td>
 
                     {/* 3. إجمالي الفاتورة */}
@@ -1306,25 +1793,40 @@ export default function MonthlySalesGrid({
                       {order.price.toLocaleString()} <span className="text-[10px] font-normal text-slate-500 dark:text-slate-400">{currency}</span>
                     </td>
 
-                    {/* 4. تفاصيل الفاتورة: عرض البطاقات الرأسية في حال وجود بيانات أو - عند الفراغ (بدون زر +) */}
+                    {/* 4. تفاصيل الفاتورة مع زر التفاصيل لفتح نافذة بنود التكلفة */}
                     <td className="py-2.5 px-3 border-l border-slate-200/60 dark:border-slate-800 text-center align-middle max-w-[220px]">
-                      {detailsItems.length > 0 ? (
-                        <div className="flex flex-col gap-1">
-                          {detailsItems.map((itemText, idx) => (
-                            <span 
-                              key={idx}
-                              className="bg-gray-100 dark:bg-gray-800 text-slate-700 dark:text-slate-200 rounded-md text-xs text-center p-1 font-medium border border-gray-200/60 dark:border-gray-700/60 block truncate"
-                              title={itemText}
-                            >
-                              {itemText}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="text-slate-400 dark:text-slate-600 select-none text-sm font-bold">
-                          -
-                        </span>
-                      )}
+                      <div className="flex flex-col items-center justify-center gap-1.5">
+                        {detailsItems.length > 0 ? (
+                          <div className="flex flex-col gap-1 w-full">
+                            {detailsItems.slice(0, 2).map((itemText, idx) => (
+                              <span 
+                                key={idx}
+                                className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-md text-[11px] text-center px-1.5 py-0.5 font-medium border border-slate-200/60 dark:border-slate-700/60 block truncate"
+                                title={itemText}
+                              >
+                                {itemText}
+                              </span>
+                            ))}
+                            {detailsItems.length > 2 && (
+                              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
+                                +{detailsItems.length - 2} بنود إضافية
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-slate-400 dark:text-slate-600 text-xs font-mono">-</span>
+                        )}
+                        <button
+                          type="button"
+                          id={`btn-open-cost-details-${order.id}`}
+                          onClick={(e) => handleOpenPopover(order, e)}
+                          className="inline-flex items-center justify-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 hover:bg-amber-50 dark:bg-slate-800 dark:hover:bg-amber-950/40 text-slate-700 hover:text-amber-700 dark:text-slate-200 dark:hover:text-amber-300 border border-slate-200/80 dark:border-slate-700/80 transition-colors shadow-2xs cursor-pointer active:scale-95"
+                          title="فتح نافذة بنود التكلفة المستدعاة من القالب"
+                        >
+                          <Layers size={13} className="text-amber-600 dark:text-amber-400" />
+                          <span>التفاصيل</span>
+                        </button>
+                      </div>
                     </td>
 
                     {/* 5. صافي الربح */}
@@ -1337,7 +1839,7 @@ export default function MonthlySalesGrid({
                     </td>
 
                     {/* 6. الملاحظات المستقلة */}
-                    <td className="py-3 px-4 max-w-[260px]">
+                    <td className="py-3 px-4 max-w-[260px] border-l border-slate-200/60 dark:border-slate-800">
                       {displayedNotes ? (
                         <span 
                           className="text-[11px] text-slate-600 dark:text-slate-300 font-medium truncate block max-w-[250px] cursor-help hover:text-slate-900 dark:hover:text-white"
@@ -1351,14 +1853,263 @@ export default function MonthlySalesGrid({
                         </span>
                       )}
                     </td>
+
+                    {/* 7. أزرار الإجراءات في أقصى اليسار: تعديل، تكرار، تثبيت، وحذف */}
+                    <td className="py-3 px-2 text-center print:hidden relative z-50 pointer-events-auto" onClick={(e) => e.stopPropagation()}>
+                      {isTotalRow ? (
+                        <span className="text-slate-400 dark:text-slate-500 font-bold select-none">-</span>
+                      ) : (
+                        <div className="flex items-center justify-center gap-1 relative z-50 pointer-events-auto">
+                          <button
+                            type="button"
+                            id={`btn-action-edit-${order.id}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingRowId(order.id);
+                              handleStartEdit(order);
+                            }}
+                            className="relative z-10 cursor-pointer p-1.5 rounded-lg text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-slate-800 transition-colors inline-flex items-center justify-center"
+                            title="تعديل هذا السطر مباشرة"
+                            aria-label={`تعديل فاتورة ${order.clientName}`}
+                          >
+                            <Pencil size={15} />
+                          </button>
+
+                          {/* ثانياً: أيقونة نسخ/تكرار الفاتورة (Copy SVG) */}
+                          <button
+                            type="button"
+                            id={`btn-duplicate-order-${order.id}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDuplicate(order);
+                            }}
+                            className="relative z-10 cursor-pointer p-1.5 rounded-lg text-slate-400 hover:text-cyan-600 dark:hover:text-cyan-400 hover:bg-cyan-50 dark:hover:bg-slate-800 transition-colors inline-flex items-center justify-center"
+                            title="نسخ وتكرار هذا البند لأسفل الجدول"
+                            aria-label={`تكرار فاتورة ${order.clientName}`}
+                          >
+                            <Copy size={15} />
+                          </button>
+
+                          {/* ثالثاً: أيقونة تثبيت البند للأشهر القادمة (Pin SVG) */}
+                          <button
+                            type="button"
+                            id={`btn-pin-order-${order.id}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleTogglePin(order.id);
+                            }}
+                            className={`relative z-10 cursor-pointer p-1.5 rounded-lg transition-colors inline-flex items-center justify-center ${
+                              order.isPinned 
+                                ? 'text-amber-500 bg-amber-50 dark:bg-amber-950/60 dark:text-amber-400 shadow-xs' 
+                                : 'text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-50/50 dark:hover:bg-slate-800'
+                            }`}
+                            title={order.isPinned ? "البند مثبت للأشهر القادمة (انقر لإلغاء التثبيت)" : "تثبيت البند للأشهر القادمة"}
+                            aria-label={`تثبيت فاتورة ${order.clientName}`}
+                          >
+                            <Pin size={15} className={order.isPinned ? "fill-amber-500/30 text-amber-500 dark:text-amber-400" : ""} />
+                          </button>
+
+                          {/* زر الحذف - يظهر فقط لصفوف الفواتير الفعلية (مثل زبون زياد) ويعمل بدالة handleDelete(row.id) */}
+                          <button
+                            type="button"
+                            id={`btn-delete-order-${row.id}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (window.confirm('هل تريد حذف هذا السطر؟')) {
+                                handleDelete(row.id);
+                              }
+                            }}
+                            className="p-1.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg cursor-pointer transition-colors"
+                            title="حذف هذا السطر"
+                            aria-label={`حذف فاتورة ${row.clientName}`}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      )}
+                    </td>
                   </tr>
                 );
               })}
 
+              {/* ثانياً: إذا كانت isAddingRow === true، اعرض السطر الجديد <tr> في أسفل الجدول (Append to bottom) */}
+              {isAddingRow && (
+                <tr className="bg-blue-50/90 dark:bg-blue-950/50 border-y-2 border-blue-400 dark:border-blue-500 animate-in fade-in slide-in-from-bottom-1 duration-150 shadow-inner">
+                  {/* عمود فارغ للسحب أثناء إضافة سطر جديد */}
+                  <td className="py-2 px-2 border-l border-blue-200 dark:border-blue-800 text-center print:hidden"></td>
+
+                  {/* أزرار الحفظ والإلغاء السريعة */}
+                  <td className="py-2 px-2 border-l border-blue-200 dark:border-blue-800 text-center bg-blue-100/60 dark:bg-blue-900/40">
+                    <div className="flex items-center justify-center gap-1">
+                      <button
+                        type="button"
+                        id="btn-save-inline-row-icon"
+                        onClick={handleSaveInlineRow}
+                        className="relative z-10 cursor-pointer p-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-transform active:scale-95"
+                        title="حفظ الفاتورة وإدراجها في السجل"
+                        aria-label="حفظ الفاتورة"
+                      >
+                        <Check size={14} className="stroke-[3]" />
+                      </button>
+                      <button
+                        type="button"
+                        id="btn-cancel-inline-row-icon"
+                        onClick={() => setIsAddingRow(false)}
+                        className="relative z-10 cursor-pointer p-1.5 rounded-lg bg-rose-100 hover:bg-rose-200 dark:bg-rose-950/80 dark:hover:bg-rose-900 text-rose-700 dark:text-rose-300 shadow-xs transition-transform active:scale-95"
+                        title="إلغاء الإضافة"
+                        aria-label="إلغاء الإضافة"
+                      >
+                        <X size={14} className="stroke-[3]" />
+                      </button>
+                    </div>
+                  </td>
+
+                  {/* 1. نوع الخدمة */}
+                  <td className="py-2 px-3 border-l border-blue-200 dark:border-blue-800 text-center">
+                    <div className="relative">
+                      <select
+                        id="inline-input-service-type"
+                        value={newServiceType}
+                        onChange={(e) => handleNewServiceChange(e.target.value)}
+                        className="w-full glass-input rounded-lg pr-2.5 pl-6 py-1.5 text-xs font-bold text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 border-blue-300 dark:border-blue-700 appearance-none cursor-pointer focus:ring-2 focus:ring-blue-500 text-center"
+                      >
+                        {availableServices.map((srv) => (
+                          <option key={srv.id || srv.name} value={srv.name}>{srv.name}</option>
+                        ))}
+                      </select>
+                      <ChevronDown size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                    </div>
+                  </td>
+
+                  {/* 2. اسم العميل */}
+                  <td className="py-2 px-3 border-l border-blue-200 dark:border-blue-800 text-center">
+                    <input
+                      type="text"
+                      id="inline-input-client-name"
+                      value={newClientName}
+                      onChange={(e) => setNewClientName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleSaveInlineRow();
+                        if (e.key === 'Escape') setIsAddingRow(false);
+                      }}
+                      placeholder="اسم العميل أو الشركة..."
+                      autoFocus
+                      className="w-full glass-input rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 border-blue-300 dark:border-blue-700 focus:ring-2 focus:ring-blue-500 text-center"
+                    />
+                  </td>
+
+                  {/* 3. إجمالي الفاتورة */}
+                  <td className="py-2 px-3 border-l border-blue-200 dark:border-blue-800 text-center">
+                    <input
+                      type="number"
+                      id="inline-input-price"
+                      step="any"
+                      value={newPrice}
+                      onChange={(e) => setNewPrice(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleSaveInlineRow();
+                        if (e.key === 'Escape') setIsAddingRow(false);
+                      }}
+                      placeholder="0.00"
+                      className="w-full glass-input rounded-lg px-2 py-1.5 text-xs font-mono font-black text-center text-emerald-800 dark:text-emerald-300 bg-white dark:bg-slate-800 border-blue-300 dark:border-blue-700 focus:ring-2 focus:ring-blue-500"
+                    />
+                  </td>
+
+                  {/* 4. تفاصيل الفاتورة مع زر + لفتح القائمة المنسدلة للتكاليف */}
+                  <td className="py-2 px-3 border-l border-blue-200 dark:border-blue-800 text-center align-middle">
+                    <div className="flex items-center justify-center gap-1.5">
+                      <input
+                        type="text"
+                        id="inline-input-details"
+                        value={newDetails}
+                        onChange={(e) => setNewDetails(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSaveInlineRow();
+                          if (e.key === 'Escape') setIsAddingRow(false);
+                        }}
+                        placeholder="المقاس، الألوان..."
+                        className="w-full glass-input rounded-lg px-2 py-1.5 text-xs text-center text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-800 border-blue-300 dark:border-blue-700 focus:ring-2 focus:ring-blue-500"
+                      />
+                      <button
+                        type="button"
+                        id="btn-add-costs-popover-new"
+                        onClick={(e) => handleOpenPopover(draftNewOrder, e)}
+                        className="w-7 h-7 rounded-full bg-blue-100 hover:bg-blue-200 dark:bg-blue-900/60 dark:hover:bg-blue-800 text-blue-800 dark:text-blue-200 border border-blue-300 dark:border-blue-700 flex items-center justify-center transition-all shrink-0 cursor-pointer shadow-2xs"
+                        title="إدخال بنود التكاليف في القائمة المنسدلة"
+                        aria-label="إدخال بنود التكاليف في القائمة المنسدلة"
+                      >
+                        <Plus size={15} />
+                      </button>
+                    </div>
+                  </td>
+
+                  {/* 5. صافي الربح / التكلفة */}
+                  <td className="py-2 px-3 border-l border-blue-200 dark:border-blue-800 text-center">
+                    <div className="flex items-center gap-1 justify-center">
+                      <input
+                        type="number"
+                        id="inline-input-cost"
+                        step="any"
+                        value={newCost}
+                        onChange={(e) => setNewCost(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSaveInlineRow();
+                          if (e.key === 'Escape') setIsAddingRow(false);
+                        }}
+                        placeholder="التكلفة"
+                        className="w-16 glass-input rounded-lg px-1.5 py-1 text-[11px] font-mono font-bold text-center text-rose-700 dark:text-rose-400 bg-white dark:bg-slate-800 border-blue-300 dark:border-blue-700"
+                        title="التكلفة الإجمالية (لحساب صافي الربح تلقائياً)"
+                      />
+                      <span className="text-[11px] font-mono font-black text-blue-700 dark:text-blue-400 whitespace-nowrap">
+                        ={(Math.max(0, (parseFloat(newPrice) || 0) - (parseFloat(newCost) || 0))).toLocaleString()}
+                      </span>
+                    </div>
+                  </td>
+
+                  {/* 6. الملاحظات وزر الإلغاء والحفظ */}
+                  <td className="py-2 px-3 border-l border-blue-200 dark:border-blue-800">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        id="inline-input-notes"
+                        value={newNotes}
+                        onChange={(e) => setNewNotes(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSaveInlineRow();
+                          if (e.key === 'Escape') setIsAddingRow(false);
+                        }}
+                        placeholder="أي ملاحظات إضافية..."
+                        className="flex-1 glass-input rounded-lg px-2.5 py-1.5 text-xs text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-800 border-blue-300 dark:border-blue-700 focus:ring-2 focus:ring-blue-500"
+                      />
+                      <button
+                        type="button"
+                        id="btn-cancel-inline-row"
+                        onClick={() => setIsAddingRow(false)}
+                        className="relative z-10 cursor-pointer px-3 py-1.5 rounded-lg text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white transition-colors shrink-0"
+                      >
+                        إلغاء
+                      </button>
+                      <button
+                        type="button"
+                        id="btn-save-inline-row"
+                        onClick={handleSaveInlineRow}
+                        className="relative z-10 cursor-pointer px-3.5 py-1.5 rounded-lg text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-xs transition-colors shrink-0 flex items-center gap-1"
+                      >
+                        <Check size={14} />
+                        <span>حفظ</span>
+                      </button>
+                    </div>
+                  </td>
+
+                  {/* 7. عمود الإجراءات (فارغ أثناء الإضافة) */}
+                  <td className="py-2 px-2 text-center print:hidden"></td>
+                </tr>
+              )}
+
               {/* ثالثاً (الأهم): اعرض رسالة "لا توجد فواتير مسجلة في شهر ..." فقط وحصرياً إذا كان السجل فارغاً و لم يكن المستخدم في وضع الإضافة */}
               {filteredGridOrders.length === 0 && !isAddingRow && (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-500 dark:text-slate-400">
+                  <td colSpan={9} className="py-12 text-center text-slate-500 dark:text-slate-400">
                     <div className="flex flex-col items-center justify-center gap-2">
                       <FileSpreadsheet size={32} className="text-slate-300 dark:text-slate-600" />
                       <span className="font-bold text-sm text-slate-700 dark:text-slate-300">
@@ -1380,6 +2131,11 @@ export default function MonthlySalesGrid({
               <tfoot>
                 <tr className="bg-slate-200/90 dark:bg-slate-800/95 font-black border-t-2 border-slate-300 dark:border-slate-700 text-xs select-none">
                   
+                  {/* Drag column spacer */}
+                  <td className="py-3 px-2 text-center border-l border-slate-300 dark:border-slate-700 text-slate-400 print:hidden">
+                    -
+                  </td>
+
                   {/* Checkbox column spacer */}
                   <td className="py-3 px-3 text-center border-l border-slate-300 dark:border-slate-700 text-slate-400">
                     -
@@ -1387,8 +2143,8 @@ export default function MonthlySalesGrid({
 
                   {/* Columns 1-2: نوع الخدمة + اسم العميل Label */}
                   <td colSpan={2} className="py-3 px-4 text-right text-slate-900 dark:text-slate-100 border-l border-slate-300 dark:border-slate-700 font-bold">
-                    <div className="flex items-center justify-between">
-                      <span>إجمالي الشهر ({filteredGridOrders.length} طلبية):</span>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span>إجمالي الشهر ({actualOrdersCount} طلبية):</span>
                       <span className="text-[10px] font-normal text-slate-600 dark:text-slate-400">
                         مجموع القيم المحسوبة
                       </span>
@@ -1401,7 +2157,7 @@ export default function MonthlySalesGrid({
                   </td>
 
                   {/* Column 4: تفاصيل الفاتورة (Footer Spacer) */}
-                  <td className="py-3 px-4 text-center text-slate-500 dark:text-slate-400 border-l border-slate-300 dark:border-slate-700">
+                  <td className="py-3 px-4 text-center text-slate-400 dark:text-slate-500 border-l border-slate-300 dark:border-slate-700 font-bold">
                     -
                   </td>
 
@@ -1415,7 +2171,12 @@ export default function MonthlySalesGrid({
                   </td>
 
                   {/* Column 6: الملاحظات (Footer Spacer) */}
-                  <td className="py-3 px-4 text-center text-slate-500 dark:text-slate-400">
+                  <td className="py-3 px-4 text-center text-slate-400 dark:text-slate-500 border-l border-slate-300 dark:border-slate-700 font-bold">
+                    -
+                  </td>
+
+                  {/* Column 7: حذف (Footer Spacer) - خانة الإجراءات فارغة أو عبارة عن شرطة (-) ولا يمكن حذفه */}
+                  <td className="py-3 px-2 text-center text-slate-400 dark:text-slate-500 print:hidden font-bold select-none">
                     -
                   </td>
                 </tr>
@@ -1435,6 +2196,25 @@ export default function MonthlySalesGrid({
           onSave={handleSaveOrderCosts}
         />
       )}
+
+      {/* ========================================================================= */}
+      {/* FLOATING ACTION BUTTON (FAB) - زر إضافة عائم دائري متناسق في زاوية الشاشة */}
+      {/* ========================================================================= */}
+      <div className="fixed bottom-6 left-6 sm:bottom-8 sm:left-8 z-50 print:hidden">
+        <button
+          type="button"
+          id="btn-fab-add-invoice"
+          onClick={handleTriggerAddRow}
+          className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 active:scale-95 text-white shadow-xl hover:shadow-2xl hover:shadow-emerald-600/40 border-2 border-white/30 dark:border-slate-700/60 flex items-center justify-center transition-all duration-300 cursor-pointer group focus:outline-hidden focus:ring-4 focus:ring-emerald-500/40"
+          title="إضافة بند جديد"
+          aria-label="إضافة بند جديد"
+        >
+          <Plus 
+            size={28} 
+            className="text-white stroke-[2.75] transition-transform duration-300 ease-out group-hover:rotate-90 group-hover:scale-110" 
+          />
+        </button>
+      </div>
     </div>
   );
 }

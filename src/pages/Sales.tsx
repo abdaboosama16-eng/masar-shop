@@ -16,6 +16,7 @@ import InvoicePrintModal from '../components/InvoicePrintModal';
 import WhatsAppShareModal from '../components/WhatsAppShareModal';
 import MonthlySalesGrid from '../components/MonthlySalesGrid';
 import OrderDetailsModal from '../components/OrderDetailsModal';
+import ExpensesAndProfits from '../components/ExpensesAndProfits';
 
 type SalesActiveTab = 'monthly_grid' | 'invoices' | 'new_order' | 'kanban';
 
@@ -25,9 +26,11 @@ export default function Sales() {
     addOrder, 
     updateOrder,
     deleteOrder, 
+    reorderOrders,
     getNextSerialNumber, 
     updateOrderStatus, 
     toggleOrderPaidStatus,
+    toggleOrderPinned,
     employees, 
     settings, 
     isKioskMode,
@@ -45,6 +48,19 @@ export default function Sales() {
   const [selectedOrderForDetails, setSelectedOrderForDetails] = useState<Order | null>(null);
   const [printingOrder, setPrintingOrder] = useState<Order | null>(null);
   const [whatsAppOrder, setWhatsAppOrder] = useState<Order | null>(null);
+
+  // ميزة تكرار/نسخ الفاتورة (Duplicate Row) وإدراجها في أسفل الجدول
+  const handleDuplicateOrder = (orderToDuplicate: Order) => {
+    const nextSerial = getNextSerialNumber();
+    const duplicatedOrder: Omit<Order, 'id'> = {
+      ...orderToDuplicate,
+      serialNumber: nextSerial,
+      isPaid: false,
+      paidAt: undefined,
+      pendingSync: true,
+    };
+    addOrder(duplicatedOrder, nextSerial);
+  };
 
   // Search & Filter state for Invoices Tab
   const [searchTerm, setSearchTerm] = useState('');
@@ -75,6 +91,28 @@ export default function Sales() {
   const [dynamicCostValues, setDynamicCostValues] = useState<Record<string, string>>({});
   const [dynamicCostExecutors, setDynamicCostExecutors] = useState<Record<string, string>>({});
   const [customCostItemInput, setCustomCostItemInput] = useState('');
+
+  // استدعاء قالب الخدمة التلقائي وملء بنود التكلفة بقيمة افتراضية 0
+  const handleServiceTypeChange = (newService: string) => {
+    setServiceType(newService);
+    const template = availableServices.find(s => s.name === newService);
+    if (template) {
+      const newCosts: Record<string, string> = {};
+      const newExecs: Record<string, string> = {};
+      const items = template.costItems || [];
+      items.forEach(item => {
+        newCosts[item] = '0';
+        if (template.defaultCosts && template.defaultCosts[item] !== undefined) {
+          newCosts[item] = String(template.defaultCosts[item]);
+        }
+        if (template.defaultExecutors && template.defaultExecutors[item]) {
+          newExecs[item] = template.defaultExecutors[item];
+        }
+      });
+      setDynamicCostValues(newCosts);
+      setDynamicCostExecutors(newExecs);
+    }
+  };
 
   // Active service config and its cost items
   const currentServiceConfig = useMemo(() => {
@@ -344,11 +382,10 @@ export default function Sales() {
     setActiveTab('monthly_grid');
   };
 
-  const handleDeleteOrder = (orderId: string, client: string) => {
-    if (window.confirm(`هل أنت متأكد من حذف الطلبية/الفاتورة رقم #${orderId} الخاصة بـ (${client})؟`)) {
-      deleteOrder(orderId);
-    }
+  const handleDelete = (orderId: string) => {
+    deleteOrder(orderId);
   };
+  const handleDeleteOrder = handleDelete;
 
   // Service Type Geometric Icons
   const renderServiceIcon = (type?: ServiceType) => {
@@ -441,24 +478,6 @@ export default function Sales() {
             إدارة الفواتير، متابعة العقود، كشف حسابات الزبائن، ومتابعة مسارات الإنتاج والتنفيذ
           </p>
         </div>
-
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          {/* Add Order Button */}
-          <button
-            type="button"
-            id="btn-add-item-blue"
-            onClick={() => {
-              setIsAddingRow(true);
-              setActiveTab('monthly_grid');
-            }}
-            className="flex items-center justify-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors shadow-xs text-xs font-bold w-full sm:w-auto cursor-pointer"
-            title="إضافة بند"
-            aria-label="إضافة بند"
-          >
-            <Plus size={16} className="text-white" />
-            <span>+ إضافة بند</span>
-          </button>
-        </div>
       </div>
 
       {/* Success Toast Notification */}
@@ -498,6 +517,7 @@ export default function Sales() {
         {/* Tab 2: المصاريف والأرباح */}
         <button
           type="button"
+          id="tab-btn-expenses-profits"
           onClick={() => setActiveTab('invoices')}
           className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-150 ease-out ${
             activeTab === 'invoices'
@@ -505,7 +525,7 @@ export default function Sales() {
               : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
           }`}
         >
-          <FileText size={16} className={activeTab === 'invoices' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'} />
+          <Calculator size={16} className={activeTab === 'invoices' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'} />
           <span>المصاريف والأرباح</span>
         </button>
       </div>
@@ -524,6 +544,10 @@ export default function Sales() {
           onViewDesign={setSelectedOrderForDesign}
           onViewOrderDetails={setSelectedOrderForDetails}
           onTogglePaid={toggleOrderPaidStatus}
+          onTogglePinned={toggleOrderPinned}
+          onDeleteOrder={deleteOrder}
+          onDuplicateOrder={handleDuplicateOrder}
+          onReorderOrders={reorderOrders}
           isAddingRow={isAddingRow}
           setIsAddingRow={setIsAddingRow}
         />
@@ -583,7 +607,7 @@ export default function Sales() {
                 <div className="relative">
                   <select
                     value={serviceType}
-                    onChange={(e) => setServiceType(e.target.value)}
+                    onChange={(e) => handleServiceTypeChange(e.target.value)}
                     className="w-full glass-input rounded-lg px-4 py-2.5 text-sm font-bold text-slate-900 appearance-none bg-white cursor-pointer pr-4 pl-10"
                     required
                   >
@@ -979,392 +1003,13 @@ export default function Sales() {
       )}
 
       {/* ========================================================================= */}
-      {/* TAB 2: سجل الفواتير (Invoices & Client Ledger) */}
+      {/* TAB 2: المصاريف والأرباح (Expenses & Profits Management Grid) */}
       {/* ========================================================================= */}
       {activeTab === 'invoices' && (
-        <div className="space-y-5 animate-in fade-in duration-150">
-          
-          {/* Financial Metrics Summary Banner */}
-          {!isKioskMode && (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 no-print">
-              <div className="glass-panel p-4 rounded-xl border border-slate-200/80 bg-white/90 ">
-                <span className="text-[11px] font-bold text-slate-600 block mb-1">إجمالي المبيعات</span>
-                <span className="font-mono tabular-nums text-lg font-black text-slate-900 ">
-                  {totalSales.toLocaleString()} {settings.shopInfo.currency}
-                </span>
-              </div>
-              <div className="glass-panel p-4 rounded-xl border border-slate-200/80 bg-white/90 ">
-                <span className="text-[11px] font-bold text-slate-600 block mb-1">إجمالي التكاليف</span>
-                <span className="font-mono tabular-nums text-lg font-black text-rose-700 ">
-                  {totalCosts.toLocaleString()} {settings.shopInfo.currency}
-                </span>
-              </div>
-              <div className="glass-panel p-4 rounded-xl border border-slate-200/80 bg-white/90 ">
-                <span className="text-[11px] font-bold text-slate-600 block mb-1">صافي الأرباح</span>
-                <span className="font-mono tabular-nums text-lg font-black text-emerald-700 ">
-                  {totalNetProfit.toLocaleString()} {settings.shopInfo.currency}
-                </span>
-              </div>
-              <div className="glass-panel p-4 rounded-xl border border-slate-200/80 bg-white/90 ">
-                <span className="text-[11px] font-bold text-slate-600 block mb-1">عدد الطلبيات</span>
-                <span className="font-mono tabular-nums text-lg font-black text-slate-900 ">
-                  {orders.length} طلبية
-                </span>
-              </div>
-            </div>
-          )}
-
-          {/* Client Ledger Filter & Search Toolbar */}
-          <div className="glass-panel p-4 sm:p-5 rounded-xl no-print space-y-4 bg-white/90 border border-slate-200/80 shadow-xs">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 pb-3 border-b border-slate-200/70 ">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold">
-                  <BookOpen size={16} />
-                </div>
-                <div>
-                  <h3 className="font-bold text-sm text-slate-900 ">كشف حسابات الزبائن وتصفية السجل</h3>
-                  <p className="text-[11px] text-slate-600 ">تصفية الفواتير بحسب اسم الزبون ومراجعة إجمالي المسدد والمتبقي</p>
-                </div>
-              </div>
-
-              {/* Client Selector Dropdown */}
-              <div className="flex items-center gap-2 w-full md:w-auto">
-                <span className="text-xs font-bold text-slate-600 shrink-0">اختيار الزبون:</span>
-                <div className="relative flex-1 md:w-64">
-                  <select
-                    value={selectedClientFilter}
-                    onChange={(e) => setSelectedClientFilter(e.target.value)}
-                    className="w-full glass-input rounded-lg px-3 py-2 text-xs font-bold text-slate-900 appearance-none bg-white cursor-pointer pr-3 pl-8"
-                  >
-                    <option value="الكل">جميع الزبائن ({uniqueClients.length} عميل)</option>
-                    {uniqueClients.map(client => (
-                      <option key={client} value={client}>
-                        {client}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown size={14} className="absolute left-2.5 top-2.5 text-slate-400 pointer-events-none" />
-                </div>
-
-                {selectedClientFilter !== 'الكل' && (
-                  <button
-                    type="button"
-                    onClick={() => setSelectedClientFilter('الكل')}
-                    className="p-2 rounded-xl text-slate-600 hover:text-slate-800 :text-slate-200 hover:bg-slate-100 :bg-slate-800 transition-all duration-150 ease-out "
-                    title="إلغاء تصفية الزبون"
-                  >
-                    <RotateCcw size={14} />
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Client Ledger Summary Card (When specific client selected) */}
-            {selectedClientFilter !== 'الكل' && (
-              <div className="p-4 rounded-xl bg-indigo-50/70 border border-indigo-200/80 animate-in fade-in">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
-                  <div className="flex items-center gap-2">
-                    <User size={16} className="text-indigo-700 " />
-                    <span className="text-xs font-black text-indigo-950 ">
-                      كشف حساب: {selectedClientFilter}
-                    </span>
-                  </div>
-                  <span className="text-[11px] font-bold text-indigo-700 bg-indigo-100/80 px-2.5 py-0.5 rounded-lg">
-                    عدد الفواتير: {clientLedgerStats.count}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="p-3 bg-white rounded-xl border border-indigo-100 shadow-xs">
-                    <span className="text-[10px] font-bold text-slate-600 block mb-1">إجمالي الفواتير المطلوبة</span>
-                    <span className="font-mono tabular-nums text-base font-black text-slate-900 ">
-                      {clientLedgerStats.totalBilled.toLocaleString()} {settings.shopInfo.currency}
-                    </span>
-                  </div>
-
-                  <div className="p-3 bg-white rounded-xl border border-emerald-200/80 shadow-xs">
-                    <span className="text-[10px] font-bold text-emerald-800 block mb-1">إجمالي المدفوع (المسدد)</span>
-                    <span className="font-mono tabular-nums text-base font-black text-emerald-700 ">
-                      {clientLedgerStats.totalPaid.toLocaleString()} {settings.shopInfo.currency}
-                    </span>
-                  </div>
-
-                  <div className="p-3 bg-white rounded-xl border border-rose-200/80 shadow-xs">
-                    <span className="text-[10px] font-bold text-rose-700 block mb-1">إجمالي المتبقي للتحصيل</span>
-                    <span className="font-mono tabular-nums text-base font-black text-rose-700 ">
-                      {clientLedgerStats.totalRemaining.toLocaleString()} {settings.shopInfo.currency}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Filters & Search Row */}
-            <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3 pt-1">
-              <div className="relative flex-1">
-                <Search size={16} className="absolute right-3.5 top-3 text-slate-400" />
-                <input
-                  type="text"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="ابحث برقم الفاتورة (#1001)، اسم الزبون، أو تفاصيل الخدمة..."
-                  className="w-full glass-input rounded-lg pr-10 pl-4 py-2.5 text-xs bg-slate-50/70 "
-                />
-                {searchTerm && (
-                  <button 
-                    type="button"
-                    onClick={() => setSearchTerm('')} 
-                    className="absolute left-3 top-3 text-slate-400 hover:text-slate-600 :text-slate-300"
-                  >
-                    <X size={14} />
-                  </button>
-                )}
-              </div>
-
-              {/* Service Type Filter Chips */}
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 text-xs">
-                {['الكل', 'لافتة إعلانية', 'إدارة صفحات سوشيال ميديا', 'تصميم موقع إلكتروني', 'خدمات طباعة'].map((tab) => (
-                  <button
-                    key={tab}
-                    type="button"
-                    onClick={() => setSelectedServiceFilter(tab)}
-                    className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all duration-150 ease-out text-xs border ${
-                      selectedServiceFilter === tab
-                        ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
-                        : 'bg-slate-100 text-slate-600 border-slate-200/80 hover:bg-slate-200 :bg-slate-700'
-                    }`}
-                  >
-                    {tab}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Invoices List */}
-          <div className={isKioskMode ? "grid grid-cols-1 lg:grid-cols-2 gap-5 no-print" : "space-y-3.5 no-print"}>
-            {filteredOrders.map((order) => {
-              const costVal = order.cost || 0;
-              const profitVal = order.expectedProfit !== undefined ? order.expectedProfit : (order.price - costVal);
-              const margin = order.price > 0 ? ((profitVal / order.price) * 100).toFixed(0) : '0';
-              const orderSerial = order.serialNumber || order.id;
-
-              return (
-                <div 
-                  key={order.id} 
-                  className={`glass-panel p-5 rounded-xl flex flex-col justify-between gap-4 hover:shadow-sm transition-all duration-150 ease-out border border-slate-200/80 bg-white/95 ${
-                    isKioskMode ? 'p-6 ring-1 ring-emerald-500/20' : 'lg:flex-row lg:items-center'
-                  }`}
-                >
-                  {/* Order Info */}
-                  <div className="flex-1 min-w-0">
-                    
-                    <div className="flex items-center justify-between gap-3 mb-2">
-                      <div className="flex flex-wrap items-center gap-2 min-w-0">
-                        <span className="font-mono tabular-nums text-xs font-black text-slate-900 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200/80 ">
-                          #{orderSerial}
-                        </span>
-                        
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 border border-slate-200/80 text-slate-800 ">
-                          {renderServiceIcon(order.serviceType)}
-                          <span>{order.serviceType || 'لافتة إعلانية'}</span>
-                        </span>
-
-                        <h3 className={`font-black text-slate-900 truncate ${isKioskMode ? 'text-lg' : 'text-base'}`}>
-                          {order.clientName}
-                        </h3>
-                      </div>
-
-                      {/* Interactive Status Badge */}
-                      <div className="relative shrink-0">
-                        <select
-                          value={order.status}
-                          onChange={(e) => updateOrderStatus(order.id, e.target.value as OrderStatus)}
-                          className={`rounded-xl px-3 py-1.5 text-xs font-black border appearance-none text-center cursor-pointer transition-all duration-150 ease-out pr-7 pl-3.5 shadow-xs
-                            ${order.status === 'تم التسليم' ? 'text-emerald-800 bg-emerald-100/90 border-emerald-300 ' : 
-                              order.status === 'قيد التركيب' ? 'text-blue-800 bg-blue-100/90 border-blue-300 ' : 
-                              order.status === 'بانتظار اعتماد التصميم' ? 'text-purple-800 bg-purple-100/90 border-purple-300 ' :
-                              'text-amber-800 bg-amber-100/90 border-amber-300 '}`}
-                        >
-                          <option value="بانتظار اعتماد التصميم">بانتظار اعتماد التصميم</option>
-                          <option value="قيد التصميم">قيد التصميم</option>
-                          <option value="قيد الطباعة">قيد الطباعة</option>
-                          <option value="قيد التركيب">قيد التركيب</option>
-                          <option value="تم التسليم">تم التسليم</option>
-                        </select>
-                        <ChevronDown size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none opacity-60" />
-                      </div>
-                    </div>
-
-                    {/* Description */}
-                    <p className={`text-slate-600 mb-3 font-normal leading-relaxed ${isKioskMode ? 'text-sm font-medium' : 'text-xs line-clamp-2'}`}>
-                      {order.description}
-                    </p>
-
-                    {/* Badges / Specs Row */}
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600 ">
-                      <span className="bg-slate-100 px-2.5 py-1 rounded-lg text-[11px] font-medium">
-                        {format(new Date(order.date), 'yyyy-MM-dd')}
-                      </span>
-                      
-                      <span className="bg-slate-100 px-2.5 py-1 rounded-lg text-[11px] font-medium">
-                        {order.paymentMethod}
-                      </span>
-
-                      {order.assignedEmployee && (
-                        <span className="bg-blue-50 text-blue-800 border border-blue-200/80 px-2.5 py-1 rounded-lg text-[11px] font-bold">
-                          المسؤول: {order.assignedEmployee}
-                        </span>
-                      )}
-
-                      {order.dimensions?.width && order.dimensions?.height && (
-                        <span className="flex items-center text-slate-800 bg-slate-100 border border-slate-200/80 px-2.5 py-1 rounded-lg font-mono tabular-nums text-[11px] font-bold">
-                          <Maximize size={12} className="ml-1 text-slate-600" />
-                          {order.dimensions.height}م × {order.dimensions.width}م ({((parseFloat(order.dimensions.width) || 0) * (parseFloat(order.dimensions.height) || 0)).toFixed(2)} م²)
-                        </span>
-                      )}
-
-                      {order.installationAddress && (
-                        <span className="flex items-center text-slate-800 bg-slate-100 border border-slate-200/80 px-2.5 py-1 rounded-lg text-[11px]">
-                          <MapPin size={12} className="ml-1 text-slate-600" />
-                          {order.installationAddress}
-                        </span>
-                      )}
-
-                      {order.targetDeliveryDate && (
-                        <span className="flex items-center bg-slate-100 border border-slate-200/80 px-2.5 py-1 rounded-lg text-[11px] font-bold text-slate-700 ">
-                          <Calendar size={12} className="ml-1" />
-                          تسليم: {format(new Date(order.targetDeliveryDate), 'yyyy-MM-dd')}
-                        </span>
-                      )}
-
-                      {order.notes && (
-                        <span className="flex items-center bg-amber-50 text-amber-800 border border-amber-200/80 px-2.5 py-1 rounded-lg text-[11px] font-bold">
-                          <FileText size={12} className="ml-1 text-amber-600" />
-                          توجد ملاحظات
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Financial Breakdown & Profit Badge */}
-                  <div className="flex items-center gap-4 bg-slate-50/90 p-3.5 rounded-xl border border-slate-200/80 shrink-0">
-                    <div className="text-right">
-                      <span className="text-[10px] text-slate-600 block font-bold">سعر الفاتورة:</span>
-                      <div className="flex items-center gap-2">
-                        <div className="text-base font-black text-slate-900 font-mono tabular-nums">
-                          {order.price.toLocaleString()} {settings.shopInfo.currency}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => toggleOrderPaidStatus(order.id)}
-                          className={`inline-flex items-center justify-center w-7 h-7 rounded-lg transition-all duration-200 shadow-xs ${
-                            order.isPaid
-                              ? "bg-amber-400/20 text-amber-500 border border-amber-400/50 hover:bg-amber-400/30 hover:border-amber-400"
-                              : "bg-slate-100 text-slate-400 border border-slate-200 hover:text-slate-600 hover:border-slate-300"
-                          }`}
-                          title={order.isPaid ? "الفاتورة خالصة ومدفوعة (انقر للإلغاء)" : "تأكيد خلاص ودفع الفاتورة"}
-                        >
-                          <Check size={15} strokeWidth={order.isPaid ? 3 : 2} />
-                        </button>
-                      </div>
-                      {order.remaining !== undefined && order.remaining > 0 && (
-                        <span className="text-[10px] font-bold text-rose-700 block">
-                          المتبقي: {order.remaining.toLocaleString()} {settings.shopInfo.currency}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="h-8 w-px bg-slate-200 "></div>
-
-                    {/* Cost & Profit */}
-                    <div className="text-right">
-                      <span className="text-[10px] text-slate-600 block font-bold">تكلفة / صافي الربح:</span>
-                      <div className="flex items-center gap-1.5 font-mono tabular-nums text-xs font-bold">
-                        <span className="text-rose-700 ">{costVal.toLocaleString()}</span>
-                        <span className="text-slate-400">/</span>
-                        <span className="text-emerald-700 font-black">+{profitVal.toLocaleString()}</span>
-                      </div>
-                      <span className="text-[10px] font-bold text-emerald-800 block">
-                        هامش: {margin}%
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Action Buttons */}
-                  <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 border-t lg:border-t-0 lg:border-r border-slate-200/80 pt-3 lg:pt-0 lg:pr-4 shrink-0">
-                    
-                    {/* View Details Modal Button */}
-                    <button
-                      type="button"
-                      onClick={() => setSelectedOrderForDetails(order)}
-                      className="glass-button flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-slate-700 hover:bg-slate-100 border-slate-200 text-xs font-bold transition-all duration-150 ease-out"
-                      title="عرض تفاصيل الطلبية وتعديل الملاحظات"
-                    >
-                      <FileText size={15} className="text-slate-600" />
-                      <span>تفاصيل</span>
-                    </button>
-
-                    {/* Design Attachment Button */}
-                    <button
-                      type="button"
-                      onClick={() => setSelectedOrderForDesign(order)}
-                      className="glass-button flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-blue-700 hover:bg-blue-50 :bg-blue-950/50 border-blue-200 text-xs font-bold transition-all duration-150 ease-out"
-                      title="إرفاق/عرض ملفات التصميم"
-                    >
-                      <FileImage size={15} />
-                      <span>التصميم</span>
-                    </button>
-
-                    {/* WhatsApp Export Button */}
-                    <button
-                      type="button"
-                      onClick={() => setWhatsAppOrder(order)}
-                      className="glass-button flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-emerald-700 hover:bg-emerald-50 :bg-emerald-950/50 border-emerald-200 text-xs font-bold transition-all duration-150 ease-out"
-                      title="إرسال بيانات الفاتورة عبر واتساب"
-                    >
-                      <MessageSquare size={15} />
-                      <span>إرسال واتساب</span>
-                    </button>
-
-                    {/* Print Invoice Button (A4) */}
-                    <button
-                      type="button"
-                      onClick={() => setPrintingOrder(order)}
-                      className="glass-button flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-slate-800 hover:text-slate-900 :text-white text-xs font-bold"
-                      title="معاينة وطباعة الفاتورة على مقاس A4"
-                    >
-                      <Printer size={15} />
-                      <span>طباعة</span>
-                    </button>
-
-                    {/* Delete Order Button */}
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteOrder(order.id, order.clientName)}
-                      className="p-2 text-slate-400 hover:text-rose-600 :text-rose-400 hover:bg-rose-50 :bg-rose-950/50 rounded-xl transition-all duration-150 ease-out "
-                      title="حذف الطلبية"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-
-            {filteredOrders.length === 0 && (
-              <div className="col-span-full glass-panel p-16 rounded-xl text-center flex flex-col items-center justify-center gap-3">
-                <div className="w-16 h-16 rounded-xl bg-slate-100 border border-slate-200/80 flex items-center justify-center text-slate-400">
-                  <Inbox size={28} strokeWidth={1.5} />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-900 mb-1">لا توجد طلبيات مطابقة للبحث أو الفلتر</h3>
-                  <p className="text-xs text-slate-600 ">جرب تغيير كلمات البحث أو اسم الزبون أو قم بإضافة طلبية جديدة من التبويب المخصص.</p>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+        <ExpensesAndProfits
+          orders={orders}
+          currency={settings.shopInfo.currency}
+        />
       )}
 
       {/* ========================================================================= */}

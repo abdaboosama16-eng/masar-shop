@@ -37,15 +37,42 @@ export default function Layout() {
   }
 
   // Dynamic Navigation items directly derived from pagesConfig state
-  // Exclude Settings from the sidebar navigation links as requested
-  const navItems = (pagesConfig || [])
-    .filter(page => page.visible !== false && page.id !== 'settings' && page.path !== '/settings')
-    .sort((a, b) => (a.order || 0) - (b.order || 0))
-    .map(page => ({
-      name: page.name,
-      path: page.path,
-      icon: <DynamicIcon name={page.icon} size={19} />
-    }));
+  const baseNavPages = (pagesConfig || [])
+    .filter(page => page.visible !== false)
+    .sort((a, b) => (a.order || 0) - (b.order || 0));
+
+  // Ensure settings is present
+  const hasSettings = baseNavPages.some(page => page.id === 'settings' || page.path === '/settings');
+  const pagesList = [...baseNavPages];
+  if (!hasSettings) {
+    pagesList.push({
+      id: 'settings',
+      name: 'الإعدادات',
+      path: '/settings',
+      icon: 'Settings',
+      visible: true,
+      order: 5,
+      components: [],
+    });
+  }
+
+  // Ensure "الإعدادات" is placed right below "التقارير" (audit)
+  const auditIndex = pagesList.findIndex(p => p.id === 'audit' || p.path === '/audit' || p.name === 'التقارير');
+  const settingsIndex = pagesList.findIndex(p => p.id === 'settings' || p.path === '/settings' || p.name === 'الإعدادات');
+
+  if (auditIndex !== -1 && settingsIndex !== -1 && settingsIndex !== auditIndex + 1) {
+    const [settingsPage] = pagesList.splice(settingsIndex, 1);
+    const newAuditIndex = pagesList.findIndex(p => p.id === 'audit' || p.path === '/audit' || p.name === 'التقارير');
+    pagesList.splice(newAuditIndex + 1, 0, settingsPage);
+  }
+
+  const navItems = pagesList.map(page => ({
+    name: page.name,
+    path: page.path,
+    icon: (page.id === 'settings' || page.path === '/settings' || page.icon === 'Settings') 
+      ? <SettingsIcon size={19} className="shrink-0" /> 
+      : <DynamicIcon name={page.icon} size={19} />
+  }));
 
   return (
     <div className={`min-h-screen bg-texture flex ${isKioskMode ? 'flex-col' : 'flex-col md:flex-row'} text-slate-900 dark:text-slate-100 selection:bg-emerald-500/20 selection:text-emerald-800 dark:selection:text-emerald-200`}>
@@ -65,9 +92,9 @@ export default function Layout() {
               <span className="font-bold text-sm tracking-tight text-slate-900 dark:text-slate-100 block leading-tight truncate max-w-[170px]">
                 {settings.shopInfo.name}
               </span>
-              <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-semibold flex items-center gap-1">
+              <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-bold flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                {currentUser.role}
+                لوحة التحكم • {currentUser.role}
               </span>
             </div>
           </div>
@@ -135,6 +162,9 @@ export default function Layout() {
                 <div className="min-w-0">
                   <span className="font-bold text-sm tracking-tight text-slate-900 dark:text-slate-100 block leading-tight truncate">
                     {settings.shopInfo.name}
+                  </span>
+                  <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold block mt-0.5">
+                    لوحة التحكم
                   </span>
                 </div>
               )}
@@ -226,8 +256,15 @@ export default function Layout() {
         {/* Top Header Actions for Desktop (Hidden in Kiosk Mode) */}
         {!isKioskMode && (
           <div className="hidden md:flex justify-between items-center gap-4 mb-6 no-print">
+            {/* Interface Main Title */}
+            <div className="flex items-center gap-3">
+              <h1 className="text-xl font-black text-slate-900 dark:text-slate-100 tracking-tight flex items-center gap-2">
+                لوحة التحكم
+              </h1>
+            </div>
+
             {/* Global Search & Sync Status */}
-            <div className="flex items-center gap-3 flex-1 max-w-lg">
+            <div className="flex items-center gap-3 flex-1 max-w-lg justify-end">
               <GlobalSearch />
               <SyncStatusBadge />
             </div>

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { 
   Building2, 
@@ -8,176 +8,19 @@ import {
   Printer, 
   Receipt, 
   MapPin, 
-  Calendar, 
   Check, 
   Trash2, 
   Edit, 
   X, 
   DollarSign, 
   TrendingUp, 
-  ArrowDownLeft, 
-  ArrowUpRight, 
-  AlertCircle,
-  Clock,
-  Filter,
   Layers,
   GripVertical,
   ChevronUp,
-  ChevronDown
+  ChevronDown,
+  FileSpreadsheet
 } from 'lucide-react';
 import { Workshop, WorkshopTransaction } from '../types';
-
-export interface WorkshopStatementItem {
-  id: string;
-  workshopId: string;
-  workType: string;    // نوع العمل (مثال: طباعة، حدادة، تركيب...)
-  clientName: string;  // اسم العميل (العميل المرتبط بهذا العمل)
-  cost: number;        // التكلفة (إجمالي تكلفة العمل)
-  paid: number;        // المدفوع (ما تم تسديده للورشة)
-  remaining: number;   // المتبقي (الرصيد المتبقي من هذا العمل)
-  month: string;       // الشهر (الشهر الذي تمت فيه المعاملة)
-}
-
-const DEFAULT_STATEMENT_MOCK_DATA: Record<string, WorkshopStatementItem[]> = {
-  'ws-1': [
-    {
-      id: 'st-1-1',
-      workshopId: 'ws-1',
-      workType: 'حدادة شاسيهات وتيوبات حديد',
-      clientName: 'مستشفى الأمل التخصصي',
-      cost: 4500,
-      paid: 3000,
-      remaining: 1500,
-      month: 'مايو 2026'
-    },
-    {
-      id: 'st-1-2',
-      workshopId: 'ws-1',
-      workType: 'تصنيع هيكل واجهة رئيسية 3D',
-      clientName: 'مجمع النورس التجاري',
-      cost: 6000,
-      paid: 4000,
-      remaining: 2000,
-      month: 'يونيو 2026'
-    },
-    {
-      id: 'st-1-3',
-      workshopId: 'ws-1',
-      workType: 'دعامات حديدية وقواعد تثبيت أعمدة',
-      clientName: 'مطاعم الضيافة الذهبية',
-      cost: 4000,
-      paid: 2500,
-      remaining: 1500,
-      month: 'يوليو 2026'
-    }
-  ],
-  'ws-2': [
-    {
-      id: 'st-2-1',
-      workshopId: 'ws-2',
-      workType: 'طباعة فليكس مضيء عالي الوضوح',
-      clientName: 'صيدليات الشفاء الحديثة',
-      cost: 5200,
-      paid: 3000,
-      remaining: 2200,
-      month: 'مايو 2026'
-    },
-    {
-      id: 'st-2-2',
-      workshopId: 'ws-2',
-      workType: 'طباعة بنر خارجي 12×4م مقاوم للشمس',
-      clientName: 'شركة الأفق للاستيراد',
-      cost: 8500,
-      paid: 6000,
-      remaining: 2500,
-      month: 'يونيو 2026'
-    },
-    {
-      id: 'st-2-3',
-      workshopId: 'ws-2',
-      workType: 'طباعة ستيكر سيارات مع سلوفان حماية',
-      clientName: 'مكتب تاكسي الأمان',
-      cost: 2800,
-      paid: 1500,
-      remaining: 1300,
-      month: 'يونيو 2026'
-    },
-    {
-      id: 'st-2-4',
-      workshopId: 'ws-2',
-      workType: 'طباعة رول أب وبوسترات دعائية',
-      clientName: 'معرض التقنية للمؤتمرات',
-      cost: 3500,
-      paid: 2500,
-      remaining: 1000,
-      month: 'يوليو 2026'
-    }
-  ],
-  'ws-3': [
-    {
-      id: 'st-3-1',
-      workshopId: 'ws-3',
-      workType: 'قص ليزر أحرف أكريليك بارزة مضيئة',
-      clientName: 'معرض الفخامة للمفروشات',
-      cost: 4800,
-      paid: 4800,
-      remaining: 0,
-      month: 'يونيو 2026'
-    },
-    {
-      id: 'st-3-2',
-      workshopId: 'ws-3',
-      workType: 'تفريغ ألواح ألمنيوم وشعارات مذهبة',
-      clientName: 'فندق شيراتون بلازا',
-      cost: 6400,
-      paid: 6400,
-      remaining: 0,
-      month: 'يوليو 2026'
-    },
-    {
-      id: 'st-3-3',
-      workshopId: 'ws-3',
-      workType: 'حفر وقص ستاندات عرض أكريليك',
-      clientName: 'شركة الرواد للتسويق',
-      cost: 3200,
-      paid: 3200,
-      remaining: 0,
-      month: 'يوليو 2026'
-    }
-  ],
-  'ws-4': [
-    {
-      id: 'st-4-1',
-      workshopId: 'ws-4',
-      workType: 'رافعة هيدروليكية لتركيب لافتة برجين',
-      clientName: 'بنك التجارة الوطني',
-      cost: 3800,
-      paid: 2500,
-      remaining: 1300,
-      month: 'مايو 2026'
-    },
-    {
-      id: 'st-4-2',
-      workshopId: 'ws-4',
-      workType: 'تركيبات واجهات ليلية واستبدال سبوتات',
-      clientName: 'أسواق المزرعة المركزية',
-      cost: 2700,
-      paid: 1500,
-      remaining: 1200,
-      month: 'يونيو 2026'
-    },
-    {
-      id: 'st-4-3',
-      workshopId: 'ws-4',
-      workType: 'فريق صيانة وتثبيت واجهات كلادينج',
-      clientName: 'وكالة الأهرام للسيارات',
-      cost: 3500,
-      paid: 2000,
-      remaining: 1500,
-      month: 'يوليو 2026'
-    }
-  ]
-};
 
 export default function Workshops() {
   const { 
@@ -186,8 +29,6 @@ export default function Workshops() {
     addWorkshop, 
     updateWorkshop, 
     deleteWorkshop, 
-    addWorkshopTransaction, 
-    deleteWorkshopTransaction,
     settings, 
     currentUser 
   } = useAppContext();
@@ -203,38 +44,6 @@ export default function Workshops() {
   const [draggedWorkshopId, setDraggedWorkshopId] = useState<string | null>(null);
   const [dragOverWorkshopId, setDragOverWorkshopId] = useState<string | null>(null);
 
-  // Modal: Account Statement (كشف الحساب التفصيلي)
-  const [statementModalWorkshop, setStatementModalWorkshop] = useState<Workshop | null>(null);
-  const [statementRecords, setStatementRecords] = useState<Record<string, WorkshopStatementItem[]>>(() => {
-    const saved = localStorage.getItem('masar_workshop_statement_records');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (parsed && typeof parsed === 'object') return parsed;
-      } catch {
-        // fallback
-      }
-    }
-    return DEFAULT_STATEMENT_MOCK_DATA;
-  });
-
-  useEffect(() => {
-    localStorage.setItem('masar_workshop_statement_records', JSON.stringify(statementRecords));
-  }, [statementRecords]);
-
-  // Filters within Statement Modal
-  const [statementSearch, setStatementSearch] = useState('');
-  const [statementMonthFilter, setStatementMonthFilter] = useState('الكل');
-
-  // Add Item inside Statement Modal
-  const [isAddingStatementItem, setIsAddingStatementItem] = useState(false);
-  const [newWorkType, setNewWorkType] = useState('');
-  const [newClientName, setNewClientName] = useState('');
-  const [newCost, setNewCost] = useState('');
-  const [newPaid, setNewPaid] = useState('');
-  const [newMonth, setNewMonth] = useState('يونيو 2026');
-  const [statementError, setStatementError] = useState('');
-
   // Row Ordering Handler
   const handleMoveRow = (workshopId: string, direction: 'up' | 'down') => {
     setWorkshops((prev) => {
@@ -245,6 +54,11 @@ export default function Workshops() {
       const updated = [...prev];
       const [moved] = updated.splice(idx, 1);
       updated.splice(targetIdx, 0, moved);
+      try {
+        localStorage.setItem('masar_workshops', JSON.stringify(updated));
+      } catch {
+        // ignore
+      }
       return updated;
     });
   };
@@ -270,15 +84,24 @@ export default function Workshops() {
       setDragOverWorkshopId(null);
       return;
     }
+
     setWorkshops((prev) => {
-      const fromIdx = prev.findIndex((w) => w.id === draggedWorkshopId);
-      const toIdx = prev.findIndex((w) => w.id === targetId);
-      if (fromIdx === -1 || toIdx === -1) return prev;
+      const sourceIdx = prev.findIndex((w) => w.id === draggedWorkshopId);
+      const targetIdx = prev.findIndex((w) => w.id === targetId);
+      if (sourceIdx === -1 || targetIdx === -1) return prev;
+
       const updated = [...prev];
-      const [moved] = updated.splice(fromIdx, 1);
-      updated.splice(toIdx, 0, moved);
+      const [movedItem] = updated.splice(sourceIdx, 1);
+      updated.splice(targetIdx, 0, movedItem);
+
+      try {
+        localStorage.setItem('masar_workshops', JSON.stringify(updated));
+      } catch {
+        // ignore
+      }
       return updated;
     });
+
     setDraggedWorkshopId(null);
     setDragOverWorkshopId(null);
   };
@@ -297,15 +120,6 @@ export default function Workshops() {
 
   // Modal: Edit Workshop
   const [editingWorkshop, setEditingWorkshop] = useState<Workshop | null>(null);
-
-  // New Transaction Form State (In Detail Ledger)
-  const [txType, setTxType] = useState<'مطالبة' | 'دفعة' | 'مزدوج'>('مطالبة');
-  const [txDate, setTxDate] = useState(() => new Date().toISOString().substring(0, 10));
-  const [txDescription, setTxDescription] = useState('');
-  const [txCost, setTxCost] = useState('');
-  const [txPaid, setTxPaid] = useState('');
-  const [txNotes, setTxNotes] = useState('');
-  const [txError, setTxError] = useState('');
 
   // Check RBAC permission
   const hasAccess = 
@@ -338,114 +152,85 @@ export default function Workshops() {
     return workshops.filter(w => (Number(w.balance) || 0) > 0).length;
   }, [workshops]);
 
-  // Statement Calculations for the active workshop modal
-  const currentStatementItems = useMemo(() => {
-    if (!statementModalWorkshop) return [];
-    const items = statementRecords[statementModalWorkshop.id];
-    if (items && items.length > 0) return items;
-    return [
-      {
-        id: `st-gen-1-${statementModalWorkshop.id}`,
-        workshopId: statementModalWorkshop.id,
-        workType: 'خدمات وأعمال توريد خارجية',
-        clientName: 'مؤسسة الرواد للتجارة',
-        cost: 3200,
-        paid: 2000,
-        remaining: 1200,
-        month: 'يونيو 2026'
-      },
-      {
-        id: `st-gen-2-${statementModalWorkshop.id}`,
-        workshopId: statementModalWorkshop.id,
-        workType: 'تركيب وتجهيز موقعي',
-        clientName: 'شركة النور للمقاولات',
-        cost: 2800,
-        paid: 1800,
-        remaining: 1000,
-        month: 'يوليو 2026'
-      }
-    ];
-  }, [statementModalWorkshop, statementRecords]);
-
-  const filteredStatementItems = useMemo(() => {
-    return currentStatementItems.filter((item) => {
-      const matchSearch =
-        item.workType.toLowerCase().includes(statementSearch.toLowerCase()) ||
-        item.clientName.toLowerCase().includes(statementSearch.toLowerCase());
-      const matchMonth = statementMonthFilter === 'الكل' || item.month === statementMonthFilter;
-      return matchSearch && matchMonth;
-    });
-  }, [currentStatementItems, statementSearch, statementMonthFilter]);
-
+  // Totals for the selected workshop statement
   const statementTotals = useMemo(() => {
-    const totalCost = currentStatementItems.reduce((acc, it) => acc + (Number(it.cost) || 0), 0);
-    const totalPaid = currentStatementItems.reduce((acc, it) => acc + (Number(it.paid) || 0), 0);
-    const totalRemaining = currentStatementItems.reduce((acc, it) => acc + (Number(it.remaining) || 0), 0);
+    if (!selectedWorkshop) return { totalCost: 0, totalPaid: 0, totalRemaining: 0 };
+    const txs = selectedWorkshop.transactions || [];
+    let totalCost = 0;
+    let totalPaid = 0;
+    let totalRemaining = 0;
+
+    txs.forEach((t) => {
+      const cost = Number(t.cost) || 0;
+      const paid = Number(t.paid) || 0;
+      const remaining = Math.max(0, cost - paid);
+      totalCost += cost;
+      totalPaid += paid;
+      totalRemaining += remaining;
+    });
+
     return { totalCost, totalPaid, totalRemaining };
-  }, [currentStatementItems]);
+  }, [selectedWorkshop]);
 
-  const statementMonths = useMemo(() => {
-    const set = new Set<string>();
-    currentStatementItems.forEach((it) => {
-      if (it.month) set.add(it.month);
+  // Save changes to workshop transactions
+  const saveWorkshopTransactions = (newTransactions: WorkshopTransaction[]) => {
+    if (!selectedWorkshop) return;
+    const totalCost = newTransactions.reduce((acc, t) => acc + (Number(t.cost) || 0), 0);
+    const totalPaid = newTransactions.reduce((acc, t) => acc + (Number(t.paid) || 0), 0);
+    const balance = totalCost - totalPaid;
+
+    updateWorkshop(selectedWorkshop.id, {
+      transactions: newTransactions,
+      totalCost,
+      totalPaid,
+      balance,
+      lastTransactionDate: new Date().toISOString()
     });
-    return Array.from(set);
-  }, [currentStatementItems]);
-
-  const handleAddStatementItem = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!statementModalWorkshop) return;
-    if (!newWorkType.trim()) {
-      setStatementError('يرجى تحديد نوع العمل');
-      return;
-    }
-    if (!newClientName.trim()) {
-      setStatementError('يرجى إدخال اسم العميل');
-      return;
-    }
-    const costNum = Number(newCost) || 0;
-    const paidNum = Number(newPaid) || 0;
-    if (costNum <= 0) {
-      setStatementError('يرجى إدخال تكلفة صالحة أكبر من صفر');
-      return;
-    }
-
-    const newItem: WorkshopStatementItem = {
-      id: 'st-' + Date.now().toString(),
-      workshopId: statementModalWorkshop.id,
-      workType: newWorkType.trim(),
-      clientName: newClientName.trim(),
-      cost: costNum,
-      paid: paidNum,
-      remaining: Math.max(0, costNum - paidNum),
-      month: newMonth.trim() || 'يونيو 2026'
-    };
-
-    setStatementRecords((prev) => {
-      const existing = prev[statementModalWorkshop.id] || currentStatementItems;
-      return {
-        ...prev,
-        [statementModalWorkshop.id]: [newItem, ...existing]
-      };
-    });
-
-    setNewWorkType('');
-    setNewClientName('');
-    setNewCost('');
-    setNewPaid('');
-    setStatementError('');
-    setIsAddingStatementItem(false);
   };
 
-  const handleDeleteStatementItem = (itemId: string) => {
-    if (!statementModalWorkshop) return;
-    setStatementRecords((prev) => {
-      const existing = prev[statementModalWorkshop.id] || currentStatementItems;
-      return {
-        ...prev,
-        [statementModalWorkshop.id]: existing.filter((it) => it.id !== itemId)
-      };
+  // Add new empty row to statement
+  const [newlyAddedRowId, setNewlyAddedRowId] = useState<string | null>(null);
+
+  const handleAddNewRow = () => {
+    if (!selectedWorkshop) return;
+    const newId = 'tx-' + Date.now().toString() + '-' + Math.floor(Math.random() * 1000);
+    const newRow: WorkshopTransaction = {
+      id: newId,
+      date: new Date().toISOString(),
+      description: '',
+      workType: '',
+      cost: 0,
+      paid: 0,
+      isPaid: false,
+      notes: '',
+      balanceAfter: 0
+    };
+
+    const currentTxs = selectedWorkshop.transactions || [];
+    const updated = [...currentTxs, newRow];
+    saveWorkshopTransactions(updated);
+    setNewlyAddedRowId(newId);
+  };
+
+  // Update existing row in statement
+  const handleUpdateRow = (txId: string, updates: Partial<WorkshopTransaction>) => {
+    if (!selectedWorkshop) return;
+    const currentTxs = selectedWorkshop.transactions || [];
+    const updated = currentTxs.map((t) => {
+      if (t.id !== txId) return t;
+      return { ...t, ...updates };
     });
+    saveWorkshopTransactions(updated);
+  };
+
+  // Delete row in statement
+  const handleDeleteRow = (txId: string) => {
+    if (!selectedWorkshop) return;
+    if (window.confirm('هل أنت متأكد من رغبتك في حذف هذا البند من كشف الحساب؟')) {
+      const currentTxs = selectedWorkshop.transactions || [];
+      const updated = currentTxs.filter((t) => t.id !== txId);
+      saveWorkshopTransactions(updated);
+    }
   };
 
   if (!hasAccess) {
@@ -495,64 +280,6 @@ export default function Workshops() {
     setEditingWorkshop(null);
   };
 
-  // Handle Adding Transaction to Workshop Ledger
-  const handleAddTransaction = (e: React.FormEvent) => {
-    e.preventDefault();
-    setTxError('');
-
-    if (!selectedWorkshop) return;
-    if (!txDescription.trim()) {
-      setTxError('يرجى كتابة البيان أو تفاصيل الحركة.');
-      return;
-    }
-
-    const costNum = Math.max(0, parseFloat(txCost) || 0);
-    const paidNum = Math.max(0, parseFloat(txPaid) || 0);
-
-    if (costNum === 0 && paidNum === 0) {
-      setTxError('يجب إدخال إجمالي التكلفة أو المبلغ المدفوع.');
-      return;
-    }
-
-    // Determine normalized transaction type
-    let actualType: 'مطالبة' | 'دفعة' | 'تسوية' = 'مطالبة';
-    if (costNum === 0 && paidNum > 0) {
-      actualType = 'دفعة';
-    } else if (costNum > 0 && paidNum === 0) {
-      actualType = 'مطالبة';
-    } else {
-      actualType = 'تسوية';
-    }
-
-    addWorkshopTransaction(selectedWorkshop.id, {
-      date: txDate ? new Date(txDate).toISOString() : new Date().toISOString(),
-      description: txDescription.trim(),
-      cost: costNum,
-      paid: paidNum,
-      type: actualType,
-      notes: txNotes.trim() || undefined
-    });
-
-    // Reset Form
-    setTxDescription('');
-    setTxCost('');
-    setTxPaid('');
-    setTxNotes('');
-    setTxError('');
-  };
-
-  // Quick Description suggestions
-  const commonDescriptions = [
-    'تركيب لافتة واجهة',
-    'شاسيه حديد وتيوبات',
-    'قص ليزر وحفر أكريليك',
-    'طباعة فليكس وبنر',
-    'رافعة وونش هيدروليكي',
-    'تفصيل زنكور مجلفن',
-    'دفعة نقدية مسددة',
-    'حوالة مصرفية مسددة'
-  ];
-
   const handlePrintLedger = () => {
     window.print();
   };
@@ -560,7 +287,7 @@ export default function Workshops() {
   return (
     <div className="space-y-6 pb-12 animate-in fade-in duration-150">
       
-      {/* Detail Ledger View */}
+      {/* Detail Ledger View (كشف الحساب التفصيلي) */}
       {selectedWorkshop ? (
         <div className="space-y-6">
           
@@ -569,8 +296,9 @@ export default function Workshops() {
             <div className="flex items-center gap-3">
               <button
                 type="button"
+                id="btn-back-to-workshops"
                 onClick={() => setSelectedWorkshopId(null)}
-                className="glass-button px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2"
+                className="glass-button px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer hover:bg-slate-500/10 transition-colors"
               >
                 <ArrowLeft size={16} className="rotate-180" />
                 العودة إلى سجل الورش
@@ -588,8 +316,9 @@ export default function Workshops() {
             <div className="flex items-center gap-2">
               <button
                 type="button"
+                id="btn-edit-current-workshop"
                 onClick={() => setEditingWorkshop(selectedWorkshop)}
-                className="glass-button px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-1.5"
+                className="glass-button px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
               >
                 <Edit size={15} />
                 تعديل البيانات
@@ -597,6 +326,7 @@ export default function Workshops() {
 
               <button
                 type="button"
+                id="btn-print-statement-ledger"
                 onClick={handlePrintLedger}
                 className="px-4 py-2.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white transition-all flex items-center gap-1.5 shadow-xs shadow-emerald-600/20 cursor-pointer"
               >
@@ -615,84 +345,83 @@ export default function Workshops() {
                 <p className="text-xs text-slate-600">هاتف: {settings.shopInfo.phone || '---'}</p>
               </div>
               <div className="text-left">
-                <h3 className="text-lg font-bold text-slate-900">كشف حساب جهة خارجية</h3>
+                <h3 className="text-lg font-bold text-slate-900">كشف حساب تفصيلي للجهة / الورشة</h3>
                 <p className="text-sm font-semibold text-slate-800">{selectedWorkshop.name}</p>
                 <p className="text-xs text-slate-600">تاريخ الطباعة: {new Date().toLocaleDateString('ar-LY')}</p>
               </div>
             </div>
           </div>
 
-          {/* Summary Cards of Selected Workshop */}
+          {/* Summary Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-            
-            {/* Primary Remaining Balance Card */}
-            <div className="glass-panel p-6 sm:p-7 rounded-2xl relative overflow-hidden flex flex-col justify-between hover:-translate-y-1 transition-all duration-200 group cursor-default shadow-xs hover:shadow-md">
-              <div className="absolute -left-6 -bottom-6 w-32 h-32 rounded-full bg-rose-500/10 blur-2xl pointer-events-none"></div>
+            {/* 1. إجمالي التكلفة */}
+            <div className="glass-panel p-6 rounded-2xl relative overflow-hidden flex flex-col justify-between shadow-xs">
               <div className="flex justify-between items-start mb-4">
                 <span className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider">
-                  الرصيد المتبقي (المديونية المستحقة لهم)
+                  الإجمالي العام للتكلفة
                 </span>
-                <div className="w-11 h-11 rounded-2xl bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center transition-transform group-hover:scale-110 duration-200 shadow-2xs shrink-0">
-                  <Receipt size={20} />
-                </div>
-              </div>
-              <div>
-                <div className="text-3xl sm:text-4xl font-black text-rose-600 dark:text-rose-400 font-mono tabular-nums tracking-tight">
-                  {selectedWorkshop.balance.toLocaleString()} <span className="text-sm font-semibold text-slate-500 mr-1.5">{settings.shopInfo.currency}</span>
-                </div>
-                <p className="text-xs text-slate-400 dark:text-slate-500 mt-2 font-medium">
-                  {selectedWorkshop.balance > 0 ? 'مبلغ مستحق السداد لهذه الجهة' : 'الحساب خالص ومصفى بالكامل'}
-                </p>
-              </div>
-            </div>
-
-            {/* Total Cost / Claims Card */}
-            <div className="glass-panel p-6 sm:p-7 rounded-2xl relative overflow-hidden flex flex-col justify-between hover:-translate-y-1 transition-all duration-200 group cursor-default shadow-xs hover:shadow-md">
-              <div className="absolute -left-6 -bottom-6 w-32 h-32 rounded-full bg-blue-500/10 blur-2xl pointer-events-none"></div>
-              <div className="flex justify-between items-start mb-4">
-                <span className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider">
-                  إجمالي التكاليف (المطالبات)
-                </span>
-                <div className="w-11 h-11 rounded-2xl bg-slate-500/10 text-slate-700 dark:text-slate-300 flex items-center justify-center transition-transform group-hover:scale-110 duration-200 shadow-2xs shrink-0">
+                <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
                   <TrendingUp size={20} />
                 </div>
               </div>
               <div>
-                <div className="text-3xl sm:text-4xl font-black text-slate-900 dark:text-slate-100 font-mono tabular-nums tracking-tight">
-                  {selectedWorkshop.totalCost.toLocaleString()} <span className="text-sm font-semibold text-slate-500 mr-1.5">{settings.shopInfo.currency}</span>
+                <div className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-slate-100 font-mono tabular-nums tracking-tight">
+                  {statementTotals.totalCost.toLocaleString()} <span className="text-xs font-semibold text-slate-400 mr-1">{settings.shopInfo.currency}</span>
                 </div>
                 <p className="text-xs text-slate-400 dark:text-slate-500 mt-2 font-medium">
-                  مجموع قيمة الأعمال والخدمات المسجلة
+                  إجمالي قيمة كافة بنود الأعمال المطلوبة
                 </p>
               </div>
             </div>
 
-            {/* Total Paid Card */}
-            <div className="glass-panel p-6 sm:p-7 rounded-2xl relative overflow-hidden flex flex-col justify-between hover:-translate-y-1 transition-all duration-200 group cursor-default shadow-xs hover:shadow-md">
-              <div className="absolute -left-6 -bottom-6 w-32 h-32 rounded-full bg-emerald-500/10 blur-2xl pointer-events-none"></div>
+            {/* 2. إجمالي المدفوع */}
+            <div className="glass-panel p-6 rounded-2xl relative overflow-hidden flex flex-col justify-between shadow-xs">
               <div className="flex justify-between items-start mb-4">
                 <span className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider">
-                  إجمالي المبالغ المسددة
+                  إجمالي المدفوع
                 </span>
-                <div className="w-11 h-11 rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center transition-transform group-hover:scale-110 duration-200 shadow-2xs shrink-0">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
                   <DollarSign size={20} />
                 </div>
               </div>
               <div>
-                <div className="text-3xl sm:text-4xl font-black text-emerald-600 dark:text-emerald-400 font-mono tabular-nums tracking-tight">
-                  {selectedWorkshop.totalPaid.toLocaleString()} <span className="text-sm font-semibold text-slate-500 mr-1.5">{settings.shopInfo.currency}</span>
+                <div className="text-2xl sm:text-3xl font-black text-emerald-600 dark:text-emerald-400 font-mono tabular-nums tracking-tight">
+                  {statementTotals.totalPaid.toLocaleString()} <span className="text-xs font-semibold text-slate-400 mr-1">{settings.shopInfo.currency}</span>
                 </div>
                 <p className="text-xs text-slate-400 dark:text-slate-500 mt-2 font-medium">
-                  مجموع الدفعات المسددة للجهة
+                  مجموع المبالغ المسددة لهذه الجهة
                 </p>
               </div>
             </div>
 
+            {/* 3. إجمالي المتبقي */}
+            <div className="glass-panel p-6 rounded-2xl relative overflow-hidden flex flex-col justify-between shadow-xs">
+              <div className="flex justify-between items-start mb-4">
+                <span className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider">
+                  إجمالي المتبقي
+                </span>
+                <div className="w-10 h-10 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
+                  <Receipt size={20} />
+                </div>
+              </div>
+              <div>
+                <div className={`text-2xl sm:text-3xl font-black font-mono tabular-nums tracking-tight ${
+                  statementTotals.totalRemaining > 0 
+                    ? 'text-rose-600 dark:text-rose-400' 
+                    : 'text-emerald-600 dark:text-emerald-400'
+                }`}>
+                  {statementTotals.totalRemaining.toLocaleString()} <span className="text-xs font-semibold text-slate-400 mr-1">{settings.shopInfo.currency}</span>
+                </div>
+                <p className="text-xs text-slate-400 dark:text-slate-500 mt-2 font-medium">
+                  {statementTotals.totalRemaining > 0 ? 'متبقي مستحق الدفع للورشة' : 'تم تسوية كامل المستحقات'}
+                </p>
+              </div>
+            </div>
           </div>
 
           {/* Quick Info strip */}
           {(selectedWorkshop.address || selectedWorkshop.notes) && (
-            <div className="p-5 rounded-2xl glass-panel text-xs text-slate-600 dark:text-slate-300 flex flex-wrap items-center gap-6 shadow-xs">
+            <div className="p-4 rounded-xl glass-panel text-xs text-slate-600 dark:text-slate-300 flex flex-wrap items-center gap-6 shadow-xs">
               {selectedWorkshop.address && (
                 <span className="flex items-center gap-2">
                   <MapPin size={14} className="text-slate-400" />
@@ -701,371 +430,235 @@ export default function Workshops() {
               )}
               {selectedWorkshop.notes && (
                 <span className="text-slate-500 dark:text-slate-400">
-                  ملاحظة: {selectedWorkshop.notes}
+                  ملاحظات عامة: {selectedWorkshop.notes}
                 </span>
               )}
             </div>
           )}
 
-          {/* New Transaction Form (أعلى جدول البيانات) */}
-          <div className="glass-panel rounded-2xl p-7 shadow-xs no-print">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-              <div>
-                <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                  <Plus size={18} className="text-emerald-600" />
-                  تسجيل حركة جديدة في كشف الحساب
-                </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  إضافة مطالبة جديدة بتكلفة عمل من الورشة، أو تسجيل دفعة مالية مسددة لهم
-                </p>
-              </div>
-
-              {/* Transaction Mode Selector */}
-              <div className="flex items-center p-1.5 bg-slate-500/10 dark:bg-slate-800/60 rounded-xl text-xs font-bold">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setTxType('مطالبة');
-                    setTxPaid('0');
-                  }}
-                  className={`px-4 py-2 rounded-lg transition-all ${
-                    txType === 'مطالبة'
-                      ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                  }`}
-                >
-                  مطالبة / عمل جديد
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setTxType('دفعة');
-                    setTxCost('0');
-                  }}
-                  className={`px-4 py-2 rounded-lg transition-all ${
-                    txType === 'دفعة'
-                      ? 'bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-xs'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                  }`}
-                >
-                  تسجيل دفعة مسددة
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTxType('مزدوج')}
-                  className={`px-4 py-2 rounded-lg transition-all ${
-                    txType === 'مزدوج'
-                      ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-xs'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                  }`}
-                >
-                  مطالبة مع دفعة فورية
-                </button>
-              </div>
-            </div>
-
-            {txError && (
-              <div className="mb-5 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 text-xs text-rose-700 dark:text-rose-300 flex items-center gap-2">
-                <AlertCircle size={16} />
-                {txError}
-              </div>
-            )}
-
-            <form onSubmit={handleAddTransaction} className="space-y-5">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                
-                {/* Date */}
-                <div>
-                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1.5">
-                    التاريخ
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={txDate}
-                    onChange={(e) => setTxDate(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl text-sm glass-input"
-                  />
-                </div>
-
-                {/* Description */}
-                <div className="sm:col-span-1 lg:col-span-2">
-                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1.5">
-                    البيان / تفاصيل العمل أو الخدمة
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="مثال: تركيب لافتة واجهة، قص زنكور، لحام شاسيه..."
-                    value={txDescription}
-                    onChange={(e) => setTxDescription(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl text-sm glass-input"
-                  />
-                </div>
-
-                {/* Quick Cost / Paid inputs depending on txType */}
-                {txType === 'مطالبة' && (
-                  <div>
-                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1.5">
-                      إجمالي التكلفة (المطالبة المستحقة)
-                    </label>
-                    <div className="relative">
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        required
-                        placeholder="0.00"
-                        value={txCost}
-                        onChange={(e) => setTxCost(e.target.value)}
-                        className="w-full px-3.5 py-2.5 rounded-xl text-sm font-bold glass-input text-rose-600 dark:text-rose-400"
-                      />
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400 pointer-events-none">
-                        {settings.shopInfo.currency}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                {txType === 'دفعة' && (
-                  <div>
-                    <label className="text-xs font-bold text-emerald-700 dark:text-emerald-400 block mb-1.5">
-                      المبلغ المدفوع (المسدد لهم)
-                    </label>
-                    <div className="relative">
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        required
-                        placeholder="0.00"
-                        value={txPaid}
-                        onChange={(e) => setTxPaid(e.target.value)}
-                        className="w-full px-3.5 py-2.5 rounded-xl text-sm font-bold glass-input text-emerald-600 dark:text-emerald-400"
-                      />
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400 pointer-events-none">
-                        {settings.shopInfo.currency}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                {txType === 'مزدوج' && (
-                  <>
-                    <div>
-                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1.5">
-                        إجمالي التكلفة (المطالبة)
-                      </label>
-                      <div className="relative">
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          required
-                          placeholder="0.00"
-                          value={txCost}
-                          onChange={(e) => setTxCost(e.target.value)}
-                          className="w-full px-3.5 py-2.5 rounded-xl text-sm font-bold glass-input"
-                        />
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400 pointer-events-none">
-                          {settings.shopInfo.currency}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="text-xs font-bold text-emerald-700 dark:text-emerald-400 block mb-1.5">
-                        المدفوع الفوري
-                      </label>
-                      <div className="relative">
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          placeholder="0.00"
-                          value={txPaid}
-                          onChange={(e) => setTxPaid(e.target.value)}
-                          className="w-full px-3.5 py-2.5 rounded-xl text-sm font-bold glass-input text-emerald-600 dark:text-emerald-400"
-                        />
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400 pointer-events-none">
-                          {settings.shopInfo.currency}
-                        </span>
-                      </div>
-                    </div>
-                  </>
-                )}
-
-              </div>
-
-              {/* Quick suggestion tags for faster entry */}
-              <div className="flex items-center gap-2 flex-wrap pt-1">
-                <span className="text-[11px] text-slate-400 font-semibold ml-1">اقتراحات سريعة:</span>
-                {commonDescriptions.map((desc) => (
-                  <button
-                    key={desc}
-                    type="button"
-                    onClick={() => {
-                      setTxDescription(desc);
-                      if (desc.includes('مسددة')) {
-                        setTxType('دفعة');
-                        setTxCost('0');
-                      }
-                    }}
-                    className="px-2.5 py-1 text-[11px] font-medium rounded-lg bg-slate-100/80 dark:bg-slate-800/60 hover:bg-slate-200/80 dark:hover:bg-slate-700/80 text-slate-600 dark:text-slate-300 transition-all cursor-pointer"
-                  >
-                    {desc}
-                  </button>
-                ))}
-              </div>
-
-              {/* Actions & Submit */}
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pt-3">
-                <span className="text-xs text-slate-500 dark:text-slate-400">
-                  {txType === 'مطالبة' && 'سيتم زيادة رصيد المديونية المستحق لهذه الورشة بمقدار التكلفة.'}
-                  {txType === 'دفعة' && 'سيتم خصم المبلغ المدفوع من رصيد المديونية المستحق لهم.'}
-                  {txType === 'مزدوج' && 'سيتم إضافة صافي المتبقي إلى مديونية الورشة.'}
-                </span>
-
-                <button
-                  type="submit"
-                  className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all duration-150 flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Check size={16} />
-                  حفظ الحركة
-                </button>
-              </div>
-            </form>
-          </div>
-
-          {/* Data Grid: كشف الحساب التفصيلي */}
-          <div className="glass-panel rounded-2xl shadow-xs overflow-hidden">
-            <div className="p-6 sm:p-7 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-slate-500/5">
+          {/* Simplified Data Grid: كشف الحساب التفصيلي */}
+          <div className="glass-panel rounded-2xl shadow-xs overflow-hidden border border-slate-200/80 dark:border-slate-800">
+            {/* Top Toolbar */}
+            <div className="p-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-slate-500/5 border-b border-slate-200/80 dark:border-slate-800">
               <div className="flex items-center gap-3">
-                <span className="w-9 h-9 rounded-xl bg-slate-500/10 flex items-center justify-center text-slate-600 dark:text-slate-300">
-                  <Receipt size={18} />
+                <span className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                  <FileSpreadsheet size={18} />
                 </span>
                 <div>
                   <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200">
-                    سجل الحركات المالية والمطالبات
+                    جدول بنود كشف الحساب
                   </h3>
                   <span className="text-[11px] text-slate-400 font-medium">
-                    {selectedWorkshop.transactions.length} حركات مسجلة
+                    {selectedWorkshop.transactions?.length || 0} بنود مسجلة
                   </span>
                 </div>
               </div>
 
-              <div className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                الرصيد المتبقي الحالي: <span className="font-bold text-rose-600 dark:text-rose-400 font-mono text-sm mr-1">{selectedWorkshop.balance.toLocaleString()} {settings.shopInfo.currency}</span>
+              {/* Blue Clean + Add Item Button */}
+              <div className="flex items-center gap-3 w-full sm:w-auto">
+                <button
+                  type="button"
+                  id="btn-add-statement-row"
+                  onClick={handleAddNewRow}
+                  className="flex items-center justify-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors shadow-xs text-xs font-bold w-full sm:w-auto cursor-pointer"
+                  title="إضافة بند"
+                  aria-label="إضافة بند"
+                >
+                  <Plus size={16} className="text-white" />
+                  <span>+ إضافة بند</span>
+                </button>
               </div>
             </div>
 
+            {/* Table with Exclusively the 6 Specified Columns */}
             <div className="overflow-x-auto">
               <table className="w-full text-right text-sm">
-                <thead className="bg-slate-500/5 text-slate-500 dark:text-slate-400 font-bold text-xs">
+                <thead className="bg-slate-100/70 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300 font-bold text-xs border-b border-slate-200/80 dark:border-slate-700/80">
                   <tr>
-                    <th className="px-7 py-5 w-36">التاريخ</th>
-                    <th className="px-7 py-5 min-w-[220px]">البيان / التفاصيل</th>
-                    <th className="px-7 py-5 w-40 text-slate-800 dark:text-slate-200">إجمالي التكلفة</th>
-                    <th className="px-7 py-5 w-40 text-emerald-700 dark:text-emerald-400">المبلغ المدفوع</th>
-                    <th className="px-7 py-5 w-44 text-rose-700 dark:text-rose-400 font-extrabold">الرصيد المتبقي</th>
-                    <th className="px-6 py-5 w-20 text-center no-print">حذف</th>
+                    <th className="px-5 py-3.5 text-right min-w-[200px]">نوع العمل</th>
+                    <th className="px-5 py-3.5 text-center w-36">إجمالي التكلفة</th>
+                    <th className="px-5 py-3.5 text-center w-36">المدفوع</th>
+                    <th className="px-5 py-3.5 text-center w-36">المتبقي</th>
+                    <th className="px-5 py-3.5 text-right min-w-[180px]">ملاحظات</th>
+                    <th className="px-5 py-3.5 text-center w-48 no-print">الإجراءات</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y-0">
-                  {selectedWorkshop.transactions.length === 0 ? (
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
+                  {(!selectedWorkshop.transactions || selectedWorkshop.transactions.length === 0) ? (
                     <tr>
-                      <td colSpan={6} className="px-7 py-16 text-center text-slate-400 dark:text-slate-500">
-                        لا توجد حركات مالية مسجلة لهذه الجهة حتى الآن. استخدم النموذج أعلاه لإضافة أول حركة.
+                      <td colSpan={6} className="px-6 py-14 text-center text-slate-400 dark:text-slate-500 text-xs">
+                        لا توجد بنود مسجلة في كشف حساب هذه الجهة حتى الآن. اضغط على زر «+ إضافة بند» في الأعلى لإضافة سطر جديد والبدء في الإدخال مباشرة.
                       </td>
                     </tr>
                   ) : (
-                    selectedWorkshop.transactions.map((tx) => (
-                      <tr 
-                        key={tx.id}
-                        className="hover:bg-slate-500/5 transition-colors"
-                      >
-                        {/* التاريخ */}
-                        <td className="px-7 py-5 text-xs text-slate-600 dark:text-slate-300 whitespace-nowrap font-mono">
-                          {tx.date ? new Date(tx.date).toLocaleDateString('ar-LY') : '---'}
-                        </td>
+                    selectedWorkshop.transactions.map((tx) => {
+                      const costNum = Number(tx.cost) || 0;
+                      const paidNum = Number(tx.paid) || 0;
+                      const remaining = Math.max(0, costNum - paidNum);
+                      const isRowPaid = Boolean(tx.isPaid || (costNum > 0 && paidNum >= costNum));
 
-                        {/* البيان / التفاصيل */}
-                        <td className="px-7 py-5">
-                          <div className="font-semibold text-slate-900 dark:text-slate-100">
-                            {tx.description}
-                          </div>
-                          {tx.notes && (
-                            <div className="text-[11px] text-slate-400 mt-1">
-                              {tx.notes}
+                      return (
+                        <tr 
+                          key={tx.id}
+                          className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors group"
+                        >
+                          {/* 1. نوع العمل */}
+                          <td className="px-4 py-2.5">
+                            <input
+                              type="text"
+                              id={`input-work-type-${tx.id}`}
+                              placeholder="أدخل نوع العمل..."
+                              autoFocus={newlyAddedRowId === tx.id}
+                              value={tx.description || tx.workType || ''}
+                              onChange={(e) => handleUpdateRow(tx.id, { description: e.target.value, workType: e.target.value })}
+                              className="w-full px-3 py-1.5 rounded-lg bg-transparent hover:bg-slate-100/70 dark:hover:bg-slate-800/70 focus:bg-white dark:focus:bg-slate-800 border border-transparent focus:border-blue-500/60 text-slate-800 dark:text-slate-100 font-medium text-xs sm:text-sm transition-colors outline-none"
+                            />
+                          </td>
+
+                          {/* 2. إجمالي التكلفة */}
+                          <td className="px-3 py-2.5">
+                            <input
+                              type="number"
+                              id={`input-cost-${tx.id}`}
+                              min="0"
+                              step="any"
+                              placeholder="0"
+                              value={tx.cost === 0 && !tx.isPaid ? '' : tx.cost}
+                              onChange={(e) => {
+                                const val = Math.max(0, parseFloat(e.target.value) || 0);
+                                if (isRowPaid) {
+                                  handleUpdateRow(tx.id, { cost: val, paid: val });
+                                } else {
+                                  handleUpdateRow(tx.id, { cost: val });
+                                }
+                              }}
+                              className="w-full px-3 py-1.5 text-center font-mono font-bold text-xs sm:text-sm text-slate-900 dark:text-slate-100 bg-transparent hover:bg-slate-100/70 dark:hover:bg-slate-800/70 focus:bg-white dark:focus:bg-slate-800 border border-transparent focus:border-blue-500/60 rounded-lg transition-colors outline-none"
+                            />
+                          </td>
+
+                          {/* 3. المدفوع */}
+                          <td className="px-3 py-2.5">
+                            <input
+                              type="number"
+                              id={`input-paid-${tx.id}`}
+                              min="0"
+                              step="any"
+                              placeholder="0"
+                              value={tx.paid === 0 ? '' : tx.paid}
+                              onChange={(e) => {
+                                const val = Math.max(0, parseFloat(e.target.value) || 0);
+                                const isNowPaid = val > 0 && val >= (Number(tx.cost) || 0);
+                                handleUpdateRow(tx.id, { paid: val, isPaid: isNowPaid });
+                              }}
+                              className="w-full px-3 py-1.5 text-center font-mono font-bold text-xs sm:text-sm text-emerald-600 dark:text-emerald-400 bg-transparent hover:bg-slate-100/70 dark:hover:bg-slate-800/70 focus:bg-white dark:focus:bg-slate-800 border border-transparent focus:border-blue-500/60 rounded-lg transition-colors outline-none"
+                            />
+                          </td>
+
+                          {/* 4. المتبقي */}
+                          <td className="px-4 py-2.5 text-center">
+                            <div className="font-mono font-bold text-xs sm:text-sm whitespace-nowrap">
+                              <span className={remaining > 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}>
+                                {remaining.toLocaleString()}
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-sans mr-1">{settings.shopInfo.currency}</span>
                             </div>
-                          )}
-                        </td>
+                          </td>
 
-                        {/* إجمالي التكلفة */}
-                        <td className="px-7 py-5 font-bold text-slate-900 dark:text-slate-100 font-mono">
-                          {tx.cost > 0 ? (
-                            <span>{tx.cost.toLocaleString()} <span className="text-xs font-normal text-slate-400">{settings.shopInfo.currency}</span></span>
-                          ) : (
-                            <span className="text-slate-300 dark:text-slate-600">-</span>
-                          )}
-                        </td>
+                          {/* 5. ملاحظات */}
+                          <td className="px-4 py-2.5">
+                            <input
+                              type="text"
+                              id={`input-notes-${tx.id}`}
+                              placeholder="ملاحظات..."
+                              value={tx.notes || ''}
+                              onChange={(e) => handleUpdateRow(tx.id, { notes: e.target.value })}
+                              className="w-full px-3 py-1.5 rounded-lg bg-transparent hover:bg-slate-100/70 dark:hover:bg-slate-800/70 focus:bg-white dark:focus:bg-slate-800 border border-transparent focus:border-blue-500/60 text-slate-600 dark:text-slate-300 text-xs transition-colors outline-none"
+                            />
+                          </td>
 
-                        {/* المبلغ المدفوع */}
-                        <td className="px-7 py-5 font-bold text-emerald-600 dark:text-emerald-400 font-mono">
-                          {tx.paid > 0 ? (
-                            <span>{tx.paid.toLocaleString()} <span className="text-xs font-normal text-slate-400">{settings.shopInfo.currency}</span></span>
-                          ) : (
-                            <span className="text-slate-300 dark:text-slate-600">-</span>
-                          )}
-                        </td>
+                          {/* 6. الإجراءات (مربع تم الدفع + سلة المهملات SVG) */}
+                          <td className="px-4 py-2.5 text-center no-print whitespace-nowrap">
+                            <div className="flex items-center justify-center gap-3">
+                              {/* Checkbox تم الدفع */}
+                              <label 
+                                id={`chk-paid-${tx.id}`}
+                                className="inline-flex items-center gap-1.5 cursor-pointer select-none text-xs font-semibold px-2 py-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                                title="تحديد البند كمدفوع بالكامل"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isRowPaid}
+                                  onChange={(e) => {
+                                    const checked = e.target.checked;
+                                    if (checked) {
+                                      handleUpdateRow(tx.id, { isPaid: true, paid: Number(tx.cost) || 0 });
+                                    } else {
+                                      handleUpdateRow(tx.id, { isPaid: false, paid: 0 });
+                                    }
+                                  }}
+                                  className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-600"
+                                />
+                                <span className={isRowPaid ? "text-emerald-600 dark:text-emerald-400 font-bold" : "text-slate-500 dark:text-slate-400"}>
+                                  تم الدفع
+                                </span>
+                              </label>
 
-                        {/* الرصيد المتبقي (المديونية) */}
-                        <td className="px-7 py-5 font-black text-rose-600 dark:text-rose-400 font-mono text-base">
-                          {typeof tx.balanceAfter === 'number' ? (
-                            <span>{tx.balanceAfter.toLocaleString()} <span className="text-xs font-normal text-slate-400">{settings.shopInfo.currency}</span></span>
-                          ) : (
-                            '---'
-                          )}
-                        </td>
-
-                        {/* Actions (Delete) */}
-                        <td className="px-6 py-5 text-center no-print">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (window.confirm('هل أنت متأكد من حذف هذه الحركة؟ سيتم إعادة احتساب الرصيد تلقائياً.')) {
-                                deleteWorkshopTransaction(selectedWorkshop.id, tx.id);
-                              }
-                            }}
-                            className="text-slate-400 hover:text-rose-600 p-2 rounded-xl hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
-                            title="حذف الحركة"
-                          >
-                            <Trash2 size={15} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))
+                              {/* Delete SVG Icon */}
+                              <button
+                                type="button"
+                                id={`btn-delete-row-${tx.id}`}
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  if (window.confirm('هل تريد حذف هذا البند؟')) handleDeleteRow(tx.id);
+                                }}
+                                className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer"
+                                title="حذف البند"
+                                aria-label="حذف هذا البند"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
-                {selectedWorkshop.transactions.length > 0 && (
-                  <tfoot className="bg-slate-500/5 font-bold text-xs">
-                    <tr>
-                      <td colSpan={2} className="px-7 py-5 text-slate-800 dark:text-slate-200">
-                        المجموع الكلي للحساب
-                      </td>
-                      <td className="px-7 py-5 text-slate-900 dark:text-slate-100 font-mono">
-                        {selectedWorkshop.totalCost.toLocaleString()} {settings.shopInfo.currency}
-                      </td>
-                      <td className="px-7 py-5 text-emerald-600 dark:text-emerald-400 font-mono">
-                        {selectedWorkshop.totalPaid.toLocaleString()} {settings.shopInfo.currency}
-                      </td>
-                      <td className="px-7 py-5 text-rose-600 dark:text-rose-400 text-sm font-black font-mono">
-                        {selectedWorkshop.balance.toLocaleString()} {settings.shopInfo.currency}
-                      </td>
-                      <td className="no-print"></td>
-                    </tr>
-                  </tfoot>
-                )}
+
+                {/* Fixed Totals Row (الصف الثابت في نهاية الجدول) */}
+                <tfoot className="bg-slate-100/90 dark:bg-slate-800/90 border-t-2 border-slate-300 dark:border-slate-700 font-bold text-xs sm:text-sm">
+                  <tr>
+                    {/* نوع العمل */}
+                    <td className="px-5 py-4 text-slate-800 dark:text-slate-200 font-extrabold">
+                      الإجمالي العام ({selectedWorkshop.transactions?.length || 0} بنود)
+                    </td>
+
+                    {/* إجمالي التكلفة */}
+                    <td className="px-4 py-4 text-center font-mono text-slate-900 dark:text-slate-100 font-extrabold whitespace-nowrap">
+                      {statementTotals.totalCost.toLocaleString()} <span className="text-xs font-normal text-slate-400">{settings.shopInfo.currency}</span>
+                    </td>
+
+                    {/* المدفوع */}
+                    <td className="px-4 py-4 text-center font-mono text-emerald-600 dark:text-emerald-400 font-extrabold whitespace-nowrap">
+                      {statementTotals.totalPaid.toLocaleString()} <span className="text-xs font-normal text-slate-400">{settings.shopInfo.currency}</span>
+                    </td>
+
+                    {/* المتبقي */}
+                    <td className="px-4 py-4 text-center font-mono whitespace-nowrap">
+                      <span className={statementTotals.totalRemaining > 0 ? "text-rose-600 dark:text-rose-400 font-black text-sm sm:text-base" : "text-emerald-600 dark:text-emerald-400 font-bold"}>
+                        {statementTotals.totalRemaining.toLocaleString()}
+                      </span>
+                      <span className="text-xs font-normal text-slate-400 mr-1">{settings.shopInfo.currency}</span>
+                    </td>
+
+                    {/* ملاحظات */}
+                    <td className="px-5 py-4 text-slate-400 text-xs">-</td>
+
+                    {/* الإجراءات */}
+                    <td className="px-4 py-4 text-center text-slate-400 text-xs no-print">-</td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
           </div>
@@ -1223,7 +816,10 @@ export default function Workshops() {
                               {/* أيقونة سحب الصف Drag Handle */}
                               <div
                                 draggable
-                                onDragStart={(e) => handleDragStart(e, workshop.id)}
+                                onDragStart={(e) => {
+                                  e.stopPropagation();
+                                  handleDragStart(e, workshop.id);
+                                }}
                                 className="p-1.5 rounded-lg hover:bg-slate-500/15 cursor-grab active:cursor-grabbing text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
                                 title="اسحب لتغيير ترتيب الصف"
                                 aria-label={`اسحب لتغيير ترتيب ${workshop.name}`}
@@ -1329,12 +925,8 @@ export default function Workshops() {
                             <div className="flex items-center justify-center gap-2">
                               <button
                                 type="button"
-                                onClick={() => {
-                                  setStatementModalWorkshop(workshop);
-                                  setIsAddingStatementItem(false);
-                                  setStatementSearch('');
-                                  setStatementMonthFilter('الكل');
-                                }}
+                                id={`btn-open-statement-${workshop.id}`}
+                                onClick={() => setSelectedWorkshopId(workshop.id)}
                                 className="glass-button px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-2xs hover:border-emerald-500/40 text-slate-700 dark:text-slate-200 cursor-pointer"
                                 title="عرض كشف حساب تفصيلي"
                               >
@@ -1578,406 +1170,6 @@ export default function Workshops() {
               </div>
 
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal: Account Statement (كشف الحساب التفصيلي) */}
-      {statementModalWorkshop && (
-        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 overflow-y-auto animate-in fade-in duration-200">
-          <div className="relative w-full max-w-5xl glass-panel rounded-2xl shadow-2xl border border-slate-200/80 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 overflow-hidden flex flex-col my-auto max-h-[92vh]">
-            
-            {/* Modal Header */}
-            <div className="p-6 border-b border-slate-200/80 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50/50 dark:bg-slate-800/30">
-              <div className="flex items-center gap-3.5">
-                <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 shadow-2xs">
-                  <Receipt size={24} />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2.5">
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">
-                      كشف حساب الالتزامات والخدمات
-                    </h3>
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
-                      {statementModalWorkshop.name}
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                    سجل المطالبات المالية والأعمال المنفذة والمدفوعات والمتبقي المرتبط بالجهة
-                  </p>
-                </div>
-              </div>
-
-              {/* Header Right / Balance Summary & Close */}
-              <div className="flex items-center gap-3">
-                {/* إجمالي الرصيد المتبقي لها */}
-                <div className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700 shadow-2xs text-right">
-                  <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block">
-                    إجمالي الرصيد المتبقي لها
-                  </span>
-                  <div className="flex items-center gap-1.5 font-mono mt-0.5">
-                    <span className={`text-xl font-black ${
-                      statementTotals.totalRemaining > 0 
-                        ? 'text-rose-600 dark:text-rose-400' 
-                        : 'text-emerald-600 dark:text-emerald-400'
-                    }`}>
-                      {statementTotals.totalRemaining.toLocaleString()}
-                    </span>
-                    <span className="text-xs font-bold text-slate-400 font-sans">
-                      {settings.shopInfo.currency}
-                    </span>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setStatementModalWorkshop(null)}
-                  className="w-10 h-10 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-500/10 transition-colors cursor-pointer"
-                  title="إغلاق النافذة"
-                  aria-label="إغلاق"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-            </div>
-
-            {/* Quick Summary Cards (KPIs) */}
-            <div className="px-6 py-4 bg-slate-50/30 dark:bg-slate-800/20 border-b border-slate-200/60 dark:border-slate-800/60 grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div className="px-3.5 py-2 rounded-xl bg-white/70 dark:bg-slate-800/60 border border-slate-200/50 dark:border-slate-700/50">
-                <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block">إجمالي التكلفة</span>
-                <span className="text-sm font-bold font-mono text-slate-800 dark:text-slate-100">
-                  {statementTotals.totalCost.toLocaleString()} {settings.shopInfo.currency}
-                </span>
-              </div>
-
-              <div className="px-3.5 py-2 rounded-xl bg-white/70 dark:bg-slate-800/60 border border-slate-200/50 dark:border-slate-700/50">
-                <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block">إجمالي المدفوع</span>
-                <span className="text-sm font-bold font-mono text-emerald-600 dark:text-emerald-400">
-                  {statementTotals.totalPaid.toLocaleString()} {settings.shopInfo.currency}
-                </span>
-              </div>
-
-              <div className="px-3.5 py-2 rounded-xl bg-white/70 dark:bg-slate-800/60 border border-slate-200/50 dark:border-slate-700/50">
-                <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block">صافي المتبقي</span>
-                <span className={`text-sm font-bold font-mono ${
-                  statementTotals.totalRemaining > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'
-                }`}>
-                  {statementTotals.totalRemaining.toLocaleString()} {settings.shopInfo.currency}
-                </span>
-              </div>
-
-              <div className="px-3.5 py-2 rounded-xl bg-white/70 dark:bg-slate-800/60 border border-slate-200/50 dark:border-slate-700/50">
-                <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block">العمليات المسجلة</span>
-                <span className="text-sm font-bold font-mono text-slate-700 dark:text-slate-300">
-                  {filteredStatementItems.length} بند
-                </span>
-              </div>
-            </div>
-
-            {/* Filter & Action Toolbar */}
-            <div className="p-6 pb-4 flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
-              <div className="flex flex-1 items-center gap-3">
-                {/* البحث في الكشف */}
-                <div className="relative flex-1 max-w-sm">
-                  <input
-                    type="text"
-                    placeholder="بحث بنوع العمل أو اسم العميل..."
-                    value={statementSearch}
-                    onChange={(e) => setStatementSearch(e.target.value)}
-                    className="w-full pl-3.5 pr-9 py-2 rounded-xl text-xs glass-input"
-                  />
-                  <Search size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                </div>
-
-                {/* تصفية حسب الشهر */}
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap">
-                    الشهر:
-                  </span>
-                  <select
-                    value={statementMonthFilter}
-                    onChange={(e) => setStatementMonthFilter(e.target.value)}
-                    className="px-3 py-2 rounded-xl text-xs glass-input bg-transparent"
-                  >
-                    <option value="الكل">كافة الأشهر</option>
-                    {statementMonths.map((m) => (
-                      <option key={m} value={m}>{m}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* أزرار الإجراءات في الترويسة */}
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsAddingStatementItem(!isAddingStatementItem)}
-                  className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer ${
-                    isAddingStatementItem
-                      ? 'bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200'
-                      : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                  }`}
-                >
-                  {isAddingStatementItem ? <X size={14} /> : <Plus size={14} />}
-                  {isAddingStatementItem ? 'إلغاء الإضافة' : 'إضافة عمل جديد'}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => window.print()}
-                  className="glass-button px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-2xs text-slate-700 dark:text-slate-300"
-                  title="طباعة كشف الحساب"
-                >
-                  <Printer size={14} />
-                  طباعة الكشف
-                </button>
-              </div>
-            </div>
-
-            {/* Quick Add Statement Item Collapsible Form */}
-            {isAddingStatementItem && (
-              <form 
-                onSubmit={handleAddStatementItem}
-                className="mx-6 mb-4 p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-emerald-500/30 animate-in fade-in slide-in-from-top-2 duration-150"
-              >
-                <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-200/60 dark:border-slate-700/60">
-                  <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
-                    <Plus size={14} />
-                    تسجيل عمل / التزام جديد لهذا الحساب
-                  </span>
-                  {statementError && (
-                    <span className="text-xs text-rose-500 font-medium">{statementError}</span>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 block mb-1">
-                      نوع العمل <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="مثال: طباعة بنر، حدادة..."
-                      value={newWorkType}
-                      onChange={(e) => setNewWorkType(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg text-xs glass-input"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 block mb-1">
-                      اسم العميل <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="العميل المرتبط بالعمل..."
-                      value={newClientName}
-                      onChange={(e) => setNewClientName(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg text-xs glass-input"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 block mb-1">
-                      التكلفة <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      placeholder="0.00"
-                      value={newCost}
-                      onChange={(e) => setNewCost(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg text-xs font-mono font-bold glass-input"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 block mb-1">
-                      المدفوع
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      placeholder="0.00"
-                      value={newPaid}
-                      onChange={(e) => setNewPaid(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg text-xs font-mono font-bold glass-input"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 block mb-1">
-                      الشهر
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="مثال: يونيو 2026"
-                      value={newMonth}
-                      onChange={(e) => setNewMonth(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg text-xs glass-input"
-                    />
-                  </div>
-                </div>
-
-                <div className="mt-3 pt-2.5 flex items-center justify-between border-t border-slate-200/60 dark:border-slate-700/60">
-                  <div className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                    المتبقي المحسوب: <span className="font-bold font-mono text-slate-800 dark:text-slate-200">
-                      {Math.max(0, (Number(newCost) || 0) - (Number(newPaid) || 0)).toLocaleString()} {settings.shopInfo.currency}
-                    </span>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setIsAddingStatementItem(false)}
-                      className="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer"
-                    >
-                      إلغاء
-                    </button>
-                    <button
-                      type="submit"
-                      className="px-4 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs cursor-pointer flex items-center gap-1"
-                    >
-                      <Check size={14} />
-                      حفظ العمل
-                    </button>
-                  </div>
-                </div>
-              </form>
-            )}
-
-            {/* Sub-Table Container (الجدول الفرعي التفصيلي) */}
-            <div className="flex-1 overflow-y-auto px-6 pb-6">
-              <div className="rounded-xl border border-slate-200/80 dark:border-slate-800 overflow-hidden shadow-2xs">
-                <table className="w-full text-right text-sm">
-                  <thead className="bg-slate-100/75 dark:bg-slate-800/75 text-slate-600 dark:text-slate-300 font-bold text-xs border-b border-slate-200/80 dark:border-slate-800">
-                    <tr>
-                      <th className="px-5 py-3.5 whitespace-nowrap">نوع العمل</th>
-                      <th className="px-5 py-3.5 whitespace-nowrap">اسم العميل</th>
-                      <th className="px-5 py-3.5 whitespace-nowrap">التكلفة</th>
-                      <th className="px-5 py-3.5 whitespace-nowrap">المدفوع</th>
-                      <th className="px-5 py-3.5 whitespace-nowrap">المتبقي</th>
-                      <th className="px-5 py-3.5 whitespace-nowrap">الشهر</th>
-                      <th className="px-4 py-3.5 text-center whitespace-nowrap w-16">إجراء</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
-                    {filteredStatementItems.length === 0 ? (
-                      <tr>
-                        <td colSpan={7} className="px-5 py-12 text-center text-slate-400 dark:text-slate-500 text-xs">
-                          لا توجد بنود مطابقة في كشف حساب هذه الجهة حالياً. يمكنك إضافة بنود جديدة عبر زر «إضافة عمل جديد».
-                        </td>
-                      </tr>
-                    ) : (
-                      filteredStatementItems.map((item) => (
-                        <tr 
-                          key={item.id} 
-                          className="hover:bg-slate-500/5 transition-colors group"
-                        >
-                          {/* 1. نوع العمل */}
-                          <td className="px-5 py-3.5 font-bold text-slate-800 dark:text-slate-200">
-                            {item.workType}
-                          </td>
-
-                          {/* 2. اسم العميل */}
-                          <td className="px-5 py-3.5 text-slate-600 dark:text-slate-300">
-                            {item.clientName}
-                          </td>
-
-                          {/* 3. التكلفة */}
-                          <td className="px-5 py-3.5 font-mono font-bold text-slate-900 dark:text-slate-100 whitespace-nowrap">
-                            {item.cost.toLocaleString()} <span className="text-xs font-normal text-slate-400">{settings.shopInfo.currency}</span>
-                          </td>
-
-                          {/* 4. المدفوع */}
-                          <td className="px-5 py-3.5 font-mono font-bold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
-                            {item.paid.toLocaleString()} <span className="text-xs font-normal text-slate-400">{settings.shopInfo.currency}</span>
-                          </td>
-
-                          {/* 5. المتبقي */}
-                          <td className="px-5 py-3.5 font-mono font-bold whitespace-nowrap">
-                            <span className={item.remaining > 0 ? 'text-rose-600 dark:text-rose-400 font-extrabold' : 'text-emerald-600 dark:text-emerald-400'}>
-                              {item.remaining.toLocaleString()}
-                            </span>
-                            <span className="text-xs font-normal text-slate-400 mr-1">{settings.shopInfo.currency}</span>
-                          </td>
-
-                          {/* 6. الشهر */}
-                          <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400 text-xs whitespace-nowrap">
-                            <span className="px-2.5 py-1 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200/50 dark:border-slate-700/50">
-                              {item.month}
-                            </span>
-                          </td>
-
-                          {/* 7. إجراء */}
-                          <td className="px-4 py-3.5 text-center whitespace-nowrap">
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteStatementItem(item.id)}
-                              className="text-slate-300 group-hover:text-rose-500 hover:text-rose-600 p-1.5 rounded-lg transition-colors cursor-pointer"
-                              title="حذف هذا البند من الكشف"
-                            >
-                              <Trash2 size={13} />
-                            </button>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                  {/* Totals Row in Table Footer */}
-                  {filteredStatementItems.length > 0 && (
-                    <tfoot className="bg-slate-100/90 dark:bg-slate-800/90 font-bold text-xs border-t-2 border-slate-300 dark:border-slate-700">
-                      <tr>
-                        <td colSpan={2} className="px-5 py-3.5 text-slate-800 dark:text-slate-200">
-                          الإجمالي الكلي للبنود المعروضة ({filteredStatementItems.length})
-                        </td>
-                        <td className="px-5 py-3.5 font-mono text-slate-900 dark:text-slate-100 whitespace-nowrap">
-                          {filteredStatementItems.reduce((acc, it) => acc + (Number(it.cost) || 0), 0).toLocaleString()} {settings.shopInfo.currency}
-                        </td>
-                        <td className="px-5 py-3.5 font-mono text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
-                          {filteredStatementItems.reduce((acc, it) => acc + (Number(it.paid) || 0), 0).toLocaleString()} {settings.shopInfo.currency}
-                        </td>
-                        <td className="px-5 py-3.5 font-mono whitespace-nowrap">
-                          <span className={filteredStatementItems.reduce((acc, it) => acc + (Number(it.remaining) || 0), 0) > 0 ? 'text-rose-600 dark:text-rose-400 font-extrabold' : 'text-emerald-600'}>
-                            {filteredStatementItems.reduce((acc, it) => acc + (Number(it.remaining) || 0), 0).toLocaleString()} {settings.shopInfo.currency}
-                          </span>
-                        </td>
-                        <td colSpan={2}></td>
-                      </tr>
-                    </tfoot>
-                  )}
-                </table>
-              </div>
-            </div>
-
-            {/* Modal Footer */}
-            <div className="px-6 py-4 border-t border-slate-200/80 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex items-center justify-between">
-              <div className="text-xs text-slate-500 dark:text-slate-400">
-                منظومة مسار التجارية - كشف حساب التزامات الجهات الخارجية
-              </div>
-              <div className="flex gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const id = statementModalWorkshop.id;
-                    setStatementModalWorkshop(null);
-                    setSelectedWorkshopId(id);
-                  }}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-800/70 transition-colors cursor-pointer"
-                >
-                  فتح السجل الكامل للمعاملات
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setStatementModalWorkshop(null)}
-                  className="px-5 py-2 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-900 text-white dark:bg-slate-700 dark:hover:bg-slate-600 transition-colors cursor-pointer shadow-xs"
-                >
-                  إغلاق
-                </button>
-              </div>
-            </div>
-
           </div>
         </div>
       )}

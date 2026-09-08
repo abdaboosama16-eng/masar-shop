@@ -19,6 +19,8 @@ export interface DynamicServiceConfig {
   id: string;
   name: string;
   costItems: string[];
+  defaultCosts?: Record<string, number>;
+  defaultExecutors?: Record<string, string>;
   isDefault?: boolean;
 }
 
@@ -60,6 +62,7 @@ export interface Order {
   cost?: number; // Total direct cost
   costBreakdown?: Record<string, number>; // Dynamic cost items breakdown: { "تكلفة المصمم": 500, "تكلفة كاتب المحتوى": 300 }
   costExecutors?: Record<string, string>; // Dynamic executor/employee mapping for cost items: { "تكلفة المصمم": "أحمد", "تكلفة الطباعة": "خالد" }
+  costDetails?: Record<string, any>; // كائن بنود التكلفة المستدعاة من القالب
   costBreakdownSummary?: string; // Pre-calculated or helper summary string
   designCost?: number; // تكلفة التصميم (legacy compatibility)
   designerName?: string; // اسم المصمم المنفذ
@@ -82,6 +85,7 @@ export interface Order {
   remaining?: number;
   isPaid?: boolean; // مؤشر حالة الخلاص / الدفع السريع
   paidAt?: string; // تاريخ وساعة تأكيد الدفع
+  isPinned?: boolean; // خاصية تثبيت البند للأشهر القادمة
   installationAddress?: string;
   craneCost?: number;
   usedMaterials?: OrderMaterialUsage[]; 
@@ -152,10 +156,12 @@ export interface Customer {
 export interface WorkshopTransaction {
   id: string;
   date: string;
-  description: string; // البيان/التفاصيل (مثال: تركيب لافتة)
+  description: string; // البيان/التفاصيل (مثال: تركيب لافتة، نوع العمل)
+  workType?: string; // نوع العمل
   cost: number; // إجمالي التكلفة (المطالبة المستحقة للجهة)
   paid: number; // المبلغ المدفوع (المسدد للجهة)
   balanceAfter?: number; // الرصيد المتبقي بعد الحركة
+  isPaid?: boolean; // تم الدفع
   type?: 'مطالبة' | 'دفعة' | 'تسوية'; // نوع الحركة
   notes?: string;
   orderSerial?: string;

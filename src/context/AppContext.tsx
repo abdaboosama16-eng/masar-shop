@@ -160,6 +160,17 @@ export const defaultPagesConfig: PageConfig[] = [
         width: 'full',
       }
     ]
+  },
+  {
+    id: 'settings',
+    name: 'الإعدادات',
+    path: '/settings',
+    icon: 'Settings',
+    description: 'إعدادات المنظومة العامة والطباعة والصلاحيات',
+    visible: true,
+    isSystemDefault: true,
+    order: 5,
+    components: []
   }
 ];
 
@@ -167,42 +178,55 @@ export const defaultServicesConfig: DynamicServiceConfig[] = [
   {
     id: 'srv-1',
     name: 'إدارة صفحات سوشيال ميديا',
-    costItems: ['تكلفة المصمم', 'تكلفة كاتب المحتوى', 'إعلانات ممولة'],
+    costItems: ['المصمم', 'كاتب المحتوى', 'إعلانات ممولة'],
+    defaultCosts: { 'المصمم': 0, 'كاتب المحتوى': 0, 'إعلانات ممولة': 0 },
+    defaultExecutors: { 'المصمم': 'أحمد', 'كاتب المحتوى': 'سارة' },
     isDefault: true,
   },
   {
     id: 'srv-2',
     name: 'تنفيذ لافتات',
-    costItems: ['تكلفة القص', 'تكلفة التركيب', 'مواد خام'],
+    costItems: ['القص والليزر', 'فريق التركيب', 'مواد خام'],
+    defaultCosts: { 'القص والليزر': 0, 'فريق التركيب': 0, 'مواد خام': 0 },
+    defaultExecutors: { 'القص والليزر': 'فني الليزر', 'فريق التركيب': 'فريق التركيب' },
     isDefault: true,
   },
   {
     id: 'srv-3',
     name: 'تصميم موقع إلكتروني',
-    costItems: ['تكلفة المطور', 'تكلفة واجهات UI/UX', 'استضافة ونطاق'],
+    costItems: ['المطور', 'واجهات UI/UX', 'استضافة ونطاق'],
+    defaultCosts: { 'المطور': 0, 'واجهات UI/UX': 0, 'استضافة ونطاق': 0 },
+    defaultExecutors: { 'المطور': 'مهندس البرمجيات', 'واجهات UI/UX': 'مصمم UI' },
     isDefault: true,
   },
   {
     id: 'srv-4',
     name: 'خدمات طباعة',
-    costItems: ['تكلفة الطباعة', 'تكلفة التصميم', 'تكلفة القص والتغليف'],
+    costItems: ['فني الطباعة', 'المصمم', 'القص والتغليف'],
+    defaultCosts: { 'فني الطباعة': 0, 'المصمم': 0, 'القص والتغليف': 0 },
+    defaultExecutors: { 'فني الطباعة': 'فني الطباعة', 'المصمم': 'أحمد' },
     isDefault: true,
   },
   {
     id: 'srv-5',
     name: 'لافتة إعلانية',
-    costItems: ['تكلفة التصميم', 'تكلفة الطباعة', 'التكلفة الخارجية', 'مواد خام'],
+    costItems: ['التصميم', 'الطباعة', 'التكلفة الخارجية', 'مواد خام'],
+    defaultCosts: { 'التصميم': 0, 'الطباعة': 0, 'التكلفة الخارجية': 0, 'مواد خام': 0 },
+    defaultExecutors: { 'التصميم': 'أحمد', 'الطباعة': 'سالم' },
     isDefault: true,
   },
 ];
 
 interface AppContextType {
   orders: Order[];
+  setOrders: React.Dispatch<React.SetStateAction<Order[]>>;
+  reorderOrders: (newOrders: Order[]) => void;
   addOrder: (order: Omit<Order, 'id'>, customId?: string) => void;
-  deleteOrder: (id: string) => void;
+  deleteOrder: (id: string | number) => void;
   getNextSerialNumber: () => string;
   updateOrderStatus: (id: string, status: Order['status']) => void;
   toggleOrderPaidStatus: (id: string) => void;
+  toggleOrderPinned: (id: string) => void;
   updateOrder: (id: string, updates: Partial<Order>) => void;
   inventory: InventoryItem[];
   addInventoryItem: (item: Omit<InventoryItem, 'id'>) => void;
@@ -210,6 +234,7 @@ interface AppContextType {
   expenses: Expense[];
   addExpense: (expense: Omit<Expense, 'id'>) => void;
   deleteExpense: (id: string) => void;
+  updateExpense: (id: string, updatedFields: Partial<Expense>) => void;
   employees: Employee[];
   addEmployee: (employee: Omit<Employee, 'id'>) => void;
   updateEmployee: (id: string, employee: Partial<Employee>) => void;
@@ -506,6 +531,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         remaining: o.remaining,
         isPaid: typeof o.isPaid === 'boolean' ? o.isPaid : (Boolean(o.deposit && o.deposit >= o.price) || (o.remaining !== undefined && o.remaining === 0 && o.price > 0)),
         paidAt: o.paidAt || undefined,
+        isPinned: Boolean(o.isPinned),
         installationAddress: o.installationAddress,
         craneCost: o.craneCost,
         pendingSync: o.pendingSync,
@@ -585,8 +611,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   // Pages and Components Central Manager State
   const [pagesConfig, setPagesConfig] = useState<PageConfig[]>(() => {
-    const deletedPageIds = new Set(['dashboard', 'kanban', 'tasks', 'inventory', 'expenses', 'customers', 'treasury', 'analysis', 'settings']);
-    const deletedPaths = new Set(['/', '/kanban', '/tasks', '/inventory', '/expenses', '/customers', '/treasury', '/analysis', '/settings']);
+    const deletedPageIds = new Set(['dashboard', 'kanban', 'tasks', 'inventory', 'expenses', 'customers', 'treasury', 'analysis']);
+    const deletedPaths = new Set(['/', '/kanban', '/tasks', '/inventory', '/expenses', '/customers', '/treasury', '/analysis']);
     const saved = localStorage.getItem('masar_pages_config');
     if (!saved) return defaultPagesConfig;
     try {
@@ -604,6 +630,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             }
             if (p.id === 'sales' || p.path === '/sales') {
               return { ...p, name: 'سجل الفواتير' };
+            }
+            if (p.id === 'settings' || p.path === '/settings') {
+              return { ...p, name: 'الإعدادات', icon: 'Settings', order: 5 };
             }
             return p;
           });
@@ -623,6 +652,15 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           const defaultWorkshops = defaultPagesConfig.find(dp => dp.id === 'workshops');
           if (defaultWorkshops) {
             filtered.push(defaultWorkshops);
+          }
+        }
+
+        // Ensure settings page is present and positioned right after audit
+        const hasSettings = filtered.some(p => p.id === 'settings' || p.path === '/settings');
+        if (!hasSettings) {
+          const defaultSettingsPage = defaultPagesConfig.find(dp => dp.id === 'settings');
+          if (defaultSettingsPage) {
+            filtered.push(defaultSettingsPage);
           }
         }
 
@@ -924,6 +962,34 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           type: 'مطالبة'
         }
       ]
+    },
+    {
+      id: 'ws-5',
+      name: 'ورشة هشام حلوطة',
+      address: 'شارع الصناعة - الورش المركزية',
+      totalCost: 9700,
+      totalPaid: 6000,
+      balance: 3700,
+      transactions: [
+        {
+          id: 'tx-5-1',
+          date: '2026-06-15T10:00:00.000Z',
+          description: 'تصنيع شاسيه حديد وقواعد تثبيت واجهة',
+          cost: 5500,
+          paid: 3500,
+          balanceAfter: 2000,
+          type: 'مطالبة'
+        },
+        {
+          id: 'tx-5-2',
+          date: '2026-07-02T12:30:00.000Z',
+          description: 'قص ليزر ولحام حروف بارزة 3D',
+          cost: 4200,
+          paid: 2500,
+          balanceAfter: 3700,
+          type: 'مطالبة'
+        }
+      ]
     }
   ];
 
@@ -932,7 +998,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // If saved doesn't have ws-5, ensure it can be included seamlessly
+          if (!parsed.some(w => w.name?.includes('هشام') || w.id === 'ws-5')) {
+            const merged = [...parsed, defaultInitialWorkshops[defaultInitialWorkshops.length - 1]];
+            return merged;
+          }
+          return parsed;
+        }
       } catch {
         // fallback
       }
@@ -1231,7 +1304,15 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       pendingSync: true,
     };
     
-    setOrders([newOrder, ...orders]);
+    setOrders(prevOrders => {
+      const updated = [...prevOrders, newOrder];
+      try {
+        localStorage.setItem('masar_orders', JSON.stringify(updated));
+      } catch (err) {
+        console.error('Failed to update masar_orders in localStorage:', err);
+      }
+      return updated;
+    });
     enqueueSync('orders', 'insert', newOrder);
 
     // Smart Inventory Deduction: Automatically deduct materials used in this invoice/order
@@ -1254,9 +1335,27 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const deleteOrder = (id: string) => {
-    setOrders(orders.filter(o => o.id !== id));
-    enqueueSync('orders', 'delete', { id });
+  const deleteOrder = (id: string | number) => {
+    setOrders(prevOrders => {
+      const updated = prevOrders.filter(o => String(o.id) !== String(id));
+      try {
+        localStorage.setItem('masar_orders', JSON.stringify(updated));
+        localStorage.setItem('masar_invoices', JSON.stringify(updated));
+      } catch (err) {
+        console.error('Failed to update masar_orders/masar_invoices in localStorage:', err);
+      }
+      return updated;
+    });
+    enqueueSync('orders', 'delete', { id: String(id) });
+  };
+
+  const reorderOrders = (newOrders: Order[]) => {
+    setOrders(newOrders);
+    try {
+      localStorage.setItem('masar_orders', JSON.stringify(newOrders));
+    } catch (err) {
+      console.error('Failed to update masar_orders in localStorage:', err);
+    }
   };
 
   const updateOrderStatus = (id: string, status: Order['status']) => {
@@ -1288,6 +1387,29 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           pendingSync: true,
         };
       });
+
+      const updatedTarget = updated.find(o => o.id === id);
+      if (updatedTarget) {
+        enqueueSync('orders', 'update', updatedTarget);
+      }
+
+      return updated;
+    });
+  };
+
+  const toggleOrderPinned = (id: string) => {
+    setOrders(prevOrders => {
+      const target = prevOrders.find(o => o.id === id);
+      if (!target) return prevOrders;
+
+      const nextPinned = !Boolean(target.isPinned);
+      const updated = prevOrders.map(o => o.id === id ? { ...o, isPinned: nextPinned, pendingSync: true } : o);
+
+      try {
+        localStorage.setItem('masar_orders', JSON.stringify(updated));
+      } catch (err) {
+        console.error('Failed to update masar_orders with pinned state:', err);
+      }
 
       const updatedTarget = updated.find(o => o.id === id);
       if (updatedTarget) {
@@ -1339,13 +1461,45 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       type: expense.type || 'مصروف',
       pendingSync: true,
     };
-    setExpenses([newExpense, ...expenses]);
+    setExpenses(prev => {
+      const updated = [...prev, newExpense];
+      try {
+        localStorage.setItem('masar_expenses', JSON.stringify(updated));
+      } catch (err) {
+        console.error(err);
+      }
+      return updated;
+    });
     enqueueSync('expenses', 'insert', newExpense);
   };
 
   const deleteExpense = (id: string) => {
-    setExpenses(expenses.filter(e => e.id !== id));
+    setExpenses(prev => {
+      const updated = prev.filter(e => e.id !== id);
+      try {
+        localStorage.setItem('masar_expenses', JSON.stringify(updated));
+      } catch (err) {
+        console.error(err);
+      }
+      return updated;
+    });
     enqueueSync('expenses', 'delete', { id });
+  };
+
+  const updateExpense = (id: string, updatedFields: Partial<Expense>) => {
+    setExpenses(prev => {
+      const updated = prev.map(e => e.id === id ? { ...e, ...updatedFields, pendingSync: true } : e);
+      try {
+        localStorage.setItem('masar_expenses', JSON.stringify(updated));
+      } catch (err) {
+        console.error(err);
+      }
+      return updated;
+    });
+    const target = expenses.find(e => e.id === id);
+    if (target) {
+      enqueueSync('expenses', 'update', { ...target, ...updatedFields });
+    }
   };
 
   
@@ -1695,9 +1849,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <AppContext.Provider value={{
-      orders, addOrder, deleteOrder, getNextSerialNumber, updateOrderStatus, toggleOrderPaidStatus, updateOrder,
+      orders, setOrders, reorderOrders, addOrder, deleteOrder, getNextSerialNumber, updateOrderStatus, toggleOrderPaidStatus, toggleOrderPinned, updateOrder,
       inventory, addInventoryItem, updateInventoryQuantity,
-      expenses, addExpense, deleteExpense,
+      expenses, addExpense, deleteExpense, updateExpense,
       employees, addEmployee, updateEmployee,
       currentUser, login, loginWithPasscode, loginWithSupabaseAuth, logout, simulateRole,
       syncState,
