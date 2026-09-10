@@ -1,6 +1,8 @@
 {
   "name": "منظومة مسار التجارية",
-  "description": "منظومة لإدارة ورشة لصناعة وتركيب اللوافت الإعلانية",
+  "description": "منظومة سحابية لإدارة المبيعات والمخازن ونقاط البيع وورش اللوافت الإعلانية",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

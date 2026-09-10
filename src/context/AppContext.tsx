@@ -21,6 +21,7 @@ import {
   PageComponentType
 } from '../types';
 import { supabase, isSupabaseConfigured, SyncQueueItem, authenticateUser } from '../lib/supabaseClient';
+import { getOrderTotalDetailCosts, getOrderNetProfit } from '../utils/financialCalculations';
 
 export const defaultPagesConfig: PageConfig[] = [
   {
@@ -72,6 +73,28 @@ export const defaultPagesConfig: PageConfig[] = [
     ]
   },
   {
+    id: 'expenses',
+    name: 'المصاريف',
+    path: '/expenses',
+    icon: 'Receipt',
+    description: 'جدول إدخال ومتابعة المصاريف التشغيلية (البيان والقيمة)',
+    visible: true,
+    isSystemDefault: true,
+    order: 2,
+    components: []
+  },
+  {
+    id: 'profits',
+    name: 'الأرباح',
+    path: '/profits',
+    icon: 'TrendingUp',
+    description: 'جدول الإدارة والملخص المالي وهوامش الربح وصافي الأرباح التلقائي',
+    visible: true,
+    isSystemDefault: true,
+    order: 3,
+    components: []
+  },
+  {
     id: 'workshops',
     name: 'جهات ذات العلاقة',
     path: '/workshops',
@@ -79,7 +102,7 @@ export const defaultPagesConfig: PageConfig[] = [
     description: 'إدارة ومتابعة مطالبات الموردين والورش الخارجية وسندات الصرف وأرصدة المديونية',
     visible: true,
     isSystemDefault: true,
-    order: 2,
+    order: 4,
     components: [
       {
         id: 'workshops_master_grid',
@@ -109,7 +132,7 @@ export const defaultPagesConfig: PageConfig[] = [
     description: 'إدارة بطاقات الموظفين، الرواتب، واحتساب العمولات المستحقة تلقائياً',
     visible: true,
     isSystemDefault: true,
-    order: 3,
+    order: 5,
     components: [
       {
         id: 'employees_kpi_count',
@@ -139,7 +162,7 @@ export const defaultPagesConfig: PageConfig[] = [
     description: 'تقارير الأداء المالي، سجل الرقابة وتدقيق حركة النظام',
     visible: true,
     isSystemDefault: true,
-    order: 4,
+    order: 6,
     components: [
       {
         id: 'audit_kpi_summary',
@@ -169,7 +192,7 @@ export const defaultPagesConfig: PageConfig[] = [
     description: 'إعدادات المنظومة العامة والطباعة والصلاحيات',
     visible: true,
     isSystemDefault: true,
-    order: 5,
+    order: 7,
     components: []
   }
 ];
@@ -502,40 +525,45 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       if (!Array.isArray(parsed)) {
         return initialOrders;
       }
-      return parsed.map((o, idx) => ({
-        id: o.id || (1001 + idx).toString(),
-        serialNumber: o.serialNumber || o.id || (1001 + idx).toString(),
-        serviceType: o.serviceType || 'لافتة إعلانية',
-        clientName: o.clientName || 'عميل نقدي',
-        description: o.description || '',
-        invoiceDetails: o.invoiceDetails || (o.description ? [o.description] : undefined),
-        price: Number(o.price) || 0,
-        cost: typeof o.cost === 'number' ? o.cost : (Number(o.cost) || 0),
-        costBreakdown: o.costBreakdown || undefined,
-        costBreakdownSummary: o.costBreakdownSummary || undefined,
-        designCost: typeof o.designCost === 'number' ? o.designCost : (Number(o.designCost) || 0),
-        materialCost: typeof o.materialCost === 'number' ? o.materialCost : (Number(o.materialCost) || 0),
-        printingCost: typeof o.printingCost === 'number' ? o.printingCost : (Number(o.printingCost) || 0),
-        externalCost: typeof o.externalCost === 'number' ? o.externalCost : (Number(o.externalCost) || 0),
-        commissionCost: typeof o.commissionCost === 'number' ? o.commissionCost : (Number(o.commissionCost) || 0),
-        otherCosts: typeof o.otherCosts === 'number' ? o.otherCosts : (Number(o.otherCosts) || 0),
-        costCenter: o.costCenter,
-        expectedProfit: typeof o.expectedProfit === 'number' ? o.expectedProfit : ((Number(o.price) || 0) - (Number(o.cost) || 0)),
-        assignedEmployee: o.assignedEmployee || 'أحمد الإداري',
-        status: o.status || 'بانتظار اعتماد التصميم',
-        paymentMethod: o.paymentMethod || 'نقدي',
-        date: o.date || new Date().toISOString(),
-        dimensions: o.dimensions,
-        targetDeliveryDate: o.targetDeliveryDate,
-        deposit: o.deposit,
-        remaining: o.remaining,
-        isPaid: typeof o.isPaid === 'boolean' ? o.isPaid : (Boolean(o.deposit && o.deposit >= o.price) || (o.remaining !== undefined && o.remaining === 0 && o.price > 0)),
-        paidAt: o.paidAt || undefined,
-        isPinned: Boolean(o.isPinned),
-        installationAddress: o.installationAddress,
-        craneCost: o.craneCost,
-        pendingSync: o.pendingSync,
-      }));
+      return parsed.map((o, idx) => {
+        const orderPrice = Number(o.price) || 0;
+        const calculatedCost = getOrderTotalDetailCosts(o);
+        const calculatedProfit = getOrderNetProfit({ ...o, price: orderPrice, cost: calculatedCost });
+        return {
+          id: o.id || (1001 + idx).toString(),
+          serialNumber: o.serialNumber || o.id || (1001 + idx).toString(),
+          serviceType: o.serviceType || 'لافتة إعلانية',
+          clientName: o.clientName || 'عميل نقدي',
+          description: o.description || '',
+          invoiceDetails: o.invoiceDetails || (o.description ? [o.description] : undefined),
+          price: orderPrice,
+          cost: calculatedCost,
+          costBreakdown: o.costBreakdown || undefined,
+          costBreakdownSummary: o.costBreakdownSummary || undefined,
+          designCost: typeof o.designCost === 'number' ? o.designCost : (Number(o.designCost) || 0),
+          materialCost: typeof o.materialCost === 'number' ? o.materialCost : (Number(o.materialCost) || 0),
+          printingCost: typeof o.printingCost === 'number' ? o.printingCost : (Number(o.printingCost) || 0),
+          externalCost: typeof o.externalCost === 'number' ? o.externalCost : (Number(o.externalCost) || 0),
+          commissionCost: typeof o.commissionCost === 'number' ? o.commissionCost : (Number(o.commissionCost) || 0),
+          otherCosts: typeof o.otherCosts === 'number' ? o.otherCosts : (Number(o.otherCosts) || 0),
+          costCenter: o.costCenter,
+          expectedProfit: calculatedProfit,
+          assignedEmployee: o.assignedEmployee || 'أحمد الإداري',
+          status: o.status || 'بانتظار اعتماد التصميم',
+          paymentMethod: o.paymentMethod || 'نقدي',
+          date: o.date || new Date().toISOString(),
+          dimensions: o.dimensions,
+          targetDeliveryDate: o.targetDeliveryDate,
+          deposit: o.deposit,
+          remaining: o.remaining,
+          isPaid: typeof o.isPaid === 'boolean' ? o.isPaid : (Boolean(o.deposit && o.deposit >= o.price) || (o.remaining !== undefined && o.remaining === 0 && o.price > 0)),
+          paidAt: o.paidAt || undefined,
+          isPinned: Boolean(o.isPinned),
+          installationAddress: o.installationAddress,
+          craneCost: o.craneCost,
+          pendingSync: o.pendingSync,
+        };
+      });
     } catch {
       return [];
     }
@@ -611,8 +639,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   // Pages and Components Central Manager State
   const [pagesConfig, setPagesConfig] = useState<PageConfig[]>(() => {
-    const deletedPageIds = new Set(['dashboard', 'kanban', 'tasks', 'inventory', 'expenses', 'customers', 'treasury', 'analysis']);
-    const deletedPaths = new Set(['/', '/kanban', '/tasks', '/inventory', '/expenses', '/customers', '/treasury', '/analysis']);
+    const deletedPageIds = new Set(['dashboard', 'kanban', 'tasks', 'inventory', 'customers', 'treasury', 'analysis']);
+    const deletedPaths = new Set(['/', '/kanban', '/tasks', '/inventory', '/customers', '/treasury', '/analysis']);
     const saved = localStorage.getItem('masar_pages_config');
     if (!saved) return defaultPagesConfig;
     try {
@@ -622,27 +650,64 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         const filtered = parsed
           .filter(p => !deletedPageIds.has(p.id) && !deletedPaths.has(p.path))
           .map(p => {
+            if (p.id === 'expenses' || p.path === '/expenses') {
+              return { ...p, name: 'المصاريف', icon: 'Receipt', order: 2 };
+            }
+            if (p.id === 'profits' || p.path === '/profits') {
+              return { ...p, name: 'الأرباح', icon: 'TrendingUp', order: 3 };
+            }
             if (p.id === 'employees' || p.path === '/employees') {
-              return { ...p, name: 'الموظفين' };
+              return { ...p, name: 'الموظفين', order: 5 };
             }
             if (p.id === 'workshops' || p.path === '/workshops') {
-              return { ...p, name: 'جهات ذات العلاقة', icon: 'Building2' };
+              return { ...p, name: 'جهات ذات العلاقة', icon: 'Building2', order: 4 };
             }
             if (p.id === 'sales' || p.path === '/sales') {
-              return { ...p, name: 'سجل الفواتير' };
+              return { ...p, name: 'سجل الفواتير', order: 1 };
+            }
+            if (p.id === 'audit' || p.path === '/audit') {
+              return { ...p, name: 'التقارير', icon: 'FileBarChart', order: 6 };
             }
             if (p.id === 'settings' || p.path === '/settings') {
-              return { ...p, name: 'الإعدادات', icon: 'Settings', order: 5 };
+              return { ...p, name: 'الإعدادات', icon: 'Settings', order: 7 };
             }
             return p;
           });
+
+        // Ensure expenses page is present
+        const hasExpenses = filtered.some(p => p.id === 'expenses' || p.path === '/expenses');
+        if (!hasExpenses) {
+          const defaultExpenses = defaultPagesConfig.find(dp => dp.id === 'expenses');
+          if (defaultExpenses) {
+            const salesIdx = filtered.findIndex(p => p.id === 'sales' || p.path === '/sales');
+            if (salesIdx !== -1) {
+              filtered.splice(salesIdx + 1, 0, defaultExpenses);
+            } else {
+              filtered.push(defaultExpenses);
+            }
+          }
+        }
+
+        // Ensure profits page is present
+        const hasProfits = filtered.some(p => p.id === 'profits' || p.path === '/profits');
+        if (!hasProfits) {
+          const defaultProfits = defaultPagesConfig.find(dp => dp.id === 'profits');
+          if (defaultProfits) {
+            const expIdx = filtered.findIndex(p => p.id === 'expenses' || p.path === '/expenses');
+            if (expIdx !== -1) {
+              filtered.splice(expIdx + 1, 0, defaultProfits);
+            } else {
+              filtered.push(defaultProfits);
+            }
+          }
+        }
 
         // Ensure employees page is present
         const hasEmployees = filtered.some(p => p.id === 'employees' || p.path === '/employees');
         if (!hasEmployees) {
           const defaultEmployees = defaultPagesConfig.find(dp => dp.id === 'employees');
           if (defaultEmployees) {
-            filtered.unshift(defaultEmployees);
+            filtered.push(defaultEmployees);
           }
         }
 
@@ -1292,15 +1357,17 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   // CRUD with Offline-First state & sync queuing
   const addOrder = (order: Omit<Order, 'id'>, customId?: string) => {
     const nextId = customId && customId.trim() !== '' ? customId.trim() : getNextSerialNumber();
+    const orderPrice = Number(order.price) || 0;
+    const calculatedCost = getOrderTotalDetailCosts(order);
+    const calculatedProfit = getOrderNetProfit({ ...order, price: orderPrice, cost: calculatedCost });
     const newOrder: Order = {
       ...order,
       id: nextId,
       serialNumber: nextId,
       serviceType: order.serviceType || 'لافتة إعلانية',
-      cost: typeof order.cost === 'number' ? order.cost : 0,
-      expectedProfit: typeof order.expectedProfit === 'number' 
-        ? order.expectedProfit 
-        : (order.price - (order.cost || 0)),
+      price: orderPrice,
+      cost: calculatedCost,
+      expectedProfit: calculatedProfit,
       pendingSync: true,
     };
     
@@ -1422,7 +1489,17 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const updateOrder = (id: string, updates: Partial<Order>) => {
     setOrders(prevOrders => {
-      const updated = prevOrders.map(o => o.id === id ? { ...o, ...updates, pendingSync: true } : o);
+      const updated = prevOrders.map(o => {
+        if (o.id !== id) return o;
+        const merged: Order = { ...o, ...updates, pendingSync: true };
+        const calculatedCost = getOrderTotalDetailCosts(merged);
+        const calculatedProfit = getOrderNetProfit({ ...merged, cost: calculatedCost });
+        return {
+          ...merged,
+          cost: calculatedCost,
+          expectedProfit: calculatedProfit,
+        };
+      });
       const target = updated.find(o => o.id === id);
       if (target) {
         enqueueSync('orders', 'update', target);

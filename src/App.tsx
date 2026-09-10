@@ -5,6 +5,8 @@ import Layout from './components/Layout';
 import Employees from './pages/Employees';
 import Workshops from './pages/Workshops';
 import Sales from './pages/Sales';
+import ExpensesPage from './pages/ExpensesPage';
+import ProfitsPage from './pages/ProfitsPage';
 import Audit from './pages/Audit';
 import Settings from './pages/Settings';
 import DynamicCustomPage from './pages/DynamicCustomPage';
@@ -17,6 +19,8 @@ export default function App() {
           <Route path="/" element={<Layout />}>
             <Route index element={<Navigate to="/sales" replace />} />
             <Route path="sales" element={<Sales />} />
+            <Route path="expenses" element={<Navigate to="/sales?tab=expenses" replace />} />
+            <Route path="profits" element={<Navigate to="/sales?tab=profits" replace />} />
             <Route path="workshops" element={<Workshops />} />
             <Route path="employees" element={<Employees />} />
             <Route path="audit" element={<Audit />} />

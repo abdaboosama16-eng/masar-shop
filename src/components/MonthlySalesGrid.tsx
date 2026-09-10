@@ -18,12 +18,18 @@ import {
   GripVertical,
   Copy,
   Pin,
-  Layers
+  Layers,
+  AlertCircle,
+  AlertTriangle,
+  TrendingUp,
+  Receipt,
+  FileText
 } from 'lucide-react';
 import { format, parseISO, startOfMonth, endOfMonth, isWithinInterval, addMonths, subMonths } from 'date-fns';
 import { ar } from 'date-fns/locale';
 import { useAppContext, defaultServicesConfig } from '../context/AppContext';
 import CostItemsPopover from './CostItemsPopover';
+import { getOrderTotalDetailCosts, getOrderNetProfit } from '../utils/financialCalculations';
 
 interface MonthlySalesGridProps {
   orders: Order[];
@@ -200,7 +206,8 @@ export default function MonthlySalesGrid({
     toggleOrderPinned: contextToggleOrderPinned,
     getNextSerialNumber, 
     settings, 
-    employees 
+    employees,
+    expenses
   } = useAppContext();
 
   // إدارة حالة الفواتير (Invoices State) لضمان الاستجابة اللحظية والتحديث المباشر واستبعاد أي صف إجماليات
@@ -468,6 +475,30 @@ export default function MonthlySalesGrid({
     }
   };
 
+  // رابعاً: دالة تمييز / إلغاء تمييز الفاتورة "تحت المراجعة" لتدقيق التكاليف والأرباح
+  const handleToggleUnderReview = (orderId: string | number) => {
+    const idStr = String(orderId);
+    const target = invoices.find(o => String(o.id) === idStr);
+    const nextVal = target ? !Boolean(target.isUnderReview) : true;
+
+    // 1. تحديث الحالة المحلية
+    const updated = invoices.map(o => String(o.id) === idStr ? { ...o, isUnderReview: nextVal } : o);
+    setInvoices(updated);
+    try {
+      localStorage.setItem('masar_invoices', JSON.stringify(updated));
+      localStorage.setItem('masar_orders', JSON.stringify(updated));
+    } catch (err) {
+      console.error('Error saving updated underReview status:', err);
+    }
+
+    // 2. تحديث الحالة العامة
+    if (onUpdateOrder) {
+      onUpdateOrder(idStr, { isUnderReview: nextVal });
+    } else if (contextUpdateOrder) {
+      contextUpdateOrder(idStr, { isUnderReview: nextVal });
+    }
+  };
+
   // Controlled or Internal State for adding new inline row
   const [internalIsAddingRow, setInternalIsAddingRow] = useState(false);
   const isAddingRow = propIsAddingRow !== undefined ? propIsAddingRow : internalIsAddingRow;
@@ -726,8 +757,8 @@ export default function MonthlySalesGrid({
   // Save Inline Editing
   const handleSaveEdit = (orderId: string) => {
     const trimmedClient = editClientName.trim();
-    const parsedPrice = parseFloat(editPrice) || 0;
-    const parsedCost = parseFloat(editCost) || 0;
+    const parsedPrice = Math.round(Number(editPrice)) || 0;
+    const parsedCost = Math.round(Number(editCost)) || 0;
     const expectedProfit = parsedPrice - parsedCost;
 
     const updates: Partial<Order> = {
@@ -752,14 +783,14 @@ export default function MonthlySalesGrid({
   // Save new inline order
   const handleSaveInlineRow = () => {
     const trimmedClient = newClientName.trim();
-    const parsedPrice = parseFloat(newPrice) || 0;
+    const parsedPrice = Math.round(Number(newPrice)) || 0;
     
     // Save if client name or price entered
     if (!trimmedClient && parsedPrice <= 0) {
       return;
     }
 
-    const parsedCost = parseFloat(newCost) || 0;
+    const parsedCost = Math.round(Number(newCost)) || 0;
     const expectedProfit = parsedPrice - parsedCost;
     const autoSerial = getNextSerialNumber ? getNextSerialNumber() : `INV-${Date.now().toString().slice(-4)}`;
 
@@ -1011,14 +1042,13 @@ export default function MonthlySalesGrid({
   const formattedCurrentMonth = useMemo(() => format(selectedDate, 'MMMM yyyy', { locale: ar }), [selectedDate]);
 
   // Orders filtered by the selected month & excluding deleted rows (respecting manual reordering)
-  // الأهم: عند قيام المستخدم بتغيير فلتر الشهر، تظل السجلات المثبتة (isPinned: true) ظاهرة ومستمرة في الجدول
+  // عزل تام بين الأشهر: لا تظهر فواتير أي شهر إلا عند اختياره من قائمة الأشهر
+  // وخاصية التثبيت (Pin) محلية ترفع الفاتورة لأعلى شهرها فقط دون أن تظهر في بقية الأشهر
   const monthlyOrders = useMemo(() => {
+    // 1. عزل صارم لشهر العرض الحالي فقط
     const list = invoices
       .filter(order => !deletedRowIds.some(dId => String(dId) === String(order.id)))
       .filter(order => {
-        // إذا كان البند مثبت (isPinned: true)، يظل ظاهراً ومستمراً في كافة الأشهر
-        if (order.isPinned) return true;
-
         try {
           const orderDate = parseISO(order.date);
           if (isNaN(orderDate.getTime())) return false;
@@ -1028,27 +1058,33 @@ export default function MonthlySalesGrid({
         }
       });
 
-    // إذا وجد ترتيب يدوي مخصص محفوظ، يتم ترتيب الصفوف بناءً عليه بدقة
-    if (customOrderIds.length > 0) {
-      const orderIndexMap = new Map<string, number>();
-      customOrderIds.forEach((id, idx) => orderIndexMap.set(String(id), idx));
+    // 2. الترتيب: الفواتير المثبتة (isPinned) ترتفع لأعلى شهرها
+    return [...list].sort((a, b) => {
+      // رفع البنود المثبتة (isPinned) لأعلى الشهر
+      const aPinned = Boolean(a.isPinned);
+      const bPinned = Boolean(b.isPinned);
+      if (aPinned !== bPinned) {
+        return aPinned ? -1 : 1;
+      }
 
-      return [...list].sort((a, b) => {
+      // إذا وجد ترتيب يدوي مخصص محفوظ
+      if (customOrderIds.length > 0) {
         const strA = String(a.id);
         const strB = String(b.id);
-        const idxA = orderIndexMap.has(strA) ? orderIndexMap.get(strA)! : 999999;
-        const idxB = orderIndexMap.has(strB) ? orderIndexMap.get(strB)! : 999999;
-        if (idxA !== idxB) {
+        const idxA = customOrderIds.indexOf(strA);
+        const idxB = customOrderIds.indexOf(strB);
+        if (idxA !== -1 && idxB !== -1) {
           return idxA - idxB;
         }
-        const dateA = new Date(a.date).getTime();
-        const dateB = new Date(b.date).getTime();
-        return dateB - dateA;
-      });
-    }
+        if (idxA !== -1) return -1;
+        if (idxB !== -1) return 1;
+      }
 
-    // الحفاظ على ترتيب المصفوفة الطبيعي لكي يتم إدراج الفواتير والأسطر المنسوخة في أسفل الجدول [...prev, newItem]
-    return list;
+      // الترتيب الافتراضي بحسب تاريخ الفاتورة
+      const dateA = new Date(a.date).getTime();
+      const dateB = new Date(b.date).getTime();
+      return dateB - dateA;
+    });
   }, [invoices, deletedRowIds, currentMonthStart, currentMonthEnd, customOrderIds]);
 
   // Filtered orders after search & category filters
@@ -1093,20 +1129,20 @@ export default function MonthlySalesGrid({
 
     filteredGridOrders.forEach(order => {
       if (isSummaryOrTotalRow(order)) return;
-      const p = Number(order.price) || 0;
-      const dCost = Number(order.designCost) || 0;
-      const prCost = Number(order.printingCost) || 0;
-      const exCost = Number(order.externalCost) || 0;
-      const itemCostSum = Number(dCost) + Number(prCost) + Number(exCost);
-      const actualCost = itemCostSum > 0 ? itemCostSum : (Number(order.cost) || 0);
-      const netProfit = order.expectedProfit !== undefined ? Number(order.expectedProfit) : (Number(p) - Number(actualCost));
+      const p = typeof order.price === 'number' ? order.price : (parseFloat(String(order.price || 0)) || 0);
+      const actualCost = getOrderTotalDetailCosts(order);
+      const netProfit = getOrderNetProfit(order);
 
-      sumInvoices = Number(sumInvoices) + Number(p);
-      sumTotalCosts = Number(sumTotalCosts) + Number(actualCost);
-      sumDesign = Number(sumDesign) + Number(dCost);
-      sumPrinting = Number(sumPrinting) + Number(prCost);
-      sumExternal = Number(sumExternal) + Number(exCost);
-      sumNetProfit = Number(sumNetProfit) + Number(netProfit);
+      const dCost = typeof order.designCost === 'number' ? order.designCost : (parseFloat(String(order.designCost || 0)) || 0);
+      const prCost = typeof order.printingCost === 'number' ? order.printingCost : (parseFloat(String(order.printingCost || 0)) || 0);
+      const exCost = typeof order.externalCost === 'number' ? order.externalCost : (parseFloat(String(order.externalCost || 0)) || 0);
+
+      sumInvoices = Number((sumInvoices + p).toFixed(2));
+      sumTotalCosts = Number((sumTotalCosts + actualCost).toFixed(2));
+      sumDesign = Number((sumDesign + dCost).toFixed(2));
+      sumPrinting = Number((sumPrinting + prCost).toFixed(2));
+      sumExternal = Number((sumExternal + exCost).toFixed(2));
+      sumNetProfit = Number((sumNetProfit + netProfit).toFixed(2));
     });
 
     return {
@@ -1118,6 +1154,61 @@ export default function MonthlySalesGrid({
       sumNetProfit
     };
   }, [filteredGridOrders]);
+
+  // المصاريف التشغيلية المعتمدة للشهر الحالي
+  const currentMonthExpenses = useMemo(() => {
+    return (expenses || []).filter(exp => {
+      if (!exp.date) return false;
+      const expDate = parseISO(exp.date);
+      return isWithinInterval(expDate, { start: currentMonthStart, end: currentMonthEnd });
+    });
+  }, [expenses, currentMonthStart, currentMonthEnd]);
+
+  // إجمالي المصاريف التشغيلية
+  const totalMonthlyExpenses = useMemo(() => {
+    return Number(
+      currentMonthExpenses
+        .reduce((sum, e) => sum + (parseFloat(String(e.amount)) || 0), 0)
+        .toFixed(2)
+    );
+  }, [currentMonthExpenses]);
+
+  // صافي الربح الفعلي = هامش الربح - إجمالي المصاريف التشغيلية
+  const actualNetProfit = useMemo(() => {
+    return Number((tableTotals.sumNetProfit - totalMonthlyExpenses).toFixed(2));
+  }, [tableTotals.sumNetProfit, totalMonthlyExpenses]);
+
+  // مساحة الملاحظات العامة للشهر الحالي وتحديثها وحفظها تلقائياً
+  const currentMonthKey = useMemo(() => format(selectedDate, 'yyyy_MM'), [selectedDate]);
+  const [monthlyNotes, setMonthlyNotes] = useState<string>(() => {
+    try {
+      return localStorage.getItem(`masar_monthly_notes_${currentMonthKey}`) || '';
+    } catch {
+      return '';
+    }
+  });
+  const [notesSaveStatus, setNotesSaveStatus] = useState<string>('');
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(`masar_monthly_notes_${currentMonthKey}`) || '';
+      setMonthlyNotes(saved);
+      setNotesSaveStatus('');
+    } catch {
+      // ignore
+    }
+  }, [currentMonthKey]);
+
+  const handleNotesChange = (val: string) => {
+    setMonthlyNotes(val);
+    try {
+      localStorage.setItem(`masar_monthly_notes_${currentMonthKey}`, val);
+      setNotesSaveStatus('تم الحفظ تلقائياً');
+      setTimeout(() => setNotesSaveStatus(''), 2000);
+    } catch (e) {
+      console.error('Error saving monthly notes:', e);
+    }
+  };
 
   // Export Monthly Data Grid to CSV / Excel
   const handleExportCSV = () => {
@@ -1390,12 +1481,12 @@ export default function MonthlySalesGrid({
       {/* ========================================================================= */}
       {/* 2. EXPANDED MONTHLY DATA GRID (Clean Design Table) */}
       {/* ========================================================================= */}
-      <div className="glass-panel rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
+      <div className="glass-panel rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm relative">
         
         {/* Printable Header (Visible only when printing) */}
         <div className="hidden print:block p-4 border-b border-slate-200 text-center">
           <h2 className="text-xl font-bold">تقرير سجل الفواتير الشهري</h2>
-          <p className="text-sm text-slate-600 mt-1">الفترة: {formattedCurrentMonth} | إجمالي الفواتير: {tableTotals.sumInvoices.toLocaleString()} {currency} | صافي الأرباح: {tableTotals.sumNetProfit.toLocaleString()} {currency}</p>
+          <p className="text-sm text-slate-600 mt-1">الفترة: {formattedCurrentMonth} | إجمالي الفواتير: {tableTotals.sumInvoices.toLocaleString()} {currency} | هامش الربح: {tableTotals.sumNetProfit.toLocaleString()} {currency}</p>
         </div>
 
         {/* Table Container */}
@@ -1435,9 +1526,9 @@ export default function MonthlySalesGrid({
                   تفاصيل الفاتورة
                 </th>
 
-                {/* 5. صافي الربح */}
+                {/* 5. هامش الربح */}
                 <th scope="col" className="py-3 px-4 font-black border-l border-slate-200/80 dark:border-slate-700 min-w-[120px] text-center">
-                  صافي الربح
+                  هامش الربح
                 </th>
 
                 {/* 6. الملاحظات */}
@@ -1544,16 +1635,30 @@ export default function MonthlySalesGrid({
                       {/* 3. إجمالي الفاتورة */}
                       <td className="py-2 px-3 border-l border-amber-200 dark:border-amber-800 text-center">
                         <input
-                          type="number"
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
                           id={`edit-input-price-${order.id}`}
-                          step="any"
-                          value={editPrice}
-                          onChange={(e) => setEditPrice(e.target.value)}
+                          value={editPrice === '0' ? '' : editPrice}
+                          onFocus={(e) => {
+                            if (e.target.value === '0' || e.target.value === '.') {
+                              setEditPrice('');
+                            }
+                          }}
+                          onChange={(e) => {
+                            const raw = e.target.value.replace(/[^\d]/g, '');
+                            const clean = raw.replace(/^0+/, '') || (raw === '0' ? '0' : '');
+                            setEditPrice(clean);
+                          }}
                           onKeyDown={(e) => {
+                            if (e.key === '.' || e.key === ',') {
+                              e.preventDefault();
+                              return;
+                            }
                             if (e.key === 'Enter') handleSaveEdit(order.id);
                             if (e.key === 'Escape') handleCancelEdit();
                           }}
-                          placeholder="0.00"
+                          placeholder="0"
                           className="w-full glass-input rounded-lg px-2 py-1.5 text-xs font-mono font-black text-center text-emerald-800 dark:text-emerald-300 bg-white dark:bg-slate-800 border-amber-300 dark:border-amber-700 focus:ring-2 focus:ring-amber-500"
                         />
                       </td>
@@ -1586,22 +1691,36 @@ export default function MonthlySalesGrid({
                         </div>
                       </td>
 
-                      {/* 5. صافي الربح / التكلفة */}
+                      {/* 5. هامش الربح / التكلفة */}
                       <td className="py-2 px-3 border-l border-amber-200 dark:border-amber-800 text-center">
                         <div className="flex items-center gap-1 justify-center">
                           <input
-                            type="number"
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
                             id={`edit-input-cost-${order.id}`}
-                            step="any"
-                            value={editCost}
-                            onChange={(e) => setEditCost(e.target.value)}
+                            value={editCost === '0' ? '' : editCost}
+                            onFocus={(e) => {
+                              if (e.target.value === '0' || e.target.value === '.') {
+                                setEditCost('');
+                              }
+                            }}
+                            onChange={(e) => {
+                              const raw = e.target.value.replace(/[^\d]/g, '');
+                              const clean = raw.replace(/^0+/, '') || (raw === '0' ? '0' : '');
+                              setEditCost(clean);
+                            }}
                             onKeyDown={(e) => {
+                              if (e.key === '.' || e.key === ',') {
+                                e.preventDefault();
+                                return;
+                              }
                               if (e.key === 'Enter') handleSaveEdit(order.id);
                               if (e.key === 'Escape') handleCancelEdit();
                             }}
-                            placeholder="التكلفة"
+                            placeholder="0"
                             className="w-16 glass-input rounded-lg px-1.5 py-1 text-[11px] font-mono font-bold text-center text-rose-700 dark:text-rose-400 bg-white dark:bg-slate-800 border-amber-300 dark:border-amber-700"
-                            title="التكلفة الإجمالية (لحساب صافي الربح تلقائياً)"
+                            title="التكلفة الإجمالية (لحساب هامش الربح تلقائياً)"
                           />
                           <span className={`text-[11px] font-mono font-black whitespace-nowrap ${
                             currentProfit >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'
@@ -1660,12 +1779,8 @@ export default function MonthlySalesGrid({
 
                 // وضع العرض العادي (Normal Display Mode)
                 const isChecked = Boolean(order.isPaid);
-                const dCost = Number(order.designCost) || 0;
-                const prCost = Number(order.printingCost) || 0;
-                const exCost = Number(order.externalCost) || 0;
-                const itemCostSum = Number(dCost) + Number(prCost) + Number(exCost);
-                const actualCost = itemCostSum > 0 ? itemCostSum : (Number(order.cost) || 0);
-                const netProfit = order.expectedProfit !== undefined ? Number(order.expectedProfit) : (Number(order.price) - Number(actualCost));
+                const actualCost = getOrderTotalDetailCosts(order);
+                const netProfit = getOrderNetProfit(order);
                 
                 // تفاصيل الفاتورة المحفوظة لعرضها كبطاقات عمودية نظيفة
                 const detailsItems = getOrderInvoiceDetailsList(order);
@@ -1686,9 +1801,11 @@ export default function MonthlySalesGrid({
                     } ${
                       draggedOrderId === order.id
                         ? 'opacity-40 bg-slate-100 dark:bg-slate-800'
-                        : isChecked 
-                          ? 'bg-yellow-100/90 dark:bg-yellow-950/45 hover:bg-yellow-200/70 dark:hover:bg-yellow-900/40 text-slate-900 dark:text-slate-100' 
-                          : `${index % 2 === 0 ? 'bg-white dark:bg-slate-900' : 'bg-slate-50/40 dark:bg-slate-900/50'} hover:bg-slate-50/90 dark:hover:bg-slate-800/60`
+                        : order.isUnderReview
+                          ? 'bg-amber-100/85 dark:bg-amber-950/65 hover:bg-amber-200/80 dark:hover:bg-amber-900/60 text-slate-900 dark:text-slate-100 border-r-4 border-r-amber-500'
+                          : isChecked 
+                            ? 'bg-yellow-100/90 dark:bg-yellow-950/45 hover:bg-yellow-200/70 dark:hover:bg-yellow-900/40 text-slate-900 dark:text-slate-100' 
+                            : `${index % 2 === 0 ? 'bg-white dark:bg-slate-900' : 'bg-slate-50/40 dark:bg-slate-900/50'} hover:bg-slate-50/90 dark:hover:bg-slate-800/60`
                     }`}
                   >
                     {/* 0. أيقونة السحب Drag Handle في بداية كل صف (أقصى اليمين) */}
@@ -1780,11 +1897,22 @@ export default function MonthlySalesGrid({
 
                     {/* 2. اسم العميل */}
                     <td className="py-3 px-4 border-l border-slate-200/60 dark:border-slate-800 font-bold text-slate-900 dark:text-slate-100 max-w-[180px] text-center" title={order.clientName}>
-                      <div className="flex items-center justify-center gap-1.5 truncate">
-                        {order.isPinned && (
-                          <Pin size={13} className="text-amber-500 fill-amber-500/20 shrink-0" title="بند مثبت للأشهر القادمة" />
+                      <div className="flex flex-col items-center justify-center gap-1">
+                        <div className="flex items-center justify-center gap-1.5 truncate max-w-full">
+                          {order.isPinned && (
+                            <Pin size={13} className="text-amber-500 fill-amber-500/20 shrink-0" title="بند مثبت للأشهر القادمة" />
+                          )}
+                          <span className="truncate">{order.clientName}</span>
+                        </div>
+                        {order.isUnderReview && (
+                          <span 
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-200/90 dark:bg-amber-900/80 text-amber-900 dark:text-amber-200 border border-amber-400 dark:border-amber-700 select-none shadow-2xs"
+                            title="فاتورة تحت المراجعة: تدقيق التكاليف والأرباح مطلوب"
+                          >
+                            <AlertCircle size={10} className="text-amber-700 dark:text-amber-400 shrink-0 stroke-[2.5]" />
+                            <span>تحت المراجعة</span>
+                          </span>
                         )}
-                        <span className="truncate">{order.clientName}</span>
                       </div>
                     </td>
 
@@ -1909,19 +2037,38 @@ export default function MonthlySalesGrid({
                             <Pin size={15} className={order.isPinned ? "fill-amber-500/30 text-amber-500 dark:text-amber-400" : ""} />
                           </button>
 
-                          {/* زر الحذف - يظهر فقط لصفوف الفواتير الفعلية (مثل زبون زياد) ويعمل بدالة handleDelete(row.id) */}
+                          {/* رابعاً: أيقونة تمييز الفاتورة تحت المراجعة (AlertCircle) */}
                           <button
                             type="button"
-                            id={`btn-delete-order-${row.id}`}
+                            id={`btn-review-order-${order.id}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleToggleUnderReview(order.id);
+                            }}
+                            className={`relative z-10 cursor-pointer p-1.5 rounded-lg transition-colors inline-flex items-center justify-center ${
+                              order.isUnderReview 
+                                ? 'text-amber-700 bg-amber-100 dark:bg-amber-900/70 dark:text-amber-300 shadow-xs border border-amber-300 dark:border-amber-600' 
+                                : 'text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-slate-800'
+                            }`}
+                            title={order.isUnderReview ? "الفاتورة تحت المراجعة (انقر لإلغاء التمييز)" : "تمييز كـ تحت المراجعة لتدقيق التكاليف والأرباح"}
+                            aria-label={`تمييز مراجعة فاتورة ${order.clientName}`}
+                          >
+                            <AlertCircle size={15} className={order.isUnderReview ? "text-amber-600 dark:text-amber-300 stroke-[2.5]" : ""} />
+                          </button>
+
+                          {/* خامساً: زر الحذف */}
+                          <button
+                            type="button"
+                            id={`btn-delete-order-${order.id}`}
                             onClick={(e) => {
                               e.stopPropagation();
                               if (window.confirm('هل تريد حذف هذا السطر؟')) {
-                                handleDelete(row.id);
+                                handleDelete(order.id);
                               }
                             }}
                             className="p-1.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg cursor-pointer transition-colors"
                             title="حذف هذا السطر"
-                            aria-label={`حذف فاتورة ${row.clientName}`}
+                            aria-label={`حذف فاتورة ${order.clientName}`}
                           >
                             <Trash2 size={16} />
                           </button>
@@ -2001,16 +2148,30 @@ export default function MonthlySalesGrid({
                   {/* 3. إجمالي الفاتورة */}
                   <td className="py-2 px-3 border-l border-blue-200 dark:border-blue-800 text-center">
                     <input
-                      type="number"
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
                       id="inline-input-price"
-                      step="any"
-                      value={newPrice}
-                      onChange={(e) => setNewPrice(e.target.value)}
+                      value={newPrice === '0' ? '' : newPrice}
+                      onFocus={(e) => {
+                        if (e.target.value === '0' || e.target.value === '.') {
+                          setNewPrice('');
+                        }
+                      }}
+                      onChange={(e) => {
+                        const raw = e.target.value.replace(/[^\d]/g, '');
+                        const clean = raw.replace(/^0+/, '') || (raw === '0' ? '0' : '');
+                        setNewPrice(clean);
+                      }}
                       onKeyDown={(e) => {
+                        if (e.key === '.' || e.key === ',') {
+                          e.preventDefault();
+                          return;
+                        }
                         if (e.key === 'Enter') handleSaveInlineRow();
                         if (e.key === 'Escape') setIsAddingRow(false);
                       }}
-                      placeholder="0.00"
+                      placeholder="0"
                       className="w-full glass-input rounded-lg px-2 py-1.5 text-xs font-mono font-black text-center text-emerald-800 dark:text-emerald-300 bg-white dark:bg-slate-800 border-blue-300 dark:border-blue-700 focus:ring-2 focus:ring-blue-500"
                     />
                   </td>
@@ -2043,25 +2204,39 @@ export default function MonthlySalesGrid({
                     </div>
                   </td>
 
-                  {/* 5. صافي الربح / التكلفة */}
+                  {/* 5. هامش الربح / التكلفة */}
                   <td className="py-2 px-3 border-l border-blue-200 dark:border-blue-800 text-center">
                     <div className="flex items-center gap-1 justify-center">
                       <input
-                        type="number"
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
                         id="inline-input-cost"
-                        step="any"
-                        value={newCost}
-                        onChange={(e) => setNewCost(e.target.value)}
+                        value={newCost === '0' ? '' : newCost}
+                        onFocus={(e) => {
+                          if (e.target.value === '0' || e.target.value === '.') {
+                            setNewCost('');
+                          }
+                        }}
+                        onChange={(e) => {
+                          const raw = e.target.value.replace(/[^\d]/g, '');
+                          const clean = raw.replace(/^0+/, '') || (raw === '0' ? '0' : '');
+                          setNewCost(clean);
+                        }}
                         onKeyDown={(e) => {
+                          if (e.key === '.' || e.key === ',') {
+                            e.preventDefault();
+                            return;
+                          }
                           if (e.key === 'Enter') handleSaveInlineRow();
                           if (e.key === 'Escape') setIsAddingRow(false);
                         }}
-                        placeholder="التكلفة"
+                        placeholder="0"
                         className="w-16 glass-input rounded-lg px-1.5 py-1 text-[11px] font-mono font-bold text-center text-rose-700 dark:text-rose-400 bg-white dark:bg-slate-800 border-blue-300 dark:border-blue-700"
-                        title="التكلفة الإجمالية (لحساب صافي الربح تلقائياً)"
+                        title="التكلفة الإجمالية (لحساب هامش الربح تلقائياً)"
                       />
                       <span className="text-[11px] font-mono font-black text-blue-700 dark:text-blue-400 whitespace-nowrap">
-                        ={(Math.max(0, (parseFloat(newPrice) || 0) - (parseFloat(newCost) || 0))).toLocaleString()}
+                        ={(Math.max(0, (Math.round(Number(newPrice)) || 0) - (Math.round(Number(newCost)) || 0))).toLocaleString()}
                       </span>
                     </div>
                   </td>
@@ -2156,26 +2331,45 @@ export default function MonthlySalesGrid({
                     {tableTotals.sumInvoices.toLocaleString()} <span className="text-[10px] font-normal text-slate-600 dark:text-slate-400">{currency}</span>
                   </td>
 
-                  {/* Column 4: تفاصيل الفاتورة (Footer Spacer) */}
-                  <td className="py-3 px-4 text-center text-slate-400 dark:text-slate-500 border-l border-slate-300 dark:border-slate-700 font-bold">
-                    -
+                  {/* Column 4: إجمالي المصاريف التشغيلية للشهر الحالي */}
+                  <td className="py-3 px-3 text-center border-l border-slate-300 dark:border-slate-700">
+                    <div className="flex flex-col items-center justify-center">
+                      <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400">المصاريف التشغيلية</span>
+                      <span className="font-mono font-black text-amber-800 dark:text-amber-300">
+                        {totalMonthlyExpenses.toLocaleString()} <span className="text-[9px] font-normal opacity-75">{currency}</span>
+                      </span>
+                    </div>
                   </td>
 
-                  {/* Column 5 Total: صافي الربح */}
-                  <td className={`py-3 px-4 text-center font-mono tabular-nums font-black border-l border-slate-300 dark:border-slate-700 ${
+                  {/* Column 5 Total: هامش الربح */}
+                  <td 
+                    title="إجمالي هامش الربح"
+                    className={`py-3 px-3 text-center font-mono tabular-nums font-black border-l border-slate-300 dark:border-slate-700 ${
                     tableTotals.sumNetProfit >= 0 
-                      ? 'text-emerald-800 dark:text-emerald-300' 
+                      ? 'text-indigo-800 dark:text-indigo-300' 
                       : 'text-rose-800 dark:text-rose-300'
                   }`}>
-                    {tableTotals.sumNetProfit >= 0 ? `+${tableTotals.sumNetProfit.toLocaleString()}` : tableTotals.sumNetProfit.toLocaleString()} <span className="text-[10px] font-normal opacity-80">{currency}</span>
+                    <div className="flex flex-col items-center justify-center">
+                      <span className="text-[10px] font-bold opacity-80">هامش الربح</span>
+                      <span>
+                        {tableTotals.sumNetProfit >= 0 ? `+${tableTotals.sumNetProfit.toLocaleString()}` : tableTotals.sumNetProfit.toLocaleString()} <span className="text-[9px] font-normal opacity-80">{currency}</span>
+                      </span>
+                    </div>
                   </td>
 
-                  {/* Column 6: الملاحظات (Footer Spacer) */}
-                  <td className="py-3 px-4 text-center text-slate-400 dark:text-slate-500 border-l border-slate-300 dark:border-slate-700 font-bold">
-                    -
+                  {/* Column 6: صافي الربح الفعلي (هامش الربح - المصاريف التشغيلية) */}
+                  <td className="py-3 px-3 text-center border-l border-slate-300 dark:border-slate-700">
+                    <div className="flex flex-col items-center justify-center">
+                      <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">صافي الربح الفعلي</span>
+                      <span className={`font-mono font-black ${
+                        actualNetProfit >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'
+                      }`}>
+                        {actualNetProfit >= 0 ? `+${actualNetProfit.toLocaleString()}` : actualNetProfit.toLocaleString()} <span className="text-[9px] font-normal opacity-80">{currency}</span>
+                      </span>
+                    </div>
                   </td>
 
-                  {/* Column 7: حذف (Footer Spacer) - خانة الإجراءات فارغة أو عبارة عن شرطة (-) ولا يمكن حذفه */}
+                  {/* Column 7: حذف (Footer Spacer) */}
                   <td className="py-3 px-2 text-center text-slate-400 dark:text-slate-500 print:hidden font-bold select-none">
                     -
                   </td>
@@ -2184,6 +2378,115 @@ export default function MonthlySalesGrid({
             )}
           </table>
         </div>
+
+        {/* زر الإضافة الأخضر الدائري (+) مثبت ذكياً بحافة مساحة الجدول اليمنى السفلية */}
+        <div className="sticky bottom-6 z-30 flex justify-start pointer-events-none -mt-14 mb-3 mr-4 print:hidden">
+          <button
+            type="button"
+            id="btn-fab-add-invoice"
+            onClick={handleTriggerAddRow}
+            className="pointer-events-auto w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 active:scale-95 text-white shadow-xl hover:shadow-2xl hover:shadow-emerald-600/50 border-2 border-white/40 dark:border-slate-700/60 flex items-center justify-center transition-all duration-300 cursor-pointer group focus:outline-hidden focus:ring-4 focus:ring-emerald-500/40"
+            title="إضافة بند جديد (+)"
+            aria-label="إضافة بند جديد"
+          >
+            <Plus 
+              size={28} 
+              className="text-white stroke-[2.75] transition-transform duration-300 ease-out group-hover:rotate-90 group-hover:scale-110" 
+            />
+          </button>
+        </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* 4. EXPANDED FINANCIAL SUMMARY & MONTHLY NOTES (شريط الإجماليات ومساحة الملاحظات) */}
+      {/* ========================================================================= */}
+      <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 print:grid-cols-4">
+        {/* بطاقة إجمالي الفواتير */}
+        <div className="glass-panel p-3.5 rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs flex flex-col justify-between">
+          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-bold mb-1">
+            <span>إجمالي المبيعات (الفواتير)</span>
+            <FileSpreadsheet size={15} className="text-slate-400 shrink-0" />
+          </div>
+          <div className="text-lg font-black font-mono text-slate-900 dark:text-slate-100">
+            {tableTotals.sumInvoices.toLocaleString()} <span className="text-xs font-normal text-slate-500">{currency}</span>
+          </div>
+          <span className="text-[10px] text-slate-400 mt-1">عدد الفواتير: {actualOrdersCount}</span>
+        </div>
+
+        {/* بطاقة إجمالي هامش الربح */}
+        <div className="glass-panel p-3.5 rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs flex flex-col justify-between">
+          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-bold mb-1">
+            <span>إجمالي هامش الربح</span>
+            <TrendingUp size={15} className="text-indigo-500 shrink-0" />
+          </div>
+          <div className={`text-lg font-black font-mono ${tableTotals.sumNetProfit >= 0 ? 'text-indigo-600 dark:text-indigo-400' : 'text-rose-600 dark:text-rose-400'}`}>
+            {tableTotals.sumNetProfit >= 0 ? `+${tableTotals.sumNetProfit.toLocaleString()}` : tableTotals.sumNetProfit.toLocaleString()} <span className="text-xs font-normal text-slate-500">{currency}</span>
+          </div>
+          <span className="text-[10px] text-slate-400 mt-1">الأرباح التشغيلية للطلبيات</span>
+        </div>
+
+        {/* بطاقة إجمالي المصاريف التشغيلية */}
+        <div className="glass-panel p-3.5 rounded-xl border border-amber-200/80 dark:border-amber-900/40 bg-amber-50/40 dark:bg-amber-950/20 shadow-xs flex flex-col justify-between">
+          <div className="flex items-center justify-between text-xs text-amber-700 dark:text-amber-400 font-bold mb-1">
+            <span>إجمالي المصاريف التشغيلية</span>
+            <Receipt size={15} className="text-amber-600 shrink-0" />
+          </div>
+          <div className="text-lg font-black font-mono text-amber-800 dark:text-amber-300">
+            {totalMonthlyExpenses.toLocaleString()} <span className="text-xs font-normal text-amber-600/80">{currency}</span>
+          </div>
+          <span className="text-[10px] text-amber-600/70 mt-1">مصاريف شهر {formattedCurrentMonth}</span>
+        </div>
+
+        {/* بطاقة صافي الربح الفعلي */}
+        <div className={`glass-panel p-3.5 rounded-xl border shadow-xs flex flex-col justify-between ${
+          actualNetProfit >= 0 
+            ? 'border-emerald-200/90 dark:border-emerald-900/40 bg-emerald-50/50 dark:bg-emerald-950/20' 
+            : 'border-rose-200/90 dark:border-rose-900/40 bg-rose-50/50 dark:bg-rose-950/20'
+        }`}>
+          <div className="flex items-center justify-between text-xs font-bold mb-1">
+            <span className={actualNetProfit >= 0 ? 'text-emerald-800 dark:text-emerald-300' : 'text-rose-800 dark:text-rose-300'}>
+              صافي الربح الفعلي
+            </span>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
+              actualNetProfit >= 0 ? 'bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200' : 'bg-rose-100 dark:bg-rose-900/60 text-rose-800 dark:text-rose-200'
+            }`}>
+              (هامش الربح - المصاريف)
+            </span>
+          </div>
+          <div className={`text-xl font-black font-mono ${actualNetProfit >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'}`}>
+            {actualNetProfit >= 0 ? `+${actualNetProfit.toLocaleString()}` : actualNetProfit.toLocaleString()} <span className="text-xs font-normal opacity-80">{currency}</span>
+          </div>
+          <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">الربح الصافي النهائي بعد خصم كافة المصاريف</span>
+        </div>
+      </div>
+
+      {/* مساحة ملاحظات واسعة ومرنة أسفل الجدول لتدوين الملاحظات العامة للشهر وتحديثها تلقائياً */}
+      <div className="mt-3 glass-panel p-4 rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs print:hidden">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <label htmlFor="monthly-general-notes" className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 cursor-pointer">
+              <FileText size={15} className="text-slate-500 dark:text-slate-400" />
+              <span>ملاحظات عامة لشهر {formattedCurrentMonth}</span>
+            </label>
+            <span className="text-[11px] text-slate-400 font-normal">
+              (تدوين التوجيهات، الملاحظات الإدارية، وتسويات الشهر)
+            </span>
+          </div>
+          {notesSaveStatus && (
+            <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 animate-in fade-in flex items-center gap-1">
+              <Check size={13} className="stroke-[3]" />
+              <span>{notesSaveStatus}</span>
+            </span>
+          )}
+        </div>
+        <textarea
+          id="monthly-general-notes"
+          rows={3}
+          value={monthlyNotes}
+          onChange={(e) => handleNotesChange(e.target.value)}
+          placeholder={`اكتب هنا أي ملاحظات، أهداف، أو تسويات تخص شهر ${formattedCurrentMonth}... يتم الحفظ تلقائياً.`}
+          className="w-full glass-input rounded-xl p-3 text-xs text-slate-800 dark:text-slate-200 bg-slate-50/60 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-emerald-500 resize-y min-h-[75px]"
+        />
       </div>
 
       {/* Popover إدارة وتعديل بنود التكلفة العائم */}
@@ -2196,25 +2499,6 @@ export default function MonthlySalesGrid({
           onSave={handleSaveOrderCosts}
         />
       )}
-
-      {/* ========================================================================= */}
-      {/* FLOATING ACTION BUTTON (FAB) - زر إضافة عائم دائري متناسق في زاوية الشاشة */}
-      {/* ========================================================================= */}
-      <div className="fixed bottom-6 left-6 sm:bottom-8 sm:left-8 z-50 print:hidden">
-        <button
-          type="button"
-          id="btn-fab-add-invoice"
-          onClick={handleTriggerAddRow}
-          className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 active:scale-95 text-white shadow-xl hover:shadow-2xl hover:shadow-emerald-600/40 border-2 border-white/30 dark:border-slate-700/60 flex items-center justify-center transition-all duration-300 cursor-pointer group focus:outline-hidden focus:ring-4 focus:ring-emerald-500/40"
-          title="إضافة بند جديد"
-          aria-label="إضافة بند جديد"
-        >
-          <Plus 
-            size={28} 
-            className="text-white stroke-[2.75] transition-transform duration-300 ease-out group-hover:rotate-90 group-hover:scale-110" 
-          />
-        </button>
-      </div>
     </div>
   );
 }

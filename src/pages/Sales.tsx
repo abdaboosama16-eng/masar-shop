@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 import { Order, OrderStatus, PaymentMethod, ServiceType } from '../types';
 import { 
@@ -8,7 +9,7 @@ import {
   FileSpreadsheet, ChevronDown, Calculator, Check, 
   Briefcase, MessageSquare, BookOpen, RotateCcw, 
   Tv, Kanban, ArrowRight, 
-  CheckCircle2, Clock
+  CheckCircle2, Clock, Receipt, TrendingUp
 } from 'lucide-react';
 import { format } from 'date-fns';
 import DesignAttachmentModal from '../components/DesignAttachmentModal';
@@ -16,9 +17,10 @@ import InvoicePrintModal from '../components/InvoicePrintModal';
 import WhatsAppShareModal from '../components/WhatsAppShareModal';
 import MonthlySalesGrid from '../components/MonthlySalesGrid';
 import OrderDetailsModal from '../components/OrderDetailsModal';
-import ExpensesAndProfits from '../components/ExpensesAndProfits';
+import ExpensesView from '../components/ExpensesView';
+import ProfitsView from '../components/ProfitsView';
 
-type SalesActiveTab = 'monthly_grid' | 'invoices' | 'new_order' | 'kanban';
+type SalesActiveTab = 'monthly_grid' | 'expenses' | 'profits' | 'new_order' | 'kanban';
 
 export default function Sales() {
   const { 
@@ -37,8 +39,31 @@ export default function Sales() {
     toggleKioskMode 
   } = useAppContext();
 
-  // Active Tab State (4 Principal Tabs)
-  const [activeTab, setActiveTab] = useState<SalesActiveTab>('monthly_grid');
+  const location = useLocation();
+  const navigate = useNavigate();
+  const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const tabParam = searchParams.get('tab') as SalesActiveTab | null;
+
+  // Active Tab State (3 Principal Tabs)
+  const [activeTab, setActiveTab] = useState<SalesActiveTab>(
+    tabParam === 'expenses' ? 'expenses' : tabParam === 'profits' ? 'profits' : 'monthly_grid'
+  );
+
+  useEffect(() => {
+    const currentTab = new URLSearchParams(location.search).get('tab') as SalesActiveTab | null;
+    if (currentTab === 'expenses') setActiveTab('expenses');
+    else if (currentTab === 'profits') setActiveTab('profits');
+    else if (currentTab === 'monthly_grid') setActiveTab('monthly_grid');
+  }, [location.search]);
+
+  const handleTabChange = (tab: SalesActiveTab) => {
+    setActiveTab(tab);
+    if (tab === 'monthly_grid') {
+      navigate('/sales', { replace: true });
+    } else {
+      navigate(`/sales?tab=${tab}`, { replace: true });
+    }
+  };
 
   // Inline table row addition state
   const [isAddingRow, setIsAddingRow] = useState(false);
@@ -503,8 +528,8 @@ export default function Sales() {
         {/* Tab 1: سجل الفواتير */}
         <button
           type="button"
-          onClick={() => setActiveTab('monthly_grid')}
-          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-150 ease-out ${
+          onClick={() => handleTabChange('monthly_grid')}
+          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-150 ease-out cursor-pointer ${
             activeTab === 'monthly_grid'
               ? 'bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-300 shadow-sm border border-slate-200/80 dark:border-slate-600'
               : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -514,19 +539,34 @@ export default function Sales() {
           <span>سجل الفواتير</span>
         </button>
 
-        {/* Tab 2: المصاريف والأرباح */}
+        {/* Tab 2: المصاريف */}
         <button
           type="button"
-          id="tab-btn-expenses-profits"
-          onClick={() => setActiveTab('invoices')}
-          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-150 ease-out ${
-            activeTab === 'invoices'
-              ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-sm border border-slate-200/80 dark:border-slate-600'
+          id="tab-btn-expenses"
+          onClick={() => handleTabChange('expenses')}
+          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-150 ease-out cursor-pointer ${
+            activeTab === 'expenses'
+              ? 'bg-white dark:bg-slate-700 text-amber-700 dark:text-amber-300 shadow-sm border border-slate-200/80 dark:border-slate-600'
               : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
           }`}
         >
-          <Calculator size={16} className={activeTab === 'invoices' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'} />
-          <span>المصاريف والأرباح</span>
+          <Receipt size={16} className={activeTab === 'expenses' ? 'text-amber-600 dark:text-amber-400' : 'text-slate-400'} />
+          <span>المصاريف</span>
+        </button>
+
+        {/* Tab 3: الأرباح */}
+        <button
+          type="button"
+          id="tab-btn-profits"
+          onClick={() => handleTabChange('profits')}
+          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-150 ease-out cursor-pointer ${
+            activeTab === 'profits'
+              ? 'bg-white dark:bg-slate-700 text-emerald-700 dark:text-emerald-300 shadow-sm border border-slate-200/80 dark:border-slate-600'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <TrendingUp size={16} className={activeTab === 'profits' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'} />
+          <span>الأرباح</span>
         </button>
       </div>
 
@@ -1003,12 +1043,24 @@ export default function Sales() {
       )}
 
       {/* ========================================================================= */}
-      {/* TAB 2: المصاريف والأرباح (Expenses & Profits Management Grid) */}
+      {/* TAB 2: صفحة المصاريف المستقلة (Operational Expenses) */}
       {/* ========================================================================= */}
-      {activeTab === 'invoices' && (
-        <ExpensesAndProfits
-          orders={orders}
+      {activeTab === 'expenses' && (
+        <ExpensesView
           currency={settings.shopInfo.currency}
+          onNavigateToProfits={() => setActiveTab('profits')}
+          onNavigateToSales={() => setActiveTab('monthly_grid')}
+        />
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB 3: صفحة الأرباح المستقلة (Financial Summary & Profits) */}
+      {/* ========================================================================= */}
+      {activeTab === 'profits' && (
+        <ProfitsView
+          currency={settings.shopInfo.currency}
+          onNavigateToExpenses={() => setActiveTab('expenses')}
+          onNavigateToSales={() => setActiveTab('monthly_grid')}
         />
       )}
 

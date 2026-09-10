@@ -36,9 +36,15 @@ export default function Layout() {
     return <LoginScreen />;
   }
 
-  // Dynamic Navigation items directly derived from pagesConfig state
+  // Dynamic Navigation items directly derived from pagesConfig state (Excluding standalone expenses & profits)
   const baseNavPages = (pagesConfig || [])
-    .filter(page => page.visible !== false)
+    .filter(page => 
+      page.visible !== false && 
+      page.id !== 'expenses' && 
+      page.id !== 'profits' && 
+      page.path !== '/expenses' && 
+      page.path !== '/profits'
+    )
     .sort((a, b) => (a.order || 0) - (b.order || 0));
 
   // Ensure settings is present

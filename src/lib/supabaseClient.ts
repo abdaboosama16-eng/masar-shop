@@ -21,13 +21,19 @@ const metaEnv = typeof import.meta !== 'undefined' ? (import.meta as Record<stri
 const procEnv = typeof process !== 'undefined' ? process.env : undefined;
 
 const rawUrl = 
+  metaEnv?.NEXT_PUBLIC_SUPABASE_URL ||
   procEnv?.NEXT_PUBLIC_SUPABASE_URL ||
   metaEnv?.VITE_SUPABASE_URL ||
+  procEnv?.VITE_SUPABASE_URL ||
+  (typeof window !== 'undefined' ? (window as any).__ENV__?.NEXT_PUBLIC_SUPABASE_URL : '') ||
   '';
 
 const rawKey = 
+  metaEnv?.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
   procEnv?.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
   metaEnv?.VITE_SUPABASE_ANON_KEY ||
+  procEnv?.VITE_SUPABASE_ANON_KEY ||
+  (typeof window !== 'undefined' ? (window as any).__ENV__?.NEXT_PUBLIC_SUPABASE_ANON_KEY : '') ||
   '';
 
 const validConfiguredUrl = getValidHttpUrl(rawUrl);

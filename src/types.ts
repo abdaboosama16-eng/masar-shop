@@ -86,6 +86,7 @@ export interface Order {
   isPaid?: boolean; // مؤشر حالة الخلاص / الدفع السريع
   paidAt?: string; // تاريخ وساعة تأكيد الدفع
   isPinned?: boolean; // خاصية تثبيت البند للأشهر القادمة
+  isUnderReview?: boolean; // علامة تمييز الفاتورة "تحت المراجعة" لتدقيق التكاليف والأرباح
   installationAddress?: string;
   craneCost?: number;
   usedMaterials?: OrderMaterialUsage[]; 
