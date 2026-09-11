@@ -99,3 +99,12 @@ export function formatMoney(amount: number | string | undefined | null): string 
   const num = typeof amount === 'number' ? amount : (parseFloat(String(amount || 0)) || 0);
   return num.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
+
+/**
+ * التحقق مما إذا كانت الخدمة إعلانات ممولة / حملات إعلانية
+ */
+export function isSponsoredAds(serviceName?: string | null): boolean {
+  if (!serviceName) return false;
+  const s = serviceName.toLowerCase().trim();
+  return s.includes('إعلان') || s.includes('ممول') || s.includes('ad') || s.includes('campaign');
+}

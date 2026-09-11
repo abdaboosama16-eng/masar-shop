@@ -12,16 +12,6 @@ export interface CostItemRow {
   isFromTemplate?: boolean;
 }
 
-// دالة تنظيف صارمة لضمان بقاء المبالغ كأرقام صحيحة فقط ومنع أي نقطة عشرية
-const toIntegerString = (val: unknown): string => {
-  if (val === undefined || val === null || val === '' || val === '.' || val === '0' || val === '0.0' || val === '0.00') {
-    return '';
-  }
-  const n = Math.round(Number(val));
-  if (isNaN(n) || n === 0) return '';
-  return String(n);
-};
-
 interface CostItemsPopoverProps {
   order: Order;
   currency: string;
@@ -119,7 +109,9 @@ export default function CostItemsPopover({
       if (!val && defaultCosts[name] !== undefined && defaultCosts[name] !== null) {
         val = String(defaultCosts[name]);
       }
-      val = toIntegerString(val);
+      if (!val || val === '0' || val === '0.00' || val === '0.0' || val === '.') {
+        val = '';
+      }
       if (!exec && defaultExecutors[name]) {
         exec = defaultExecutors[name];
       }
@@ -140,10 +132,10 @@ export default function CostItemsPopover({
           let amt = '';
           let exec = '';
           if (typeof v === 'object' && v !== null) {
-            amt = toIntegerString(v.amount);
+            amt = v.amount !== undefined && v.amount !== null ? String(v.amount) : '';
             exec = v.executor || '';
           } else {
-            amt = toIntegerString(v);
+            amt = String(v);
           }
           rows.push({
             id: `custom-${k}`,
@@ -162,7 +154,7 @@ export default function CostItemsPopover({
           rows.push({
             id: `custom-${k}`,
             name: k,
-            amount: toIntegerString(v),
+            amount: v !== undefined && v !== null ? String(v) : '',
             executor: order.costExecutors?.[k] || '',
             isFromTemplate: false,
           });
@@ -234,7 +226,7 @@ export default function CostItemsPopover({
       return {
         id: `template-${name}`,
         name,
-        amount: toIntegerString(defVal),
+        amount: (!defVal || defVal === '0' || defVal === '0.00' || defVal === '.') ? '' : defVal,
         executor: defaultExecutors[name] || '',
         isFromTemplate: true,
       };
@@ -244,10 +236,10 @@ export default function CostItemsPopover({
 
   // احتساب إجمالي التكاليف وصافي الربح المتوقع
   const totalCalculatedCost = useMemo(() => {
-    return costItems.reduce((acc, curr) => acc + (Math.round(Number(curr.amount)) || 0), 0);
+    return costItems.reduce((acc, curr) => acc + (parseFloat(curr.amount) || 0), 0);
   }, [costItems]);
 
-  const invoicePrice = Math.round(Number(order.price)) || 0;
+  const invoicePrice = order.price || 0;
   const expectedProfit = invoicePrice - totalCalculatedCost;
 
   // حفظ البيانات وتحديث الفاتورة
@@ -258,7 +250,7 @@ export default function CostItemsPopover({
     const detailsList: string[] = [];
 
     costItems.forEach(item => {
-      const amt = Math.round(Number(item.amount)) || 0;
+      const amt = parseFloat(item.amount) || 0;
       const exec = item.executor.trim();
 
       dynamicDetails[item.name] = {
@@ -269,12 +261,12 @@ export default function CostItemsPopover({
       if (amt > 0) {
         dynamicBreakdown[item.name] = amt;
       }
-      if (exec && exec !== 'أخرى') {
+      if (exec) {
         dynamicExecutors[item.name] = exec;
       }
 
       if (amt > 0) {
-        detailsList.push(exec && exec !== 'أخرى' ? `${item.name}: ${amt} (${exec})` : `${item.name}: ${amt}`);
+        detailsList.push(exec ? `${item.name}: ${amt} (${exec})` : `${item.name}: ${amt}`);
       } else {
         detailsList.push(item.name);
       }
@@ -293,13 +285,13 @@ export default function CostItemsPopover({
       cost: totalCalculatedCost > 0 ? totalCalculatedCost : 0,
       expectedProfit,
       invoiceDetails: detailsList.length > 0 ? detailsList : undefined,
-      designCost: designItem ? (Math.round(Number(designItem.amount)) || 0) : order.designCost,
-      designerName: designItem?.executor && designItem.executor !== 'أخرى' ? designItem.executor.trim() : order.designerName,
-      printingCost: printingItem ? (Math.round(Number(printingItem.amount)) || 0) : order.printingCost,
-      printerName: printingItem?.executor && printingItem.executor !== 'أخرى' ? printingItem.executor.trim() : order.printerName,
-      externalCost: externalItem ? (Math.round(Number(externalItem.amount)) || 0) : order.externalCost,
-      externalExecutor: externalItem?.executor && externalItem.executor !== 'أخرى' ? externalItem.executor.trim() : order.externalExecutor,
-      materialCost: materialItem ? (Math.round(Number(materialItem.amount)) || 0) : order.materialCost,
+      designCost: designItem ? (parseFloat(designItem.amount) || 0) : order.designCost,
+      designerName: designItem?.executor ? designItem.executor.trim() : order.designerName,
+      printingCost: printingItem ? (parseFloat(printingItem.amount) || 0) : order.printingCost,
+      printerName: printingItem?.executor ? printingItem.executor.trim() : order.printerName,
+      externalCost: externalItem ? (parseFloat(externalItem.amount) || 0) : order.externalCost,
+      externalExecutor: externalItem?.executor ? externalItem.executor.trim() : order.externalExecutor,
+      materialCost: materialItem ? (parseFloat(materialItem.amount) || 0) : order.materialCost,
     };
 
     onSave(order.id, updates);
@@ -412,34 +404,24 @@ export default function CostItemsPopover({
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-[9px] text-slate-500 dark:text-slate-400 block mb-0.5 font-medium">المبلغ (أرقام صحيحة)</label>
+                  <label className="text-[9px] text-slate-500 dark:text-slate-400 block mb-0.5 font-medium">المبلغ</label>
                   <input
-                    type="text"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
+                    type="number"
+                    min="0"
+                    step="any"
                     placeholder="0"
-                    value={toIntegerString(item.amount)}
+                    value={item.amount === '0' ? '' : item.amount}
                     onFocus={(e) => {
                       if (e.target.value === '0' || e.target.value === '.') {
                         handleUpdateItem(item.id, 'amount', '');
                       }
                     }}
                     onChange={(e) => {
-                      // Prevent decimals: only whole numbers allowed
-                      const raw = e.target.value.replace(/[^\d]/g, '');
-                      // Strip leading zeros unless solitary '0'
-                      const clean = raw.replace(/^0+/, '') || (raw === '0' ? '0' : '');
-                      handleUpdateItem(item.id, 'amount', clean);
+                      const val = e.target.value;
+                      handleUpdateItem(item.id, 'amount', val === '.' ? '' : val);
                     }}
                     onKeyDown={(e) => {
-                      if (e.key === '.' || e.key === ',') {
-                        e.preventDefault();
-                        return;
-                      }
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleSave();
-                      }
+                      if (e.key === 'Enter') handleSave();
                     }}
                     className="w-full text-xs font-mono px-2.5 py-1.5 rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:ring-1 focus:ring-amber-500 focus:outline-hidden"
                   />
@@ -447,25 +429,10 @@ export default function CostItemsPopover({
                 <div>
                   <label className="text-[9px] text-slate-500 dark:text-slate-400 block mb-0.5 font-medium">اسم المنفذ / الموظف</label>
                   <select
-                    value={
-                      employees.some(emp => emp.name === item.executor) 
-                        ? item.executor 
-                        : (item.executor ? 'other' : '')
-                    }
-                    onChange={(e) => {
-                      const selectedVal = e.target.value;
-                      if (selectedVal === 'other') {
-                        // If already had a custom name, keep it; otherwise set placeholder
-                        handleUpdateItem(item.id, 'executor', item.executor && !employees.some(emp => emp.name === item.executor) ? item.executor : 'جهة خارجية');
-                      } else {
-                        handleUpdateItem(item.id, 'executor', selectedVal);
-                      }
-                    }}
+                    value={item.executor}
+                    onChange={(e) => handleUpdateItem(item.id, 'executor', e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleSave();
-                      }
+                      if (e.key === 'Enter') handleSave();
                     }}
                     className="w-full text-xs px-2 py-1.5 rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-amber-500 focus:outline-hidden cursor-pointer"
                   >
@@ -475,25 +442,10 @@ export default function CostItemsPopover({
                         {emp.name} {emp.role ? `(${emp.role})` : ''}
                       </option>
                     ))}
-                    <option value="other">جهة خارجية / أخرى...</option>
+                    {item.executor && !employees.some(e => e.name === item.executor) && (
+                      <option value={item.executor}>{item.executor} (مخصص)</option>
+                    )}
                   </select>
-
-                  {/* إذا تم اختيار جهة خارجية أو تم إدخال اسم مخصص غير مسجل بقائمة الموظفين */}
-                  {(item.executor && !employees.some(emp => emp.name === item.executor)) && (
-                    <input
-                      type="text"
-                      placeholder="اكتب اسم المنفذ أو الجهة الخارجية..."
-                      value={item.executor === 'جهة خارجية' ? '' : item.executor}
-                      onChange={(e) => handleUpdateItem(item.id, 'executor', e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          handleSave();
-                        }
-                      }}
-                      className="w-full mt-1 text-[11px] px-2 py-1 rounded bg-amber-50/70 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:ring-1 focus:ring-amber-500 focus:outline-hidden animate-in fade-in duration-100"
-                    />
-                  )}
                 </div>
               </div>
             </div>

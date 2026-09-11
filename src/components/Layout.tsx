@@ -9,6 +9,7 @@ import LoginScreen from './LoginScreen';
 import SyncStatusBadge from './SyncStatusBadge';
 import GlobalSearch from './GlobalSearch';
 import DynamicIcon from './DynamicIcon';
+import ExchangeRateModal from './ExchangeRateModal';
 
 export default function Layout() {
   const { 
@@ -329,6 +330,7 @@ export default function Layout() {
         )}
 
         <Outlet />
+        <ExchangeRateModal />
       </main>
     </div>
   );

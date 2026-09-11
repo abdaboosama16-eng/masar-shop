@@ -89,6 +89,8 @@ export interface Order {
   isUnderReview?: boolean; // علامة تمييز الفاتورة "تحت المراجعة" لتدقيق التكاليف والأرباح
   installationAddress?: string;
   craneCost?: number;
+  adBudgetUsd?: number; // ميزانية الإعلان بالدولار (للإعلانات الممولة)
+  adExchangeRate?: number; // سعر صرف الدولار المطبق على الفاتورة
   usedMaterials?: OrderMaterialUsage[]; 
   attachments?: string[]; // روابط المرفقات
   auditLog?: AuditLogEntry[]; // سجل العمليات والتدقيق
@@ -223,7 +225,7 @@ export interface Employee {
   name: string;
   role: EmployeeRole;
   pinCode?: string; 
-  salary: number;
+  salary?: number;
   phone?: string;
   nationalId?: string;
   joinedDate?: string;
@@ -308,4 +310,13 @@ export interface SystemSettings {
   commissionBasis?: CommissionBasis;
   servicesConfig?: DynamicServiceConfig[];
   pagesConfig?: PageConfig[];
+  exchangeRates?: Record<string, number>; // e.g. { '2026-09': 7.25, '2026-08': 7.20 }
+}
+
+export interface MonthlyExchangeRate {
+  id: string; // e.g. "rate-2026-09"
+  monthKey: string; // format "YYYY-MM" e.g. "2026-09"
+  rate: number; // e.g. 7.25
+  updatedAt?: string;
+  notes?: string;
 }

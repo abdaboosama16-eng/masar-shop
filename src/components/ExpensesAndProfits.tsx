@@ -27,10 +27,9 @@ interface ExpensesAndProfitsProps {
 }
 
 export default function ExpensesAndProfits({ orders, currency }: ExpensesAndProfitsProps) {
-  const { expenses, addExpense, deleteExpense, updateExpense } = useAppContext();
+  const { expenses, addExpense, deleteExpense, updateExpense, selectedDate, setSelectedDate } = useAppContext();
 
   // Selected Month State (defaults to current month)
-  const [selectedDate, setSelectedDate] = useState<Date>(() => startOfMonth(new Date()));
   const [showAllMonths, setShowAllMonths] = useState<boolean>(false);
 
   // Month navigation

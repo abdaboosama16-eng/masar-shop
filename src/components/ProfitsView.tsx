@@ -25,10 +25,9 @@ export default function ProfitsView({
   onNavigateToExpenses,
   onNavigateToSales
 }: ProfitsViewProps) {
-  const { orders, expenses } = useAppContext();
+  const { orders, expenses, selectedDate, setSelectedDate } = useAppContext();
 
   // Selected Month State
-  const [selectedDate, setSelectedDate] = useState<Date>(() => startOfMonth(new Date()));
   const [showAllMonths, setShowAllMonths] = useState<boolean>(false);
 
   // Month navigation helpers

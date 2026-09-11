@@ -1,9 +1,9 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import { useAppContext } from '../context/AppContext';
-import { Employee, EmployeeRole, Order } from '../types';
+import { Employee, Order } from '../types';
 import { 
-  Plus, Briefcase, DollarSign, X, FileText, Printer, 
-  TrendingUp, CheckCircle2, Calendar, Layers, CheckSquare, Wrench
+  Plus, Briefcase, X, FileText, Printer, 
+  TrendingUp, CheckCircle2, Calendar, Layers, Wrench, Pencil, Trash2
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 
@@ -21,50 +21,80 @@ export interface ExecutedTaskItem {
 }
 
 export default function Employees() {
-  const { employees, addEmployee, updateEmployee, orders, settings } = useAppContext();
+  const { employees, addEmployee, updateEmployee, deleteEmployee, orders, settings } = useAppContext();
   const [showForm, setShowForm] = useState(false);
+  const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [selectedEmployeeForStatement, setSelectedEmployeeForStatement] = useState<Employee | null>(null);
 
-  // Form State
+  // Form State (حقل الاسم والمسمى الوظيفي كنص حر، مع إلغاء حقل الراتب الأساسي)
   const [name, setName] = useState('');
-  const [role, setRole] = useState<EmployeeRole>('مصمم');
-  const [salary, setSalary] = useState('');
+  const [role, setRole] = useState('');
 
   const currency = settings?.shopInfo?.currency || 'د.ل';
+
+  const handleStartAdd = () => {
+    setEditingEmployee(null);
+    setName('');
+    setRole('');
+    setShowForm(true);
+  };
+
+  const handleStartEdit = (emp: Employee) => {
+    setEditingEmployee(emp);
+    setName(emp.name);
+    setRole(emp.role);
+    setShowForm(true);
+  };
+
+  const handleCancelForm = () => {
+    setEditingEmployee(null);
+    setName('');
+    setRole('');
+    setShowForm(false);
+  };
 
   const handleSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const cleanName = name.trim();
-    const parsedSalary = parseFloat(salary);
+    const cleanRole = role.trim() || 'فني تنفيذ';
 
     if (!cleanName) {
       alert('يرجى إدخال اسم الموظف');
       return;
     }
 
-    if (isNaN(parsedSalary) || parsedSalary < 0) {
-      alert('يرجى إدخال قيمة صحيحة للراتب');
-      return;
+    if (editingEmployee) {
+      updateEmployee(editingEmployee.id, {
+        name: cleanName,
+        role: cleanRole,
+      });
+    } else {
+      addEmployee({
+        name: cleanName,
+        role: cleanRole,
+        salary: 0 // تم إلغاء الراتب الأساسي والاعتماد بنسبة 100% على المهام والعمولات
+      });
     }
 
-    addEmployee({
-      name: cleanName,
-      role,
-      salary: parsedSalary
-    });
-
-    setName('');
-    setRole('مصمم');
-    setSalary('');
-    setShowForm(false);
+    handleCancelForm();
   };
 
-  // Helper function to extract all tasks, services and orders linked to an employee
+  const handleDelete = (emp: Employee) => {
+    if (window.confirm(`هل أنت متأكد من حذف الموظف "${emp.name}" من النظام؟`)) {
+      if (deleteEmployee) {
+        deleteEmployee(emp.id);
+      }
+      if (selectedEmployeeForStatement?.id === emp.id) {
+        setSelectedEmployeeForStatement(null);
+      }
+    }
+  };
+
+  // دالة استخراج إحصائيات الموظف وحساب إجمالي المستحق بنسبة 100% بناءً على المهام والعمولات في سجل الفواتير
   const getEmployeeStats = (employee: Employee) => {
     const empName = employee.name.trim().toLowerCase();
-    const baseSalary = Number(employee.salary) || 0;
 
-    // 1. Direct assigned orders
+    // 1. الفواتير المسندة للموظف كمسؤول إشراف مباشر
     const empOrders = orders.filter(
       o => o.assignedEmployee && o.assignedEmployee.trim().toLowerCase() === empName
     );
@@ -82,7 +112,7 @@ export default function Employees() {
       return sum + p;
     }, 0);
 
-    // 2. Extract executed tasks and cost items linked to this employee across ALL orders
+    // 2. استخراج جميع المهام وبنود التكلفة المنفذة من قبل الموظف عبر سجل الفواتير (SalesTable)
     const executedTasks: ExecutedTaskItem[] = [];
 
     orders.forEach(order => {
@@ -92,7 +122,7 @@ export default function Employees() {
       const orderDate = order.date;
       const orderStatus = order.status || 'قيد الانتظار';
 
-      // Check costDetails (from CostItemsPopover)
+      // فحص تفاصيل بنود التكلفة (costDetails من نافذة بنود التكلفة المنبثقة)
       if (order.costDetails && typeof order.costDetails === 'object') {
         Object.entries(order.costDetails).forEach(([costKey, costVal]) => {
           if (costVal && typeof costVal === 'object') {
@@ -116,11 +146,10 @@ export default function Employees() {
         });
       }
 
-      // Check costExecutors (legacy or alternative storage)
+      // فحص منفذي التكلفة (costExecutors)
       if (order.costExecutors && typeof order.costExecutors === 'object') {
         Object.entries(order.costExecutors).forEach(([costKey, execName]) => {
           if (typeof execName === 'string' && execName.trim().toLowerCase() === empName) {
-            // Check if already captured in costDetails
             const alreadyAdded = executedTasks.some(t => t.orderId === order.id && t.taskName === costKey);
             if (!alreadyAdded) {
               const amount = Number(order.costBreakdown?.[costKey]) || 0;
@@ -141,7 +170,7 @@ export default function Employees() {
         });
       }
 
-      // Check legacy fields
+      // فحص الحقول المباشرة
       if (order.designerName && order.designerName.trim().toLowerCase() === empName) {
         const alreadyAdded = executedTasks.some(t => t.orderId === order.id && t.taskName === 'تكلفة التصميم');
         if (!alreadyAdded) {
@@ -195,36 +224,30 @@ export default function Employees() {
           });
         }
       }
-
-      // If directly assigned as order supervisor/manager
-      if (order.assignedEmployee && order.assignedEmployee.trim().toLowerCase() === empName) {
-        const hasSpecificTask = executedTasks.some(t => t.orderId === order.id);
-        if (!hasSpecificTask) {
-          executedTasks.push({
-            id: `${order.id}-general-assignment`,
-            orderId: order.id,
-            serialNumber: orderSerial,
-            clientName,
-            serviceType,
-            taskName: `تنفيذ وإشراف طلبية: ${serviceType}`,
-            taskRole: 'المسؤول المباشر عن الطلب',
-            amount: Number(order.price) || 0,
-            date: orderDate,
-            status: orderStatus
-          });
-        }
-      }
     });
 
+    // إجمالي قيمة المهام المنفذة
     const totalTasksValue = executedTasks.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
 
-    // Commissions calculations
+    // 3. احتساب العمولات من أرباح الفواتير المشرف عليها (5% من صافي ربح الفاتورة)
+    const orderCommissions = empOrders.reduce((sum, order) => {
+      const costVal = Number(order.cost) || 0;
+      const priceVal = Number(order.price) || 0;
+      const profitVal = order.expectedProfit !== undefined ? Number(order.expectedProfit) : (priceVal - costVal);
+      const commissionVal = Math.max(0, profitVal * 0.05);
+      return sum + commissionVal;
+    }, 0);
+
+    // سجلات العمولات الملحقة الإضافية
     const commissions = employee.commissions || [];
     const totalDue = commissions.filter(c => c.status === 'مستحقة').reduce((s, c) => s + Number(c.amount), 0);
     const totalApproved = commissions.filter(c => c.status === 'معتمدة').reduce((s, c) => s + Number(c.amount), 0);
     const totalPaid = commissions.filter(c => c.status === 'مدفوعة').reduce((s, c) => s + Number(c.amount), 0);
 
-    const totalNetDue = baseSalary + totalDue + totalApproved;
+    const totalCommissions = orderCommissions + totalDue + totalApproved;
+
+    // إجمالي المستحق الشامل ديناميكي وتلقائي بنسبة 100% بناءً على المهام والعمولات فقط (دون راتب أساسي)
+    const totalNetDue = totalTasksValue + totalCommissions;
 
     return {
       empOrders,
@@ -235,10 +258,12 @@ export default function Employees() {
       totalProfit,
       executedTasks,
       totalTasksValue,
+      orderCommissions,
       commissions,
       totalDue,
       totalApproved,
       totalPaid,
+      totalCommissions,
       totalNetDue,
     };
   };
@@ -248,13 +273,15 @@ export default function Employees() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 no-print">
         <div>
-          <h2 className="text-2xl font-black text-slate-900 dark:text-slate-100 tracking-tight">الموظفين</h2>
+          <h2 className="text-2xl font-black text-slate-900 dark:text-slate-100 tracking-tight">إدارة الموظفين والمهام</h2>
           <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-            إدارة بطاقات الموظفين، ربط المهام المنفذة في الفواتير، ومتابعة الرواتب والعمولات المستحقة
+            ربط المهام والعمولات بسجل الفواتير (SalesTable) واحتساب المستحقات ديناميكياً بنسبة 100%
           </p>
         </div>
         <button
-          onClick={() => setShowForm(!showForm)}
+          type="button"
+          id="btn-add-employee"
+          onClick={handleStartAdd}
           className="btn-primary w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl shadow-sm text-xs font-bold cursor-pointer"
         >
           <Plus size={16} />
@@ -262,25 +289,29 @@ export default function Employees() {
         </button>
       </div>
 
-      {/* Add Employee Form */}
+      {/* Add / Edit Employee Form (المسمى الوظيفي نص حر، وتم إلغاء الراتب الأساسي تماماً) */}
       {showForm && (
         <div className="glass-panel p-6 rounded-xl no-print animate-in fade-in slide-in-from-top-4 border-emerald-500/30 shadow-sm bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800">
           <div className="flex justify-between items-center pb-3 mb-4 border-b border-slate-100 dark:border-slate-800">
-            <h3 className="font-bold text-base text-slate-900 dark:text-slate-100">تسجيل بيانات موظف / فني</h3>
+            <h3 className="font-bold text-base text-slate-900 dark:text-slate-100">
+              {editingEmployee ? `تعديل بيانات الموظف: ${editingEmployee.name}` : 'تسجيل بيانات موظف / فني'}
+            </h3>
             <button 
               type="button"
-              onClick={() => setShowForm(false)} 
+              id="btn-close-employee-form"
+              onClick={handleCancelForm} 
               className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 cursor-pointer"
             >
               <X size={18} />
             </button>
           </div>
 
-          <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">الاسم الثلاثي</label>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">الاسم الثلاثي للموظف</label>
               <input
                 type="text"
+                id="employee-name-input"
                 required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -292,49 +323,41 @@ export default function Employees() {
                 autoFocus
               />
             </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">المسمى الوظيفي / الصلاحية</label>
-              <select
-                value={role}
-                onChange={(e) => setRole(e.target.value as EmployeeRole)}
-                className="w-full glass-input rounded-lg px-4 py-2.5 text-sm appearance-none bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 font-bold"
-              >
-                <option value="مدير">مدير ورشة / مشرف عام</option>
-                <option value="مصمم">مصمم جرافيك ولوافت</option>
-                <option value="مركب">فني تصنيع وتركيب ميداني</option>
-              </select>
-            </div>
+            
+            {/* حقل المسمى الوظيفي: حقل إدخال نصي حر (Text Input) ليتمكن المستخدم من كتابة أي مسمى */}
             <div>
               <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                الراتب الشهري الأساسي ({currency})
+                المسمى الوظيفي والتخصص (نص حر)
               </label>
               <input
-                type="number"
+                type="text"
+                id="employee-role-input"
                 required
-                min="0"
-                step="any"
-                value={salary}
-                onChange={(e) => setSalary(e.target.value)}
+                value={role}
+                onChange={(e) => setRole(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') handleSubmit();
                 }}
-                className="w-full glass-input rounded-lg px-4 py-2.5 text-sm font-mono tabular-nums font-bold bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700"
-                placeholder="0.00"
+                className="w-full glass-input rounded-lg px-4 py-2.5 text-sm font-bold bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700"
+                placeholder="مثال: مصمم جرافيك، فني ماكينة، كاتب محتوى، مشرف ورشة، فني لافتات..."
               />
             </div>
-            <div className="md:col-span-3 flex justify-end gap-2 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+
+            <div className="md:col-span-2 flex justify-end gap-2 mt-2 pt-3 border-t border-slate-100 dark:border-slate-800">
               <button
                 type="button"
-                onClick={() => setShowForm(false)}
+                id="btn-cancel-employee-form"
+                onClick={handleCancelForm}
                 className="px-5 py-2.5 text-xs font-bold rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 إلغاء
               </button>
               <button
                 type="submit"
+                id="btn-save-employee-form"
                 className="btn-primary px-6 py-2.5 text-xs font-bold rounded-xl shadow-sm cursor-pointer"
               >
-                حفظ بيانات الموظف
+                {editingEmployee ? 'حفظ التعديلات' : 'حفظ بيانات الموظف'}
               </button>
             </div>
           </form>
@@ -349,63 +372,76 @@ export default function Employees() {
           return (
             <div 
               key={employee.id} 
-              className="glass-panel p-6 rounded-xl flex flex-col gap-4 hover:shadow-md transition-all bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800"
+              id={`employee-card-${employee.id}`}
+              className="glass-panel p-6 rounded-xl flex flex-col gap-4 hover:shadow-md transition-all bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 relative group"
             >
-              <div className="flex items-center gap-3.5">
-                <div className="w-12 h-12 rounded-xl bg-slate-900 dark:bg-slate-800 text-white font-black text-xl flex items-center justify-center shadow-sm shrink-0 border border-slate-700">
-                  {employee.name.charAt(0)}
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <div className="w-12 h-12 rounded-xl bg-slate-900 dark:bg-slate-800 text-white font-black text-xl flex items-center justify-center shadow-sm shrink-0 border border-slate-700">
+                    {employee.name.charAt(0)}
+                  </div>
+                  <div className="flex flex-col min-w-0">
+                    <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 truncate" title={employee.name}>
+                      {employee.name}
+                    </h3>
+                    <span className="inline-block text-[11px] font-bold mt-0.5 px-2 py-0.5 rounded-md border w-max bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800 truncate max-w-[200px]" title={employee.role}>
+                      {employee.role || 'فني'}
+                    </span>
+                  </div>
                 </div>
-                <div className="flex flex-col min-w-0">
-                  <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 truncate">{employee.name}</h3>
-                  <span className={`inline-block text-[11px] font-bold mt-0.5 px-2 py-0.5 rounded-md border w-max
-                    ${employee.role === 'مدير' ? 'bg-purple-50 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800' :
-                      employee.role === 'مصمم' ? 'bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800' :
-                      'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'}`}>
-                    {employee.role}
-                  </span>
+
+                {/* أزرار التعديل والحذف السريعة */}
+                <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity shrink-0">
+                  <button
+                    type="button"
+                    id={`btn-edit-emp-${employee.id}`}
+                    onClick={() => handleStartEdit(employee)}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                    title="تعديل الموظف"
+                  >
+                    <Pencil size={15} />
+                  </button>
+                  <button
+                    type="button"
+                    id={`btn-delete-emp-${employee.id}`}
+                    onClick={() => handleDelete(employee)}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                    title="حذف الموظف"
+                  >
+                    <Trash2 size={15} />
+                  </button>
                 </div>
               </div>
 
-              {/* Financial & Tasks Stats */}
+              {/* Financial & Tasks Stats (تم حذف الراتب الأساسي بالكامل، واعتماد الحساب الديناميكي 100%) */}
               <div className="flex flex-col gap-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
                 
-                {/* Base Salary */}
-                <div className="flex justify-between items-center text-slate-600 dark:text-slate-400 py-1">
-                  <span className="flex items-center gap-1.5">
-                    <DollarSign size={14} className="text-slate-400" />
-                    الراتب الأساسي
-                  </span>
-                  <span className="font-mono tabular-nums font-bold text-slate-800 dark:text-slate-200">
-                    {Number(employee.salary).toLocaleString()} {currency}
-                  </span>
-                </div>
-
-                {/* Linked Executed Tasks & Values */}
-                <div className="flex justify-between items-center py-1.5 bg-blue-50/70 dark:bg-blue-950/40 px-2.5 rounded-xl border border-blue-200/60 dark:border-blue-800/60">
+                {/* 1. Linked Executed Tasks & Values */}
+                <div className="flex justify-between items-center py-2 bg-blue-50/70 dark:bg-blue-950/40 px-3 rounded-xl border border-blue-200/60 dark:border-blue-800/60">
                   <span className="flex items-center gap-1.5 font-bold text-blue-800 dark:text-blue-300 text-[11px]">
                     <Wrench size={13} className="text-blue-600 dark:text-blue-400" />
-                    الأعمال والمهام المنفذة
+                    المهام والأعمال المنفذة
                   </span>
                   <span className="font-mono tabular-nums font-black text-blue-700 dark:text-blue-300 text-xs">
                     {stats.executedTasks.length} مهمة ({stats.totalTasksValue.toLocaleString()} {currency})
                   </span>
                 </div>
 
-                {/* Commissions on profits */}
-                <div className="flex justify-between items-center py-1.5 bg-emerald-50/60 dark:bg-emerald-950/40 px-2.5 rounded-xl border border-emerald-200/60 dark:border-emerald-800/60">
+                {/* 2. Commissions on invoice profits */}
+                <div className="flex justify-between items-center py-2 bg-emerald-50/60 dark:bg-emerald-950/40 px-3 rounded-xl border border-emerald-200/60 dark:border-emerald-800/60">
                   <span className="flex items-center gap-1.5 font-bold text-emerald-800 dark:text-emerald-300 text-[11px]">
                     <TrendingUp size={13} className="text-emerald-600 dark:text-emerald-400" />
                     العمولات المستحقة (5%)
                   </span>
                   <span className="font-mono tabular-nums font-black text-emerald-700 dark:text-emerald-300 text-xs">
-                    +{(stats.totalDue + stats.totalApproved).toLocaleString()} {currency}
+                    +{stats.totalCommissions.toLocaleString()} {currency}
                   </span>
                 </div>
 
-                {/* Total Net Due */}
-                <div className="flex justify-between items-center text-slate-700 dark:text-slate-300 py-1 font-bold">
-                  <span>إجمالي المستحق الشامل</span>
-                  <span className="font-mono tabular-nums font-black text-sm text-slate-900 dark:text-slate-100">
+                {/* 3. Total Net Due: ديناميكي 100% بناءً على المهام والعمولات */}
+                <div className="flex justify-between items-center text-slate-800 dark:text-slate-200 py-1.5 px-3 bg-slate-100/70 dark:bg-slate-800/70 rounded-xl font-bold border border-slate-200/50 dark:border-slate-700/50">
+                  <span className="text-slate-700 dark:text-slate-300 text-xs">إجمالي المستحق الشامل</span>
+                  <span className="font-mono tabular-nums font-black text-sm text-emerald-600 dark:text-emerald-400">
                     {stats.totalNetDue.toLocaleString()} {currency}
                   </span>
                 </div>
@@ -415,11 +451,12 @@ export default function Employees() {
               <div className="flex gap-2 pt-2 border-t border-slate-100 dark:border-slate-800 mt-auto">
                 <button
                   type="button"
+                  id={`btn-view-statement-${employee.id}`}
                   onClick={() => setSelectedEmployeeForStatement(employee)}
-                  className="w-full glass-button text-xs py-2 rounded-xl text-emerald-800 dark:text-emerald-300 bg-emerald-50/50 hover:bg-emerald-100/70 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60 border border-emerald-200 dark:border-emerald-800 font-bold transition-colors flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+                  className="w-full glass-button text-xs py-2 rounded-xl text-emerald-800 dark:text-emerald-300 bg-emerald-50/50 hover:bg-emerald-100/70 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60 border border-emerald-200 dark:border-emerald-800 font-bold transition-colors flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
                 >
                   <FileText size={14} />
-                  <span>كشف حساب وتفاصيل المهام المنفذة</span>
+                  <span>كشف حساب وتفاصيل المستحقات</span>
                 </button>
               </div>
             </div>
@@ -433,13 +470,13 @@ export default function Employees() {
             </div>
             <div>
               <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 mb-1">لا يوجد موظفون مسجلون</h3>
-              <p className="text-xs text-slate-600 dark:text-slate-400">قم بإضافة فنيين ومصممين لبدء توزيع المهام ومتابعة الرواتب والأعمال المنفذة.</p>
+              <p className="text-xs text-slate-600 dark:text-slate-400">قم بإضافة فنيين ومصممين لبدء توزيع المهام ومتابعة الأعمال المنفذة والعمولات.</p>
             </div>
           </div>
         )}
       </div>
 
-      {/* Employee Account Statement Modal (كشف حساب الموظف، الأعمال المنفذة، والعمولات) */}
+      {/* Employee Account Statement Modal (كشف حساب الموظف، الأعمال المنفذة، والعمولات - دون راتب أساسي) */}
       {selectedEmployeeForStatement && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150">
           <div className="glass-panel w-full max-w-5xl max-h-[90vh] flex flex-col rounded-2xl shadow-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 overflow-hidden">
@@ -453,12 +490,12 @@ export default function Employees() {
                 <div>
                   <h3 className="font-bold text-base text-slate-900 dark:text-slate-100 flex items-center gap-2">
                     <span>كشف حساب الموظف: {selectedEmployeeForStatement.name}</span>
-                    <span className="text-xs px-2 py-0.5 rounded-lg bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 font-bold border border-emerald-200 dark:border-emerald-800">
+                    <span className="text-xs px-2.5 py-0.5 rounded-lg bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 font-bold border border-emerald-200 dark:border-emerald-800">
                       {selectedEmployeeForStatement.role}
                     </span>
                   </h3>
                   <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
-                    سجل المهام والأعمال المنفذة في الفواتير، ونسبة الأرباح المستحقة والراتب الأساسي
+                    سجل المهام والأعمال المنفذة في الفواتير ونسب العمولات المستحقة (محسوب بنسبة 100% ديناميكياً)
                   </p>
                 </div>
               </div>
@@ -466,6 +503,7 @@ export default function Employees() {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
+                  id="btn-print-employee-statement"
                   onClick={() => window.print()}
                   className="glass-button px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 text-slate-700 dark:text-slate-200 cursor-pointer"
                 >
@@ -474,6 +512,7 @@ export default function Employees() {
                 </button>
                 <button
                   type="button"
+                  id="btn-close-employee-statement"
                   onClick={() => setSelectedEmployeeForStatement(null)}
                   className="p-2 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
                 >
@@ -489,25 +528,15 @@ export default function Employees() {
 
                 return (
                   <>
-                    {/* Financial Summary Cards */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+                    {/* Financial Summary Cards (تم إلغاء بطاقة الراتب الأساسي بالكامل) */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                       
-                      {/* 1. Base Salary */}
-                      <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700">
-                        <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400 block mb-1">
-                          الراتب الشهري الأساسي
-                        </span>
-                        <div className="font-mono tabular-nums text-lg font-black text-slate-900 dark:text-slate-100">
-                          {Number(selectedEmployeeForStatement.salary).toLocaleString()} {currency}
-                        </div>
-                      </div>
-
-                      {/* 2. Executed Tasks Value */}
+                      {/* 1. Executed Tasks Value */}
                       <div className="p-4 rounded-xl bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200/80 dark:border-blue-800/60">
                         <span className="text-[11px] font-bold text-blue-800 dark:text-blue-300 block mb-1">
                           إجمالي قيمة الأعمال والمهام
                         </span>
-                        <div className="font-mono tabular-nums text-lg font-black text-blue-700 dark:text-blue-300">
+                        <div className="font-mono tabular-nums text-xl font-black text-blue-700 dark:text-blue-300">
                           {stats.totalTasksValue.toLocaleString()} {currency}
                         </div>
                         <span className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold block mt-0.5">
@@ -515,29 +544,29 @@ export default function Employees() {
                         </span>
                       </div>
 
-                      {/* 3. Total Commissions */}
+                      {/* 2. Total Commissions */}
                       <div className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 shadow-2xs">
                         <span className="text-[11px] font-bold text-emerald-800 dark:text-emerald-300 block mb-1">
                           العمولات المستحقة (5%)
                         </span>
                         <div className="font-mono tabular-nums text-xl font-black text-emerald-700 dark:text-emerald-300">
-                          +{(stats.totalDue + stats.totalApproved).toLocaleString()} {currency}
+                          +{stats.totalCommissions.toLocaleString()} {currency}
                         </div>
                         <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold block mt-0.5">
-                          أرباح العمليات المنفذة
+                          أرباح العمليات المنجزة المسندة
                         </span>
                       </div>
 
-                      {/* 4. Total Net Due */}
+                      {/* 3. Total Net Due */}
                       <div className="p-4 rounded-xl bg-slate-900 text-white border border-slate-800 shadow-sm">
                         <span className="text-[11px] font-bold text-slate-400 block mb-1">
-                          إجمالي المستحق النهائي
+                          إجمالي المستحق الشامل النهائي
                         </span>
-                        <div className="font-mono tabular-nums text-xl font-black text-emerald-400">
+                        <div className="font-mono tabular-nums text-2xl font-black text-emerald-400">
                           {stats.totalNetDue.toLocaleString()} {currency}
                         </div>
                         <span className="text-[10px] text-slate-400 font-semibold block mt-0.5">
-                          الراتب + العمولات المعتمدة
+                          100% ديناميكي من الفواتير والمهام
                         </span>
                       </div>
                     </div>
@@ -715,10 +744,11 @@ export default function Employees() {
             {/* Modal Footer */}
             <div className="p-4 border-t border-slate-200/80 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/80 flex justify-between items-center">
               <span className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">
-                * تم إعداد هذا الكشف تلقائياً وفقاً للائحة الحوافز ونسبة الـ 5% من أرباح المشاريع والمهام المسندة
+                * تم إعداد هذا الكشف واحتساب إجمالي المستحق ديناميكياً بنسبة 100% بناءً على المهام المنفذة ونسب العمولات المرتبطة بالفواتير.
               </span>
               <button
                 type="button"
+                id="btn-close-employee-statement-bottom"
                 onClick={() => setSelectedEmployeeForStatement(null)}
                 className="btn-primary px-6 py-2 rounded-xl text-xs font-bold cursor-pointer"
               >

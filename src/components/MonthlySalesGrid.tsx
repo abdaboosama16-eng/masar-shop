@@ -21,15 +21,16 @@ import {
   Layers,
   AlertCircle,
   AlertTriangle,
-  TrendingUp,
-  Receipt,
-  FileText
+  CheckSquare,
+  FileText,
+  DollarSign
 } from 'lucide-react';
-import { format, parseISO, startOfMonth, endOfMonth, isWithinInterval, addMonths, subMonths } from 'date-fns';
+import { format, parseISO, startOfMonth, endOfMonth, isWithinInterval, addMonths, subMonths, isBefore } from 'date-fns';
 import { ar } from 'date-fns/locale';
 import { useAppContext, defaultServicesConfig } from '../context/AppContext';
 import CostItemsPopover from './CostItemsPopover';
-import { getOrderTotalDetailCosts, getOrderNetProfit } from '../utils/financialCalculations';
+import { getOrderTotalDetailCosts, getOrderNetProfit, isSponsoredAds } from '../utils/financialCalculations';
+import ExchangeRateModal from './ExchangeRateModal';
 
 interface MonthlySalesGridProps {
   orders: Order[];
@@ -207,8 +208,16 @@ export default function MonthlySalesGrid({
     getNextSerialNumber, 
     settings, 
     employees,
-    expenses
+    expenses,
+    selectedDate,
+    setSelectedDate,
+    currentMonthExchangeRate,
+    getExchangeRateForMonth,
+    setMonthExchangeRate,
+    exchangeRates
   } = useAppContext();
+
+  const [showExchangeRateModal, setShowExchangeRateModal] = useState(false);
 
   // إدارة حالة الفواتير (Invoices State) لضمان الاستجابة اللحظية والتحديث المباشر واستبعاد أي صف إجماليات
   const [invoices, setInvoicesState] = useState<Order[]>(() => {
@@ -457,21 +466,120 @@ export default function MonthlySalesGrid({
     }
   };
 
-  // ثالثاً: دالة تثبيت / فك تثبيت البند (Pin Row) للأشهر القادمة مع الحفظ الفوري في LocalStorage
-  const handleTogglePin = (orderId: string) => {
-    if (onTogglePinned) {
-      onTogglePinned(orderId);
-    } else if (contextToggleOrderPinned) {
-      contextToggleOrderPinned(orderId);
-    } else {
-      // Fallback updating via contextUpdateOrder or direct localStorage
-      const target = orders.find(o => o.id === orderId);
-      if (target) {
-        const nextPinned = !Boolean(target.isPinned);
-        if (contextUpdateOrder) {
-          contextUpdateOrder(orderId, { isPinned: nextPinned });
+  // حالة تحديد الصفوف عبر الـ Checkbox (التحديد النشط باللون السماوي Sky Blue)
+  const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
+
+  const handleToggleSelectRow = (orderId: string | number) => {
+    const idStr = String(orderId);
+    setSelectedRowIds(prev => {
+      const next = new Set(prev);
+      if (next.has(idStr)) {
+        next.delete(idStr);
+      } else {
+        next.add(idStr);
+      }
+      return next;
+    });
+  };
+
+  // دالة تبديل حالة الدفع من قبل الزبون مع الحفظ الفوري
+  const handleTogglePaid = (orderId: string | number) => {
+    const idStr = String(orderId);
+    const target = invoices.find(o => String(o.id) === idStr);
+    const currentlyPaid = target ? Boolean(target.isPaid) : false;
+    const nextPaid = !currentlyPaid;
+
+    const updated = invoices.map(o => {
+      if (String(o.id) !== idStr) return o;
+      return {
+        ...o,
+        isPaid: nextPaid,
+        paidAt: nextPaid ? new Date().toISOString() : undefined,
+        deposit: nextPaid ? o.price : (o.deposit === o.price ? 0 : o.deposit),
+        remaining: nextPaid ? 0 : (o.remaining === 0 ? o.price : o.remaining),
+      };
+    });
+    setInvoices(updated);
+    try {
+      localStorage.setItem('masar_invoices', JSON.stringify(updated));
+      localStorage.setItem('masar_orders', JSON.stringify(updated));
+    } catch (err) {
+      console.error('Error saving updated paid status:', err);
+    }
+
+    if (onTogglePaid) {
+      onTogglePaid(idStr);
+    } else if (contextUpdateOrder) {
+      const found = updated.find(o => String(o.id) === idStr);
+      if (found) contextUpdateOrder(found);
+    }
+  };
+
+  // معالجة جماعية للفواتير المحددة
+  const handleBatchMarkPaid = (paid: boolean) => {
+    const updated = invoices.map(o => {
+      if (!selectedRowIds.has(String(o.id))) return o;
+      return {
+        ...o,
+        isPaid: paid,
+        paidAt: paid ? new Date().toISOString() : undefined,
+        deposit: paid ? o.price : (o.deposit === o.price ? 0 : o.deposit),
+        remaining: paid ? 0 : (o.remaining === 0 ? o.price : o.remaining),
+      };
+    });
+    setInvoices(updated);
+    try {
+      localStorage.setItem('masar_invoices', JSON.stringify(updated));
+      localStorage.setItem('masar_orders', JSON.stringify(updated));
+    } catch (err) {
+      console.error('Error saving batch paid status:', err);
+    }
+
+    selectedRowIds.forEach(id => {
+      const target = invoices.find(o => String(o.id) === id);
+      if (target && Boolean(target.isPaid) !== paid) {
+        if (onTogglePaid) {
+          onTogglePaid(id);
+        } else if (contextUpdateOrder) {
+          const found = updated.find(o => String(o.id) === id);
+          if (found) contextUpdateOrder(found);
         }
       }
+    });
+  };
+
+  const handleBatchDelete = () => {
+    if (selectedRowIds.size === 0) return;
+    if (window.confirm(`هل أنت متأكد من حذف ${selectedRowIds.size} فاتورة محددة؟`)) {
+      const idsToDelete = Array.from(selectedRowIds);
+      idsToDelete.forEach(id => handleDelete(String(id)));
+      setSelectedRowIds(new Set());
+    }
+  };
+
+  // ثالثاً: دالة تثبيت / فك تثبيت البند (Pin Row) للأشهر القادمة مع الحفظ الفوري في LocalStorage
+  const handleTogglePin = (orderId: string) => {
+    const idStr = String(orderId);
+    const target = invoices.find(o => String(o.id) === idStr);
+    const nextPinned = target ? !Boolean(target.isPinned) : true;
+
+    // 1. تحديث الحالة المحلية فوراً
+    const updated = invoices.map(o => String(o.id) === idStr ? { ...o, isPinned: nextPinned } : o);
+    setInvoices(updated);
+    try {
+      localStorage.setItem('masar_invoices', JSON.stringify(updated));
+      localStorage.setItem('masar_orders', JSON.stringify(updated));
+    } catch (err) {
+      console.error('Error saving updated pin status:', err);
+    }
+
+    // 2. تحديث الحالة العامة
+    if (onTogglePinned) {
+      onTogglePinned(idStr);
+    } else if (contextToggleOrderPinned) {
+      contextToggleOrderPinned(idStr);
+    } else if (onUpdateOrder) {
+      onUpdateOrder(idStr, { isPinned: nextPinned });
     }
   };
 
@@ -583,6 +691,8 @@ export default function MonthlySalesGrid({
   const [newDetails, setNewDetails] = useState('');
   const [newCost, setNewCost] = useState('');
   const [newNotes, setNewNotes] = useState('');
+  const [newAdBudgetUsd, setNewAdBudgetUsd] = useState('');
+  const [editAdBudgetUsd, setEditAdBudgetUsd] = useState('');
 
   // Draft cost items when adding a new row via popover
   const [draftCostDetails, setDraftCostDetails] = useState<Record<string, any> | undefined>(undefined);
@@ -612,8 +722,49 @@ export default function MonthlySalesGrid({
     setDraftCostDetails(costDetails);
     setDraftCostBreakdown(costBreakdown);
     setDraftCostExecutors(costExecutors);
-    setNewCost(totalCost > 0 ? String(totalCost) : '');
-    setNewDetails(detailsList.join(' • '));
+
+    if (isSponsoredAds(newService) && newAdBudgetUsd) {
+      const rate = currentMonthExchangeRate || 1;
+      const numUsd = parseFloat(newAdBudgetUsd) || 0;
+      const convertedCost = Math.round(numUsd * rate);
+      setNewCost(convertedCost > 0 ? String(convertedCost) : '');
+      setNewDetails(`ميزانية إعلان ممول: ${newAdBudgetUsd}$ = ${convertedCost.toLocaleString()} ${currency}`);
+    } else {
+      setNewCost(totalCost > 0 ? String(totalCost) : '');
+      setNewDetails(detailsList.join(' • '));
+    }
+  };
+
+  const handleNewAdBudgetUsdChange = (usdVal: string) => {
+    setNewAdBudgetUsd(usdVal);
+    const rate = currentMonthExchangeRate || 1;
+    const numUsd = parseFloat(usdVal) || 0;
+    const convertedCost = Math.round(numUsd * rate);
+    setNewCost(convertedCost > 0 ? String(convertedCost) : '');
+
+    const updatedDetails = {
+      ...(draftCostDetails || {}),
+      'ميزانية الإعلان بالدولار': {
+        amount: convertedCost,
+        executor: `إعلانات ممولة ($${usdVal || '0'} × ${rate})`,
+      }
+    };
+    const updatedBreakdown = {
+      ...(draftCostBreakdown || {}),
+      'ميزانية الإعلان بالدولار': convertedCost,
+    };
+    setDraftCostDetails(updatedDetails);
+    setDraftCostBreakdown(updatedBreakdown);
+    setNewDetails(`ميزانية إعلان ممول: ${usdVal}$ = ${convertedCost.toLocaleString()} ${currency}`);
+  };
+
+  const handleEditAdBudgetUsdChange = (usdVal: string) => {
+    setEditAdBudgetUsd(usdVal);
+    const rate = currentMonthExchangeRate || 1;
+    const numUsd = parseFloat(usdVal) || 0;
+    const convertedCost = Math.round(numUsd * rate);
+    setEditCost(convertedCost > 0 ? String(convertedCost) : '');
+    setEditDetails(`ميزانية إعلان ممول: ${usdVal}$ = ${convertedCost.toLocaleString()} ${currency}`);
   };
 
   // عند فتح صف الإضافة، قم بتهيئة البيانات من القالب الافتراضي إذا كانت فارغة
@@ -745,6 +896,17 @@ export default function MonthlySalesGrid({
     const actualCost = itemCostSum > 0 ? itemCostSum : (order.cost || 0);
     setEditCost(actualCost ? String(actualCost) : '');
 
+    // Ad Budget USD initialization
+    if (order.adBudgetUsd !== undefined && order.adBudgetUsd > 0) {
+      setEditAdBudgetUsd(String(order.adBudgetUsd));
+    } else if (isSponsoredAds(order.serviceType)) {
+      const rate = order.adExchangeRate || currentMonthExchangeRate || 1;
+      const calcUsd = rate > 0 ? Math.round((order.cost || 0) / rate) : 0;
+      setEditAdBudgetUsd(calcUsd > 0 ? String(calcUsd) : '');
+    } else {
+      setEditAdBudgetUsd('');
+    }
+
     // Independent Notes field
     setEditNotes(order.notes || '');
   };
@@ -757,9 +919,12 @@ export default function MonthlySalesGrid({
   // Save Inline Editing
   const handleSaveEdit = (orderId: string) => {
     const trimmedClient = editClientName.trim();
-    const parsedPrice = Math.round(Number(editPrice)) || 0;
-    const parsedCost = Math.round(Number(editCost)) || 0;
+    const parsedPrice = parseFloat(editPrice) || 0;
+    const parsedCost = parseFloat(editCost) || 0;
     const expectedProfit = parsedPrice - parsedCost;
+
+    const isAd = isSponsoredAds(editServiceType);
+    const usdBudget = parseFloat(editAdBudgetUsd) || (isAd && currentMonthExchangeRate > 0 ? Math.round(parsedCost / currentMonthExchangeRate) : undefined);
 
     const updates: Partial<Order> = {
       serviceType: editServiceType,
@@ -769,6 +934,10 @@ export default function MonthlySalesGrid({
       expectedProfit,
       invoiceDetails: editDetails.trim() ? editDetails.split(/[\n•,]+/).map(s => s.trim()).filter(Boolean) : undefined,
       notes: editNotes.trim() ? editNotes.trim() : undefined,
+      ...(isAd ? {
+        adBudgetUsd: usdBudget,
+        adExchangeRate: currentMonthExchangeRate || undefined,
+      } : {}),
     };
 
     if (onUpdateOrder) {
@@ -783,16 +952,19 @@ export default function MonthlySalesGrid({
   // Save new inline order
   const handleSaveInlineRow = () => {
     const trimmedClient = newClientName.trim();
-    const parsedPrice = Math.round(Number(newPrice)) || 0;
+    const parsedPrice = parseFloat(newPrice) || 0;
     
     // Save if client name or price entered
     if (!trimmedClient && parsedPrice <= 0) {
       return;
     }
 
-    const parsedCost = Math.round(Number(newCost)) || 0;
+    const parsedCost = parseFloat(newCost) || 0;
     const expectedProfit = parsedPrice - parsedCost;
     const autoSerial = getNextSerialNumber ? getNextSerialNumber() : `INV-${Date.now().toString().slice(-4)}`;
+
+    const isAd = isSponsoredAds(newServiceType);
+    const usdBudget = parseFloat(newAdBudgetUsd) || (isAd && currentMonthExchangeRate > 0 ? Math.round(parsedCost / currentMonthExchangeRate) : undefined);
 
     const detailsArray = newDetails.trim() 
       ? newDetails.split(/[\n•,]+/).map(s => s.trim()).filter(Boolean) 
@@ -807,6 +979,8 @@ export default function MonthlySalesGrid({
       price: parsedPrice,
       cost: parsedCost,
       expectedProfit,
+      adBudgetUsd: isAd ? usdBudget : undefined,
+      adExchangeRate: isAd ? (currentMonthExchangeRate || undefined) : undefined,
       costDetails: draftCostDetails,
       costBreakdown: draftCostBreakdown,
       costExecutors: draftCostExecutors,
@@ -847,19 +1021,6 @@ export default function MonthlySalesGrid({
     setDraftDetailedCosts({});
     setIsAddingRow(false);
   };
-
-  // Selected Month state (defaults to current month or date of latest order)
-  const [selectedDate, setSelectedDate] = useState<Date>(() => {
-    // If there are orders, pick the latest order's month or current month
-    if (orders.length > 0) {
-      const dates = orders.map(o => new Date(o.date).getTime()).filter(t => !isNaN(t));
-      if (dates.length > 0) {
-        const maxDate = new Date(Math.max(...dates));
-        return startOfMonth(maxDate);
-      }
-    }
-    return startOfMonth(new Date());
-  });
 
   // Floating Popover state for Cost Items
   const [activePopover, setActivePopover] = useState<{
@@ -1041,46 +1202,61 @@ export default function MonthlySalesGrid({
   const currentMonthEnd = useMemo(() => endOfMonth(selectedDate), [selectedDate]);
   const formattedCurrentMonth = useMemo(() => format(selectedDate, 'MMMM yyyy', { locale: ar }), [selectedDate]);
 
-  // Orders filtered by the selected month & excluding deleted rows (respecting manual reordering)
-  // عزل تام بين الأشهر: لا تظهر فواتير أي شهر إلا عند اختياره من قائمة الأشهر
-  // وخاصية التثبيت (Pin) محلية ترفع الفاتورة لأعلى شهرها فقط دون أن تظهر في بقية الأشهر
+  // Orders filtered by the selected month & excluding deleted rows (respecting pinned recurring contracts)
+  // منطق ميزة التثبيت (الاشتراكات المتكررة عبر الأشهر):
+  // الفاتورة المثبتة تتجاوز حاجز الشهر الحالي؛ بحيث إذا تم تثبيت فاتورة، تظهر تلقائياً في مقدمة القائمة
+  // عند انتقال المستخدم إلى الأشهر القادمة (تعمل كعقد مستمر أو اشتراك شهري).
+  // عند جلب بيانات شهر معين، اجلب معه جميع الفواتير المثبتة من الأشهر السابقة واعرضها في أعلى الجدول،
+  // وتُحتسب قيمها المالية (الإجمالي، التكلفة، هامش الربح) ضمن مجاميع الشهر الجديد الذي تُعرض فيه.
   const monthlyOrders = useMemo(() => {
-    // 1. عزل صارم لشهر العرض الحالي فقط
     const list = invoices
       .filter(order => !deletedRowIds.some(dId => String(dId) === String(order.id)))
       .filter(order => {
         try {
           const orderDate = parseISO(order.date);
           if (isNaN(orderDate.getTime())) return false;
-          return isWithinInterval(orderDate, { start: currentMonthStart, end: currentMonthEnd });
+
+          // 1. الفواتير التابعة للشهر المحدد حالياً
+          const isInCurrentMonth = isWithinInterval(orderDate, { start: currentMonthStart, end: currentMonthEnd });
+          if (isInCurrentMonth) return true;
+
+          // 2. الفواتير المثبتة: تنتقل للأشهر القادمة وتظهر دائماً في أعلى الجدول
+          if (order.isPinned) {
+            return true;
+          }
+
+          return false;
         } catch {
           return false;
         }
       });
 
-    // 2. الترتيب: الفواتير المثبتة (isPinned) ترتفع لأعلى شهرها
+    // ترتيب القائمة: الفواتير المثبتة في أعلى الجدول دائماً (في المقدمة)
+    const customOrderMap = new Map<string, number>();
+    if (customOrderIds.length > 0) {
+      customOrderIds.forEach((id, idx) => customOrderMap.set(String(id), idx));
+    }
+
     return [...list].sort((a, b) => {
-      // رفع البنود المثبتة (isPinned) لأعلى الشهر
-      const aPinned = Boolean(a.isPinned);
-      const bPinned = Boolean(b.isPinned);
+      // 1. الفواتير المثبتة تأتي أولاً في أعلى الجدول
+      const aPinned = a.isPinned ? 1 : 0;
+      const bPinned = b.isPinned ? 1 : 0;
       if (aPinned !== bPinned) {
-        return aPinned ? -1 : 1;
+        return bPinned - aPinned; // pinned first
       }
 
-      // إذا وجد ترتيب يدوي مخصص محفوظ
+      // 2. الترتيب المخصص إذا وجد
       if (customOrderIds.length > 0) {
         const strA = String(a.id);
         const strB = String(b.id);
-        const idxA = customOrderIds.indexOf(strA);
-        const idxB = customOrderIds.indexOf(strB);
-        if (idxA !== -1 && idxB !== -1) {
+        const idxA = customOrderMap.has(strA) ? customOrderMap.get(strA)! : 999999;
+        const idxB = customOrderMap.has(strB) ? customOrderMap.get(strB)! : 999999;
+        if (idxA !== idxB) {
           return idxA - idxB;
         }
-        if (idxA !== -1) return -1;
-        if (idxB !== -1) return 1;
       }
 
-      // الترتيب الافتراضي بحسب تاريخ الفاتورة
+      // 3. الترتيب الزمني الافتراضي: الأحدث أولاً
       const dateA = new Date(a.date).getTime();
       const dateB = new Date(b.date).getTime();
       return dateB - dateA;
@@ -1113,6 +1289,22 @@ export default function MonthlySalesGrid({
       return matchesSearch && matchesStatus && matchesService;
     });
   }, [monthlyOrders, searchTerm, statusFilter, serviceFilter]);
+
+  // حالة تحديد الكل للفواتير الظاهرة
+  const isAllSelected = useMemo(() => {
+    const visibleOrders = filteredGridOrders.filter(o => !isSummaryOrTotalRow(o));
+    if (visibleOrders.length === 0) return false;
+    return visibleOrders.every(o => selectedRowIds.has(String(o.id)));
+  }, [filteredGridOrders, selectedRowIds]);
+
+  const handleToggleSelectAll = () => {
+    const visibleOrders = filteredGridOrders.filter(o => !isSummaryOrTotalRow(o));
+    if (isAllSelected) {
+      setSelectedRowIds(new Set());
+    } else {
+      setSelectedRowIds(new Set(visibleOrders.map(o => String(o.id))));
+    }
+  };
 
   // Filtered rows totals for bottom summary row
   const actualOrdersCount = useMemo(() => {
@@ -1417,8 +1609,23 @@ export default function MonthlySalesGrid({
               </button>
             </div>
 
-            {/* Action Buttons: Export Excel & Print */}
+            {/* Action Buttons: Exchange Rate, Export Excel & Print */}
             <div className="flex items-center gap-1.5 shrink-0">
+              {/* زر ومؤشر سعر صرف الدولار للشهر الحالي */}
+              <button
+                type="button"
+                id="btn-open-exchange-rate-modal"
+                onClick={() => setShowExchangeRateModal(true)}
+                className="relative z-10 cursor-pointer py-1.5 px-3 rounded-lg text-xs font-bold flex items-center gap-1.5 border border-emerald-300 dark:border-emerald-800 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-900/60 shadow-2xs transition-colors"
+                title="تحديد أو تعديل سعر صرف الدولار المعتمد لهذا الشهر"
+              >
+                <DollarSign size={14} className="text-emerald-600 dark:text-emerald-400 stroke-[2.5]" />
+                <span>صرف $:</span>
+                <span className="font-mono font-black">
+                  {currentMonthExchangeRate > 0 ? `${currentMonthExchangeRate.toLocaleString()} ${currency}` : 'تحديد'}
+                </span>
+              </button>
+
               <button
                 type="button"
                 id="btn-export-excel-grid"
@@ -1481,13 +1688,60 @@ export default function MonthlySalesGrid({
       {/* ========================================================================= */}
       {/* 2. EXPANDED MONTHLY DATA GRID (Clean Design Table) */}
       {/* ========================================================================= */}
-      <div className="glass-panel rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm relative">
+      <div className="glass-panel rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
         
         {/* Printable Header (Visible only when printing) */}
         <div className="hidden print:block p-4 border-b border-slate-200 text-center">
           <h2 className="text-xl font-bold">تقرير سجل الفواتير الشهري</h2>
           <p className="text-sm text-slate-600 mt-1">الفترة: {formattedCurrentMonth} | إجمالي الفواتير: {tableTotals.sumInvoices.toLocaleString()} {currency} | هامش الربح: {tableTotals.sumNetProfit.toLocaleString()} {currency}</p>
         </div>
+
+        {/* شريط الإجراءات الجماعية عند تحديد الفواتير */}
+        {selectedRowIds.size > 0 && (
+          <div className="p-2.5 px-4 bg-sky-50 dark:bg-sky-950/70 border-b border-sky-200 dark:border-sky-800 text-sky-900 dark:text-sky-200 text-xs font-bold shadow-xs flex items-center justify-between flex-wrap gap-2 animate-in fade-in duration-150">
+            <div className="flex items-center gap-2">
+              <CheckSquare size={16} className="text-sky-600 dark:text-sky-400" />
+              <span>تم تحديد {selectedRowIds.size} فاتورة (تحديد نشط)</span>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                id="btn-batch-mark-paid"
+                onClick={() => handleBatchMarkPaid(true)}
+                className="px-2.5 py-1 rounded-lg bg-amber-200 hover:bg-amber-300 text-amber-950 dark:bg-amber-900/80 dark:text-amber-200 border border-amber-400/70 transition-colors shadow-2xs cursor-pointer text-xs font-bold"
+                title="تحديد الفواتير المحددة كـ تم الدفع من قبل الزبون"
+              >
+                تحديد كـ تم الدفع من قبل الزبون
+              </button>
+              <button
+                type="button"
+                id="btn-batch-mark-unpaid"
+                onClick={() => handleBatchMarkPaid(false)}
+                className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 transition-colors shadow-2xs cursor-pointer text-xs font-bold"
+                title="تحديد كـ غير مدفوع"
+              >
+                تحديد كـ غير مدفوع
+              </button>
+              <button
+                type="button"
+                id="btn-batch-delete"
+                onClick={handleBatchDelete}
+                className="px-2.5 py-1 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300 border border-red-200 dark:border-red-800 transition-colors cursor-pointer text-xs font-bold"
+                title="حذف الفواتير المحددة"
+              >
+                حذف المحدد
+              </button>
+              <button
+                type="button"
+                id="btn-batch-clear"
+                onClick={() => setSelectedRowIds(new Set())}
+                className="px-2.5 py-1 rounded-lg text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white cursor-pointer text-xs font-medium"
+              >
+                إلغاء التحديد
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Table Container */}
         <div className="overflow-x-auto">
@@ -1501,9 +1755,20 @@ export default function MonthlySalesGrid({
                   <GripVertical size={16} className="mx-auto text-slate-400 dark:text-slate-500" />
                 </th>
 
-                {/* عنصر تفاعلي: مربع الدفع في بداية السطر (بدون ترويسة نصية) */}
-                <th scope="col" className="py-3 px-3 border-l border-slate-200/80 dark:border-slate-700 w-12 text-center select-none">
-                  <span className="sr-only">تأكيد الدفع</span>
+                {/* عنصر تفاعلي: مربع التحديد في بداية السطر مع حالة الدفع */}
+                <th scope="col" className="py-3 px-2 border-l border-slate-200/80 dark:border-slate-700 min-w-[130px] text-center select-none">
+                  <div className="flex items-center justify-center gap-1.5">
+                    <input
+                      type="checkbox"
+                      id="select-all-orders-header"
+                      checked={isAllSelected}
+                      onChange={handleToggleSelectAll}
+                      className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-sky-600 focus:ring-sky-500 accent-sky-600 cursor-pointer"
+                      title={isAllSelected ? "إلغاء تحديد كافة الفواتير" : "تحديد كافة فواتير هذا الشهر"}
+                      aria-label="تحديد كافة الفواتير"
+                    />
+                    <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300">حالة الدفع</span>
+                  </div>
                 </th>
 
                 {/* 1. نوع الخدمة */}
@@ -1558,13 +1823,13 @@ export default function MonthlySalesGrid({
                   return (
                     <tr 
                       key={order.id}
-                      className="bg-amber-50/95 dark:bg-amber-950/40 border-y-2 border-amber-400 dark:border-amber-500 shadow-inner animate-in fade-in duration-150"
+                      className="bg-blue-50/70 dark:bg-blue-950/40 border-y-2 border-blue-400 dark:border-blue-500 shadow-inner animate-in fade-in duration-150"
                     >
                       {/* عمود فارغ للسحب أثناء التعديل المباشر */}
-                      <td className="py-2 px-2 border-l border-amber-200 dark:border-amber-800 text-center print:hidden"></td>
+                      <td className="py-2 px-2 border-l border-blue-200 dark:border-blue-800 text-center print:hidden"></td>
 
                       {/* أزرار التحكم بالتعديل: زر حفظ أخضر وزر إلغاء رمادي/أحمر استبدالاً لمربع الدفع */}
-                      <td className="py-2 px-2 border-l border-amber-200 dark:border-amber-800 text-center bg-amber-100/70 dark:bg-amber-900/40">
+                      <td className="py-2 px-2 border-l border-blue-200 dark:border-blue-800 text-center bg-blue-100/70 dark:bg-blue-900/40">
                         <div className="flex items-center justify-center gap-1">
                           <button
                             type="button"
@@ -1596,13 +1861,13 @@ export default function MonthlySalesGrid({
                       </td>
 
                       {/* 1. نوع الخدمة */}
-                      <td className="py-2 px-3 border-l border-amber-200 dark:border-amber-800 text-center">
+                      <td className="py-2 px-3 border-l border-blue-200 dark:border-blue-800 text-center">
                         <div className="relative">
                           <select
                             id={`edit-select-service-${order.id}`}
                             value={editServiceType}
                             onChange={(e) => handleEditServiceChange(order.id, e.target.value)}
-                            className="w-full glass-input rounded-lg pr-2 pl-6 py-1.5 text-xs font-bold text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 border-amber-300 dark:border-amber-700 appearance-none cursor-pointer focus:ring-2 focus:ring-amber-500 text-center"
+                            className="w-full glass-input rounded-lg pr-2 pl-6 py-1.5 text-xs font-bold text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 border-blue-300 dark:border-blue-700 appearance-none cursor-pointer focus:ring-2 focus:ring-blue-500 text-center"
                           >
                             {availableServices.map((srv) => (
                               <option key={srv.id || srv.name} value={srv.name}>{srv.name}</option>
@@ -1616,7 +1881,7 @@ export default function MonthlySalesGrid({
                       </td>
 
                       {/* 2. اسم العميل */}
-                      <td className="py-2 px-3 border-l border-amber-200 dark:border-amber-800 text-center">
+                      <td className="py-2 px-3 border-l border-blue-200 dark:border-blue-800 text-center">
                         <input
                           type="text"
                           id={`edit-input-client-${order.id}`}
@@ -1628,17 +1893,16 @@ export default function MonthlySalesGrid({
                           }}
                           placeholder="اسم العميل..."
                           autoFocus
-                          className="w-full glass-input rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 border-amber-300 dark:border-amber-700 focus:ring-2 focus:ring-amber-500 text-center"
+                          className="w-full glass-input rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 border-blue-300 dark:border-blue-700 focus:ring-2 focus:ring-blue-500 text-center"
                         />
                       </td>
 
                       {/* 3. إجمالي الفاتورة */}
-                      <td className="py-2 px-3 border-l border-amber-200 dark:border-amber-800 text-center">
+                      <td className="py-2 px-3 border-l border-blue-200 dark:border-blue-800 text-center">
                         <input
-                          type="text"
-                          inputMode="numeric"
-                          pattern="[0-9]*"
+                          type="number"
                           id={`edit-input-price-${order.id}`}
+                          step="any"
                           value={editPrice === '0' ? '' : editPrice}
                           onFocus={(e) => {
                             if (e.target.value === '0' || e.target.value === '.') {
@@ -1646,25 +1910,20 @@ export default function MonthlySalesGrid({
                             }
                           }}
                           onChange={(e) => {
-                            const raw = e.target.value.replace(/[^\d]/g, '');
-                            const clean = raw.replace(/^0+/, '') || (raw === '0' ? '0' : '');
-                            setEditPrice(clean);
+                            const val = e.target.value;
+                            setEditPrice(val === '.' ? '' : val);
                           }}
                           onKeyDown={(e) => {
-                            if (e.key === '.' || e.key === ',') {
-                              e.preventDefault();
-                              return;
-                            }
                             if (e.key === 'Enter') handleSaveEdit(order.id);
                             if (e.key === 'Escape') handleCancelEdit();
                           }}
                           placeholder="0"
-                          className="w-full glass-input rounded-lg px-2 py-1.5 text-xs font-mono font-black text-center text-emerald-800 dark:text-emerald-300 bg-white dark:bg-slate-800 border-amber-300 dark:border-amber-700 focus:ring-2 focus:ring-amber-500"
+                          className="w-full glass-input rounded-lg px-2 py-1.5 text-xs font-mono font-black text-center text-emerald-800 dark:text-emerald-300 bg-white dark:bg-slate-800 border-blue-300 dark:border-blue-700 focus:ring-2 focus:ring-blue-500"
                         />
                       </td>
 
                       {/* 4. تفاصيل الفاتورة مع زر + لفتح القائمة المنسدلة للتكاليف */}
-                      <td className="py-2 px-3 border-l border-amber-200 dark:border-amber-800 text-center align-middle">
+                      <td className="py-2 px-3 border-l border-blue-200 dark:border-blue-800 text-center align-middle">
                         <div className="flex items-center justify-center gap-1.5">
                           <input
                             type="text"
@@ -1676,13 +1935,13 @@ export default function MonthlySalesGrid({
                               if (e.key === 'Escape') handleCancelEdit();
                             }}
                             placeholder="المقاس، الألوان..."
-                            className="w-full glass-input rounded-lg px-2 py-1.5 text-xs text-center text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-800 border-amber-300 dark:border-amber-700 focus:ring-2 focus:ring-amber-500"
+                            className="w-full glass-input rounded-lg px-2 py-1.5 text-xs text-center text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-800 border-blue-300 dark:border-blue-700 focus:ring-2 focus:ring-blue-500"
                           />
                           <button
                             type="button"
                             id={`btn-edit-costs-popover-${order.id}`}
                             onClick={(e) => handleOpenPopover(order, e)}
-                            className="w-7 h-7 rounded-full bg-amber-100 hover:bg-amber-200 dark:bg-amber-900/60 dark:hover:bg-amber-800 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-700 flex items-center justify-center transition-all shrink-0 cursor-pointer shadow-2xs"
+                            className="w-7 h-7 rounded-full bg-blue-100 hover:bg-blue-200 dark:bg-blue-900/60 dark:hover:bg-blue-800 text-blue-800 dark:text-blue-200 border border-blue-300 dark:border-blue-700 flex items-center justify-center transition-all shrink-0 cursor-pointer shadow-2xs"
                             title="إدخال وتعديل التكاليف في القائمة المنسدلة"
                             aria-label="إدخال وتعديل التكاليف في القائمة المنسدلة"
                           >
@@ -1691,43 +1950,63 @@ export default function MonthlySalesGrid({
                         </div>
                       </td>
 
-                      {/* 5. هامش الربح / التكلفة */}
-                      <td className="py-2 px-3 border-l border-amber-200 dark:border-amber-800 text-center">
-                        <div className="flex items-center gap-1 justify-center">
-                          <input
-                            type="text"
-                            inputMode="numeric"
-                            pattern="[0-9]*"
-                            id={`edit-input-cost-${order.id}`}
-                            value={editCost === '0' ? '' : editCost}
-                            onFocus={(e) => {
-                              if (e.target.value === '0' || e.target.value === '.') {
-                                setEditCost('');
-                              }
-                            }}
-                            onChange={(e) => {
-                              const raw = e.target.value.replace(/[^\d]/g, '');
-                              const clean = raw.replace(/^0+/, '') || (raw === '0' ? '0' : '');
-                              setEditCost(clean);
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === '.' || e.key === ',') {
-                                e.preventDefault();
-                                return;
-                              }
-                              if (e.key === 'Enter') handleSaveEdit(order.id);
-                              if (e.key === 'Escape') handleCancelEdit();
-                            }}
-                            placeholder="0"
-                            className="w-16 glass-input rounded-lg px-1.5 py-1 text-[11px] font-mono font-bold text-center text-rose-700 dark:text-rose-400 bg-white dark:bg-slate-800 border-amber-300 dark:border-amber-700"
-                            title="التكلفة الإجمالية (لحساب هامش الربح تلقائياً)"
-                          />
-                          <span className={`text-[11px] font-mono font-black whitespace-nowrap ${
-                            currentProfit >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'
-                          }`}>
-                            ={currentProfit.toLocaleString()}
-                          </span>
-                        </div>
+                      {/* 5. صافي الربح / التكلفة أو ميزانية الدولار للإعلانات الممولة */}
+                      <td className="py-2 px-3 border-l border-blue-200 dark:border-blue-800 text-center">
+                        {isSponsoredAds(editServiceType) ? (
+                          <div className="flex flex-col items-center gap-1">
+                            <div className="flex items-center gap-1" title={`سعر صرف الدولار المعتمد: ${currentMonthExchangeRate || 1} ${currency}`}>
+                              <span className="text-xs font-black text-emerald-600 dark:text-emerald-400">$</span>
+                              <input
+                                type="number"
+                                id={`edit-input-ad-budget-usd-${order.id}`}
+                                step="any"
+                                value={editAdBudgetUsd}
+                                onChange={(e) => handleEditAdBudgetUsdChange(e.target.value)}
+                                placeholder="الميزانية $"
+                                className="w-20 glass-input rounded-lg px-1.5 py-1 text-[11px] font-mono font-black text-center text-emerald-700 dark:text-emerald-300 bg-white dark:bg-slate-800 border-emerald-400 dark:border-emerald-600 focus:ring-2 focus:ring-emerald-500"
+                                title="ميزانية الإعلان بالدولار (تحسب التكلفة تلقائياً بضربها في سعر الصرف)"
+                              />
+                            </div>
+                            <div className="flex items-center gap-1 text-[10px] font-mono font-bold text-slate-500 dark:text-slate-400">
+                              <span>تكلفة:</span>
+                              <span className="text-rose-600 dark:text-rose-400 font-black">{editCost ? Number(editCost).toLocaleString() : '0'}</span>
+                              <span>ربح:</span>
+                              <span className={`font-black ${currentProfit >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'}`}>
+                                {currentProfit.toLocaleString()}
+                              </span>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1 justify-center">
+                            <input
+                              type="number"
+                              id={`edit-input-cost-${order.id}`}
+                              step="any"
+                              value={editCost === '0' ? '' : editCost}
+                              onFocus={(e) => {
+                                if (e.target.value === '0' || e.target.value === '.') {
+                                  setEditCost('');
+                                }
+                              }}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setEditCost(val === '.' ? '' : val);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleSaveEdit(order.id);
+                                if (e.key === 'Escape') handleCancelEdit();
+                              }}
+                              placeholder="0"
+                              className="w-16 glass-input rounded-lg px-1.5 py-1 text-[11px] font-mono font-bold text-center text-rose-700 dark:text-rose-400 bg-white dark:bg-slate-800 border-blue-300 dark:border-blue-700"
+                              title="التكلفة الإجمالية (لحساب صافي الربح تلقائياً)"
+                            />
+                            <span className={`text-[11px] font-mono font-black whitespace-nowrap ${
+                              currentProfit >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'
+                            }`}>
+                              ={currentProfit.toLocaleString()}
+                            </span>
+                          </div>
+                        )}
                       </td>
 
                       {/* 6. الملاحظات وأزرار الإلغاء والحفظ */}
@@ -1743,7 +2022,7 @@ export default function MonthlySalesGrid({
                               if (e.key === 'Escape') handleCancelEdit();
                             }}
                             placeholder="ملاحظات..."
-                            className="flex-1 glass-input rounded-lg px-2.5 py-1.5 text-xs text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-800 border-amber-300 dark:border-amber-700 focus:ring-2 focus:ring-amber-500"
+                            className="flex-1 glass-input rounded-lg px-2.5 py-1.5 text-xs text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-800 border-blue-300 dark:border-blue-700 focus:ring-2 focus:ring-blue-500"
                           />
                           <button
                             type="button"
@@ -1778,7 +2057,8 @@ export default function MonthlySalesGrid({
                 }
 
                 // وضع العرض العادي (Normal Display Mode)
-                const isChecked = Boolean(order.isPaid);
+                const isSelected = selectedRowIds.has(String(order.id));
+                const isPaidByClient = Boolean(order.isPaid);
                 const actualCost = getOrderTotalDetailCosts(order);
                 const netProfit = getOrderNetProfit(order);
                 
@@ -1788,25 +2068,35 @@ export default function MonthlySalesGrid({
                 // حقل الملاحظات مستقل تماماً ولا يتكرر فيه نوع الخدمة أو أي بيانات أخرى
                 const displayedNotes = (order.notes || '').trim();
 
+                // 1. تحديد نمط ولون الصف:
+                // - عند تفعيل Checkbox التحديد: اللون السماوي/Sky Blue الهادئ للإشارة للتحديد النشط
+                // - عند حالة "تم الدفع من قبل الزبون": اللون الأصفر/Amber
+                let rowBgClass = '';
+                if (dragOverOrderId === order.id && draggedOrderId !== order.id) {
+                  rowBgClass = 'border-t-2 border-blue-500 dark:border-blue-400 bg-blue-50/70 dark:bg-blue-900/30';
+                } else if (draggedOrderId === order.id) {
+                  rowBgClass = 'opacity-40 bg-slate-100 dark:bg-slate-800';
+                } else if (isSelected) {
+                  // التحديد النشط بالـ Checkbox: اللون السماوي الهادئ Sky Blue
+                  rowBgClass = 'bg-sky-50 dark:bg-sky-950/40 text-sky-950 dark:text-sky-100 border-r-4 border-r-sky-500 hover:bg-sky-100/80 dark:hover:bg-sky-900/50';
+                } else if (isPaidByClient) {
+                  // الفواتير التي حالتها تم الدفع من قبل الزبون: اللون الأصفر / Amber
+                  rowBgClass = 'bg-amber-100/90 dark:bg-amber-950/40 text-amber-950 dark:text-amber-100 border-r-4 border-r-amber-500 hover:bg-amber-200/80 dark:hover:bg-amber-900/60';
+                } else if (order.isUnderReview) {
+                  rowBgClass = 'bg-rose-50/70 dark:bg-rose-950/40 text-slate-900 dark:text-slate-100 border-r-4 border-r-rose-400 hover:bg-rose-100/60 dark:hover:bg-rose-900/50';
+                } else {
+                  rowBgClass = index % 2 === 0 
+                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 hover:bg-slate-50/90 dark:hover:bg-slate-800/60' 
+                    : 'bg-slate-50/40 dark:bg-slate-900/50 text-slate-900 dark:text-slate-100 hover:bg-slate-50/90 dark:hover:bg-slate-800/60';
+                }
+
                 return (
                   <tr 
                     key={order.id}
                     onDragOver={(e) => handleDragOver(e, order.id)}
                     onDrop={(e) => handleDrop(e, order.id)}
                     onDragEnd={handleDragEnd}
-                    className={`transition-all duration-150 group ${
-                      dragOverOrderId === order.id && draggedOrderId !== order.id
-                        ? 'border-t-2 border-blue-500 dark:border-blue-400 bg-blue-50/70 dark:bg-blue-900/30'
-                        : ''
-                    } ${
-                      draggedOrderId === order.id
-                        ? 'opacity-40 bg-slate-100 dark:bg-slate-800'
-                        : order.isUnderReview
-                          ? 'bg-amber-100/85 dark:bg-amber-950/65 hover:bg-amber-200/80 dark:hover:bg-amber-900/60 text-slate-900 dark:text-slate-100 border-r-4 border-r-amber-500'
-                          : isChecked 
-                            ? 'bg-yellow-100/90 dark:bg-yellow-950/45 hover:bg-yellow-200/70 dark:hover:bg-yellow-900/40 text-slate-900 dark:text-slate-100' 
-                            : `${index % 2 === 0 ? 'bg-white dark:bg-slate-900' : 'bg-slate-50/40 dark:bg-slate-900/50'} hover:bg-slate-50/90 dark:hover:bg-slate-800/60`
-                    }`}
+                    className={`transition-all duration-150 group ${rowBgClass}`}
                   >
                     {/* 0. أيقونة السحب Drag Handle في بداية كل صف (أقصى اليمين) */}
                     <td 
@@ -1831,24 +2121,45 @@ export default function MonthlySalesGrid({
                       )}
                     </td>
 
-                    {/* مربع الدفع التفاعلي وزر التعديل السريع بجانبه */}
+                    {/* مربع التحديد باللون السماوي + زر حالة الدفع باللون الأصفر */}
                     <td className="py-3 px-2 border-l border-slate-200/60 dark:border-slate-800 text-center">
                       {isTotalRow ? (
                         <span className="text-slate-400 dark:text-slate-600 font-bold select-none">-</span>
                       ) : (
-                        <div className="flex items-center justify-center gap-1.5">
+                        <div className="flex items-center justify-center gap-1.5 flex-nowrap">
+                          {/* 1. Checkbox التحديد النشط (Sky Blue) */}
                           <input
                             type="checkbox"
-                            id={`order-check-${order.id}`}
-                            checked={isChecked}
+                            id={`order-select-${order.id}`}
+                            checked={isSelected}
                             onChange={(e) => {
                               e.stopPropagation();
-                              onTogglePaid && onTogglePaid(order.id);
+                              handleToggleSelectRow(order.id);
                             }}
-                            className="relative z-10 cursor-pointer w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-amber-500 focus:ring-amber-400 focus:ring-2 transition-all accent-amber-500 shrink-0"
-                            title={isChecked ? 'الفاتورة مدفوعة ومحددة (انقر لإلغاء التحديد)' : 'تحديد الفاتورة كمدفوعة وخالصة'}
-                            aria-label={`تحديد حالة الدفع للفاتورة الخاصة بـ ${order.clientName}`}
+                            className="relative z-10 cursor-pointer w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-sky-600 focus:ring-sky-400 focus:ring-2 transition-all accent-sky-600 shrink-0"
+                            title={isSelected ? 'إلغاء التحديد' : 'تحديد هذا السطر (تحديد نشط)'}
+                            aria-label={`تحديد فاتورة ${order.clientName}`}
                           />
+
+                          {/* 2. زر / شارة حالة الدفع من قبل الزبون (Amber) */}
+                          <button
+                            type="button"
+                            id={`btn-toggle-paid-${order.id}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleTogglePaid(order.id);
+                            }}
+                            className={`relative z-10 cursor-pointer px-2 py-0.5 rounded-md text-[10px] font-bold transition-all border whitespace-nowrap shadow-2xs ${
+                              isPaidByClient
+                                ? 'bg-amber-200 text-amber-950 dark:bg-amber-900/80 dark:text-amber-200 border-amber-400/80 hover:bg-amber-300 dark:hover:bg-amber-800'
+                                : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-amber-50 hover:text-amber-800 dark:hover:bg-amber-950/40'
+                            }`}
+                            title={isPaidByClient ? 'تم الدفع من قبل الزبون (انقر لإلغاء حالة الدفع)' : 'غير مدفوع (انقر للتعيين كـ تم الدفع من قبل الزبون)'}
+                          >
+                            {isPaidByClient ? 'تم الدفع' : 'غير مدفوع'}
+                          </button>
+
+                          {/* 3. زر التعديل السريع */}
                           <button
                             type="button"
                             id={`btn-edit-order-${order.id}`}
@@ -1900,7 +2211,13 @@ export default function MonthlySalesGrid({
                       <div className="flex flex-col items-center justify-center gap-1">
                         <div className="flex items-center justify-center gap-1.5 truncate max-w-full">
                           {order.isPinned && (
-                            <Pin size={13} className="text-amber-500 fill-amber-500/20 shrink-0" title="بند مثبت للأشهر القادمة" />
+                            <span 
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-900 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-300 dark:border-amber-700 select-none shadow-2xs shrink-0"
+                              title="اشتراك شهري مثبت / عقد متكرر مستمر في الأشهر القادمة"
+                            >
+                              <Pin size={10} className="text-amber-600 dark:text-amber-400 fill-amber-500/30 shrink-0" />
+                              <span>عقد مستمر</span>
+                            </span>
                           )}
                           <span className="truncate">{order.clientName}</span>
                         </div>
@@ -2148,10 +2465,9 @@ export default function MonthlySalesGrid({
                   {/* 3. إجمالي الفاتورة */}
                   <td className="py-2 px-3 border-l border-blue-200 dark:border-blue-800 text-center">
                     <input
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
+                      type="number"
                       id="inline-input-price"
+                      step="any"
                       value={newPrice === '0' ? '' : newPrice}
                       onFocus={(e) => {
                         if (e.target.value === '0' || e.target.value === '.') {
@@ -2159,15 +2475,10 @@ export default function MonthlySalesGrid({
                         }
                       }}
                       onChange={(e) => {
-                        const raw = e.target.value.replace(/[^\d]/g, '');
-                        const clean = raw.replace(/^0+/, '') || (raw === '0' ? '0' : '');
-                        setNewPrice(clean);
+                        const val = e.target.value;
+                        setNewPrice(val === '.' ? '' : val);
                       }}
                       onKeyDown={(e) => {
-                        if (e.key === '.' || e.key === ',') {
-                          e.preventDefault();
-                          return;
-                        }
                         if (e.key === 'Enter') handleSaveInlineRow();
                         if (e.key === 'Escape') setIsAddingRow(false);
                       }}
@@ -2204,41 +2515,65 @@ export default function MonthlySalesGrid({
                     </div>
                   </td>
 
-                  {/* 5. هامش الربح / التكلفة */}
+                  {/* 5. صافي الربح / التكلفة أو ميزانية الدولار للإعلانات الممولة */}
                   <td className="py-2 px-3 border-l border-blue-200 dark:border-blue-800 text-center">
-                    <div className="flex items-center gap-1 justify-center">
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        id="inline-input-cost"
-                        value={newCost === '0' ? '' : newCost}
-                        onFocus={(e) => {
-                          if (e.target.value === '0' || e.target.value === '.') {
-                            setNewCost('');
-                          }
-                        }}
-                        onChange={(e) => {
-                          const raw = e.target.value.replace(/[^\d]/g, '');
-                          const clean = raw.replace(/^0+/, '') || (raw === '0' ? '0' : '');
-                          setNewCost(clean);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === '.' || e.key === ',') {
-                            e.preventDefault();
-                            return;
-                          }
-                          if (e.key === 'Enter') handleSaveInlineRow();
-                          if (e.key === 'Escape') setIsAddingRow(false);
-                        }}
-                        placeholder="0"
-                        className="w-16 glass-input rounded-lg px-1.5 py-1 text-[11px] font-mono font-bold text-center text-rose-700 dark:text-rose-400 bg-white dark:bg-slate-800 border-blue-300 dark:border-blue-700"
-                        title="التكلفة الإجمالية (لحساب هامش الربح تلقائياً)"
-                      />
-                      <span className="text-[11px] font-mono font-black text-blue-700 dark:text-blue-400 whitespace-nowrap">
-                        ={(Math.max(0, (Math.round(Number(newPrice)) || 0) - (Math.round(Number(newCost)) || 0))).toLocaleString()}
-                      </span>
-                    </div>
+                    {isSponsoredAds(newServiceType) ? (
+                      <div className="flex flex-col items-center gap-1">
+                        <div className="flex items-center gap-1" title={`سعر صرف الدولار المعتمد: ${currentMonthExchangeRate || 1} ${currency}`}>
+                          <span className="text-xs font-black text-emerald-600 dark:text-emerald-400">$</span>
+                          <input
+                            type="number"
+                            id="inline-input-ad-budget-usd"
+                            step="any"
+                            value={newAdBudgetUsd}
+                            onChange={(e) => handleNewAdBudgetUsdChange(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleSaveInlineRow();
+                              if (e.key === 'Escape') setIsAddingRow(false);
+                            }}
+                            placeholder="الميزانية $"
+                            className="w-20 glass-input rounded-lg px-1.5 py-1 text-[11px] font-mono font-black text-center text-emerald-700 dark:text-emerald-300 bg-white dark:bg-slate-800 border-emerald-400 dark:border-emerald-600 focus:ring-2 focus:ring-emerald-500"
+                            title="ميزانية الإعلان بالدولار (تحسب التكلفة تلقائياً بضربها في سعر الصرف)"
+                          />
+                        </div>
+                        <div className="flex items-center gap-1 text-[10px] font-mono font-bold text-slate-500 dark:text-slate-400">
+                          <span>تكلفة:</span>
+                          <span className="text-rose-600 dark:text-rose-400 font-black">{newCost ? Number(newCost).toLocaleString() : '0'}</span>
+                          <span>ربح:</span>
+                          <span className="text-emerald-700 dark:text-emerald-400 font-black">
+                            {(Math.max(0, (parseFloat(newPrice) || 0) - (parseFloat(newCost) || 0))).toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1 justify-center">
+                        <input
+                          type="number"
+                          id="inline-input-cost"
+                          step="any"
+                          value={newCost === '0' ? '' : newCost}
+                          onFocus={(e) => {
+                            if (e.target.value === '0' || e.target.value === '.') {
+                              setNewCost('');
+                            }
+                          }}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setNewCost(val === '.' ? '' : val);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleSaveInlineRow();
+                            if (e.key === 'Escape') setIsAddingRow(false);
+                          }}
+                          placeholder="0"
+                          className="w-16 glass-input rounded-lg px-1.5 py-1 text-[11px] font-mono font-bold text-center text-rose-700 dark:text-rose-400 bg-white dark:bg-slate-800 border-blue-300 dark:border-blue-700"
+                          title="التكلفة الإجمالية (لحساب صافي الربح تلقائياً)"
+                        />
+                        <span className="text-[11px] font-mono font-black text-blue-700 dark:text-blue-400 whitespace-nowrap">
+                          ={(Math.max(0, (parseFloat(newPrice) || 0) - (parseFloat(newCost) || 0))).toLocaleString()}
+                        </span>
+                      </div>
+                    )}
                   </td>
 
                   {/* 6. الملاحظات وزر الإلغاء والحفظ */}
@@ -2378,86 +2713,6 @@ export default function MonthlySalesGrid({
             )}
           </table>
         </div>
-
-        {/* زر الإضافة الأخضر الدائري (+) مثبت ذكياً بحافة مساحة الجدول اليمنى السفلية */}
-        <div className="sticky bottom-6 z-30 flex justify-start pointer-events-none -mt-14 mb-3 mr-4 print:hidden">
-          <button
-            type="button"
-            id="btn-fab-add-invoice"
-            onClick={handleTriggerAddRow}
-            className="pointer-events-auto w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 active:scale-95 text-white shadow-xl hover:shadow-2xl hover:shadow-emerald-600/50 border-2 border-white/40 dark:border-slate-700/60 flex items-center justify-center transition-all duration-300 cursor-pointer group focus:outline-hidden focus:ring-4 focus:ring-emerald-500/40"
-            title="إضافة بند جديد (+)"
-            aria-label="إضافة بند جديد"
-          >
-            <Plus 
-              size={28} 
-              className="text-white stroke-[2.75] transition-transform duration-300 ease-out group-hover:rotate-90 group-hover:scale-110" 
-            />
-          </button>
-        </div>
-      </div>
-
-      {/* ========================================================================= */}
-      {/* 4. EXPANDED FINANCIAL SUMMARY & MONTHLY NOTES (شريط الإجماليات ومساحة الملاحظات) */}
-      {/* ========================================================================= */}
-      <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 print:grid-cols-4">
-        {/* بطاقة إجمالي الفواتير */}
-        <div className="glass-panel p-3.5 rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs flex flex-col justify-between">
-          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-bold mb-1">
-            <span>إجمالي المبيعات (الفواتير)</span>
-            <FileSpreadsheet size={15} className="text-slate-400 shrink-0" />
-          </div>
-          <div className="text-lg font-black font-mono text-slate-900 dark:text-slate-100">
-            {tableTotals.sumInvoices.toLocaleString()} <span className="text-xs font-normal text-slate-500">{currency}</span>
-          </div>
-          <span className="text-[10px] text-slate-400 mt-1">عدد الفواتير: {actualOrdersCount}</span>
-        </div>
-
-        {/* بطاقة إجمالي هامش الربح */}
-        <div className="glass-panel p-3.5 rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs flex flex-col justify-between">
-          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-bold mb-1">
-            <span>إجمالي هامش الربح</span>
-            <TrendingUp size={15} className="text-indigo-500 shrink-0" />
-          </div>
-          <div className={`text-lg font-black font-mono ${tableTotals.sumNetProfit >= 0 ? 'text-indigo-600 dark:text-indigo-400' : 'text-rose-600 dark:text-rose-400'}`}>
-            {tableTotals.sumNetProfit >= 0 ? `+${tableTotals.sumNetProfit.toLocaleString()}` : tableTotals.sumNetProfit.toLocaleString()} <span className="text-xs font-normal text-slate-500">{currency}</span>
-          </div>
-          <span className="text-[10px] text-slate-400 mt-1">الأرباح التشغيلية للطلبيات</span>
-        </div>
-
-        {/* بطاقة إجمالي المصاريف التشغيلية */}
-        <div className="glass-panel p-3.5 rounded-xl border border-amber-200/80 dark:border-amber-900/40 bg-amber-50/40 dark:bg-amber-950/20 shadow-xs flex flex-col justify-between">
-          <div className="flex items-center justify-between text-xs text-amber-700 dark:text-amber-400 font-bold mb-1">
-            <span>إجمالي المصاريف التشغيلية</span>
-            <Receipt size={15} className="text-amber-600 shrink-0" />
-          </div>
-          <div className="text-lg font-black font-mono text-amber-800 dark:text-amber-300">
-            {totalMonthlyExpenses.toLocaleString()} <span className="text-xs font-normal text-amber-600/80">{currency}</span>
-          </div>
-          <span className="text-[10px] text-amber-600/70 mt-1">مصاريف شهر {formattedCurrentMonth}</span>
-        </div>
-
-        {/* بطاقة صافي الربح الفعلي */}
-        <div className={`glass-panel p-3.5 rounded-xl border shadow-xs flex flex-col justify-between ${
-          actualNetProfit >= 0 
-            ? 'border-emerald-200/90 dark:border-emerald-900/40 bg-emerald-50/50 dark:bg-emerald-950/20' 
-            : 'border-rose-200/90 dark:border-rose-900/40 bg-rose-50/50 dark:bg-rose-950/20'
-        }`}>
-          <div className="flex items-center justify-between text-xs font-bold mb-1">
-            <span className={actualNetProfit >= 0 ? 'text-emerald-800 dark:text-emerald-300' : 'text-rose-800 dark:text-rose-300'}>
-              صافي الربح الفعلي
-            </span>
-            <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
-              actualNetProfit >= 0 ? 'bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200' : 'bg-rose-100 dark:bg-rose-900/60 text-rose-800 dark:text-rose-200'
-            }`}>
-              (هامش الربح - المصاريف)
-            </span>
-          </div>
-          <div className={`text-xl font-black font-mono ${actualNetProfit >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'}`}>
-            {actualNetProfit >= 0 ? `+${actualNetProfit.toLocaleString()}` : actualNetProfit.toLocaleString()} <span className="text-xs font-normal opacity-80">{currency}</span>
-          </div>
-          <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">الربح الصافي النهائي بعد خصم كافة المصاريف</span>
-        </div>
       </div>
 
       {/* مساحة ملاحظات واسعة ومرنة أسفل الجدول لتدوين الملاحظات العامة للشهر وتحديثها تلقائياً */}
@@ -2499,6 +2754,31 @@ export default function MonthlySalesGrid({
           onSave={handleSaveOrderCosts}
         />
       )}
+
+      {/* نافذة تسعير وتعديل سعر صرف الدولار للشهر */}
+      <ExchangeRateModal
+        forceOpen={showExchangeRateModal}
+        onClose={() => setShowExchangeRateModal(false)}
+      />
+
+      {/* ========================================================================= */}
+      {/* FLOATING ACTION BUTTON (FAB) - زر إضافة عائم متمركز في أقصى اليمين أسفل الشاشة */}
+      {/* ========================================================================= */}
+      <div className="fixed bottom-6 right-6 z-40 print:hidden">
+        <button
+          type="button"
+          id="btn-fab-add-invoice"
+          onClick={handleTriggerAddRow}
+          className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 active:scale-95 text-white shadow-xl hover:shadow-2xl hover:shadow-emerald-600/40 border-2 border-white/30 dark:border-slate-700/60 flex items-center justify-center transition-all duration-300 cursor-pointer group focus:outline-hidden focus:ring-4 focus:ring-emerald-500/40"
+          title="إضافة بند جديد"
+          aria-label="إضافة بند جديد"
+        >
+          <Plus 
+            size={28} 
+            className="text-white stroke-[2.75] transition-transform duration-300 ease-out group-hover:rotate-90 group-hover:scale-110" 
+          />
+        </button>
+      </div>
     </div>
   );
 }

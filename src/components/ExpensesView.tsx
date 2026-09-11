@@ -20,10 +20,9 @@ export default function ExpensesView({
   onNavigateToProfits,
   onNavigateToSales: _onNavigateToSales
 }: ExpensesViewProps) {
-  const { expenses, addExpense, deleteExpense, updateExpense } = useAppContext();
+  const { expenses, addExpense, deleteExpense, updateExpense, selectedDate, setSelectedDate } = useAppContext();
 
   // Selected Month State
-  const [selectedDate, setSelectedDate] = useState<Date>(() => startOfMonth(new Date()));
   const [showAllMonths, setShowAllMonths] = useState<boolean>(false);
 
   // Month navigation helpers

@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useRef, useMemo } from 'react';
+import { startOfMonth, endOfMonth, parseISO, isWithinInterval, format } from 'date-fns';
 import { 
   Order, 
   InventoryItem, 
@@ -238,6 +239,14 @@ export const defaultServicesConfig: DynamicServiceConfig[] = [
     defaultExecutors: { 'التصميم': 'أحمد', 'الطباعة': 'سالم' },
     isDefault: true,
   },
+  {
+    id: 'srv-ads',
+    name: 'إعلانات ممولة',
+    costItems: ['ميزانية الإعلان بالدولار', 'أتعاب الإدارة والتنفيذ'],
+    defaultCosts: { 'ميزانية الإعلان بالدولار': 0, 'أتعاب الإدارة والتنفيذ': 0 },
+    defaultExecutors: { 'أتعاب الإدارة والتنفيذ': 'مسؤول الإعلانات' },
+    isDefault: true,
+  },
 ];
 
 interface AppContextType {
@@ -261,6 +270,7 @@ interface AppContextType {
   employees: Employee[];
   addEmployee: (employee: Omit<Employee, 'id'>) => void;
   updateEmployee: (id: string, employee: Partial<Employee>) => void;
+  deleteEmployee: (id: string) => void;
   currentUser: Employee | null;
   login: (id: string) => void;
   loginWithPasscode: (passcode: string) => Promise<{ success: boolean; message?: string }>;
@@ -327,6 +337,22 @@ interface AppContextType {
   isKioskMode: boolean;
   setIsKioskMode: (kiosk: boolean) => void;
   toggleKioskMode: () => void;
+
+  // Global Date State (Shared across all tables and modules)
+  selectedDate: Date;
+  setSelectedDate: React.Dispatch<React.SetStateAction<Date>>;
+  selectedMonth: number; // 0-11
+  selectedYear: number;
+  setSelectedMonth: (month: number) => void;
+  setSelectedYear: (year: number) => void;
+  setSelectedMonthYear: (year: number, month: number) => void;
+  totalExpensesForSelectedMonth: number;
+
+  // Monthly Exchange Rates (تسعير صرف الدولار المعتمد شهرياً)
+  exchangeRates: Record<string, number>;
+  setMonthExchangeRate: (monthKey: string, rate: number) => Promise<void>;
+  getExchangeRateForMonth: (dateOrKey: Date | string) => number;
+  currentMonthExchangeRate: number;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -584,6 +610,109 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       return [];
     }
   });
+
+  // Global Date State (Shared across all tables, tabs, and modules)
+  const [selectedDate, setSelectedDate] = useState<Date>(() => {
+    try {
+      const saved = localStorage.getItem('masar_global_selected_date');
+      if (saved) {
+        const d = new Date(saved);
+        if (!isNaN(d.getTime())) return startOfMonth(d);
+      }
+    } catch {}
+    return startOfMonth(new Date());
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('masar_global_selected_date', selectedDate.toISOString());
+    } catch {}
+  }, [selectedDate]);
+
+  const selectedMonth = selectedDate.getMonth();
+  const selectedYear = selectedDate.getFullYear();
+
+  const setSelectedMonth = useCallback((month: number) => {
+    setSelectedDate(prev => {
+      const d = new Date(prev);
+      d.setMonth(month);
+      return startOfMonth(d);
+    });
+  }, []);
+
+  const setSelectedYear = useCallback((year: number) => {
+    setSelectedDate(prev => {
+      const d = new Date(prev);
+      d.setFullYear(year);
+      return startOfMonth(d);
+    });
+  }, []);
+
+  const setSelectedMonthYear = useCallback((year: number, month: number) => {
+    setSelectedDate(new Date(year, month, 1));
+  }, []);
+
+  // Total expenses for the globally selected month
+  const totalExpensesForSelectedMonth = useMemo(() => {
+    const start = startOfMonth(selectedDate);
+    const end = endOfMonth(selectedDate);
+    return (expenses || []).reduce((sum, exp) => {
+      if (!exp.date) return sum;
+      try {
+        const expDate = parseISO(exp.date);
+        if (isWithinInterval(expDate, { start, end })) {
+          return sum + (Number(exp.amount) || 0);
+        }
+      } catch {}
+      return sum;
+    }, 0);
+  }, [expenses, selectedDate]);
+
+  // Monthly Exchange Rates (تسعير صرف الدولار المعتمد شهرياً)
+  const [exchangeRates, setExchangeRates] = useState<Record<string, number>>(() => {
+    try {
+      const saved = localStorage.getItem('masar_exchange_rates');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') return parsed;
+      }
+    } catch {}
+    return {
+      '2026-08': 7.20,
+      '2026-09': 7.25,
+    };
+  });
+
+  // مزامنة واسترجاع أسعار الصرف من Supabase
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    const fetchRemoteRates = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('exchange_rates')
+          .select('*');
+        if (!error && Array.isArray(data) && data.length > 0) {
+          setExchangeRates(prev => {
+            const merged = { ...prev };
+            data.forEach((row: any) => {
+              const key = row.month_key || row.monthKey || row.id;
+              const rate = Number(row.rate);
+              if (key && !isNaN(rate) && rate > 0) {
+                merged[key] = rate;
+              }
+            });
+            try {
+              localStorage.setItem('masar_exchange_rates', JSON.stringify(merged));
+            } catch {}
+            return merged;
+          });
+        }
+      } catch {
+        // Safe fallback
+      }
+    };
+    fetchRemoteRates();
+  }, []);
 
   const [employees, setEmployees] = useState<Employee[]>(() => {
     const saved = localStorage.getItem('masar_employees');
@@ -1601,6 +1730,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     enqueueSync('employees', 'insert', newEmployee);
   };
 
+  const deleteEmployee = (id: string) => {
+    setEmployees(prev => prev.filter(emp => emp.id !== id));
+    enqueueSync('employees', 'delete', { id });
+  };
+
   // Authentication Handlers
   const login = (id: string) => {
     const user = employees.find(e => e.id === id);
@@ -1750,6 +1884,56 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }));
     enqueueSync('system_settings', 'upsert', { type: 'invoice', invoice });
   };
+
+  const setMonthExchangeRate = useCallback(async (monthKey: string, rate: number) => {
+    const validRate = Number(rate) || 0;
+    setExchangeRates(prev => {
+      const updated = { ...prev, [monthKey]: validRate };
+      try {
+        localStorage.setItem('masar_exchange_rates', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+
+    enqueueSync('exchange_rates', 'upsert', {
+      id: `rate-${monthKey}`,
+      month_key: monthKey,
+      rate: validRate,
+      updated_at: new Date().toISOString(),
+    });
+
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.from('exchange_rates').upsert({
+          id: `rate-${monthKey}`,
+          month_key: monthKey,
+          rate: validRate,
+          updated_at: new Date().toISOString(),
+        });
+      } catch {
+        // Handled through queue
+      }
+    }
+  }, [enqueueSync]);
+
+  const getExchangeRateForMonth = useCallback((dateOrKey: Date | string): number => {
+    let key = '';
+    if (typeof dateOrKey === 'string') {
+      if (dateOrKey.includes('-')) {
+        const parts = dateOrKey.split('-');
+        key = `${parts[0]}-${parts[1].padStart(2, '0')}`;
+      } else {
+        key = dateOrKey;
+      }
+    } else if (dateOrKey instanceof Date) {
+      key = format(dateOrKey, 'yyyy-MM');
+    }
+    return exchangeRates[key] || 0;
+  }, [exchangeRates]);
+
+  const currentMonthKey = format(selectedDate, 'yyyy-MM');
+  const currentMonthExchangeRate = exchangeRates[currentMonthKey] || 0;
+
 
   const addServiceConfig = (service: { name: string; costItems: string[] }) => {
     setSettings(prev => {
@@ -1929,7 +2113,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       orders, setOrders, reorderOrders, addOrder, deleteOrder, getNextSerialNumber, updateOrderStatus, toggleOrderPaidStatus, toggleOrderPinned, updateOrder,
       inventory, addInventoryItem, updateInventoryQuantity,
       expenses, addExpense, deleteExpense, updateExpense,
-      employees, addEmployee, updateEmployee,
+      employees, addEmployee, updateEmployee, deleteEmployee,
       currentUser, login, loginWithPasscode, loginWithSupabaseAuth, logout, simulateRole,
       syncState,
       pendingSyncCount: syncQueue.length,
@@ -1967,6 +2151,18 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       isKioskMode,
       setIsKioskMode,
       toggleKioskMode,
+      selectedDate,
+      setSelectedDate,
+      selectedMonth,
+      selectedYear,
+      setSelectedMonth,
+      setSelectedYear,
+      setSelectedMonthYear,
+      totalExpensesForSelectedMonth,
+      exchangeRates,
+      setMonthExchangeRate,
+      getExchangeRateForMonth,
+      currentMonthExchangeRate,
     }}>
       {children}
     </AppContext.Provider>
