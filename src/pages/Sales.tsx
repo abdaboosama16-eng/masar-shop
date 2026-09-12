@@ -522,8 +522,8 @@ export default function Sales() {
         </div>
       )}
 
-      {/* Tabs Navigation (Navigation Tabs Only) */}
-      <div className="flex items-center gap-2 p-1.5 bg-slate-100/90 dark:bg-slate-800/90 rounded-xl border border-slate-200/80 dark:border-slate-700 shadow-xs no-print">
+      {/* Tabs Navigation (Navigation Tabs Only - Sticky Header) */}
+      <div className="sticky top-0 z-40 flex items-center gap-2 p-1.5 bg-slate-100/95 dark:bg-slate-800/95 backdrop-blur-md rounded-xl border border-slate-200/80 dark:border-slate-700 shadow-md no-print">
         
         {/* Tab 1: سجل الفواتير */}
         <button

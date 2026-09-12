@@ -264,10 +264,12 @@ interface AppContextType {
   addInventoryItem: (item: Omit<InventoryItem, 'id'>) => void;
   updateInventoryQuantity: (id: string, delta: number) => void;
   expenses: Expense[];
+  setExpenses: React.Dispatch<React.SetStateAction<Expense[]>>;
   addExpense: (expense: Omit<Expense, 'id'>) => void;
   deleteExpense: (id: string) => void;
   updateExpense: (id: string, updatedFields: Partial<Expense>) => void;
   employees: Employee[];
+  setEmployees: React.Dispatch<React.SetStateAction<Employee[]>>;
   addEmployee: (employee: Omit<Employee, 'id'>) => void;
   updateEmployee: (id: string, employee: Partial<Employee>) => void;
   deleteEmployee: (id: string) => void;
@@ -1501,9 +1503,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     };
     
     setOrders(prevOrders => {
-      const updated = [...prevOrders, newOrder];
+      const updated = [newOrder, ...prevOrders];
       try {
         localStorage.setItem('masar_orders', JSON.stringify(updated));
+        localStorage.setItem('masar_invoices', JSON.stringify(updated));
       } catch (err) {
         console.error('Failed to update masar_orders in localStorage:', err);
       }
@@ -1549,18 +1552,27 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setOrders(newOrders);
     try {
       localStorage.setItem('masar_orders', JSON.stringify(newOrders));
+      localStorage.setItem('masar_invoices', JSON.stringify(newOrders));
     } catch (err) {
       console.error('Failed to update masar_orders in localStorage:', err);
     }
   };
 
   const updateOrderStatus = (id: string, status: Order['status']) => {
-    const updated = orders.map(o => o.id === id ? { ...o, status, pendingSync: true } : o);
-    setOrders(updated);
-    const target = updated.find(o => o.id === id);
-    if (target) {
-      enqueueSync('orders', 'update', target);
-    }
+    setOrders(prevOrders => {
+      const updated = prevOrders.map(o => o.id === id ? { ...o, status, pendingSync: true } : o);
+      try {
+        localStorage.setItem('masar_orders', JSON.stringify(updated));
+        localStorage.setItem('masar_invoices', JSON.stringify(updated));
+      } catch (err) {
+        console.error('Failed to update masar_orders in localStorage:', err);
+      }
+      const target = updated.find(o => o.id === id);
+      if (target) {
+        enqueueSync('orders', 'update', target);
+      }
+      return updated;
+    });
   };
 
   const toggleOrderPaidStatus = (id: string) => {
@@ -1577,12 +1589,18 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           ...o,
           isPaid: nextPaid,
           paidAt: nextPaid ? new Date().toISOString() : undefined,
-          // When marked as paid, update deposit to full price and remaining to 0 if previously unpaid
           deposit: nextPaid ? o.price : (o.deposit === o.price ? 0 : o.deposit),
           remaining: nextPaid ? 0 : (o.remaining === 0 ? o.price : o.remaining),
           pendingSync: true,
         };
       });
+
+      try {
+        localStorage.setItem('masar_orders', JSON.stringify(updated));
+        localStorage.setItem('masar_invoices', JSON.stringify(updated));
+      } catch (err) {
+        console.error('Failed to update masar_orders in localStorage:', err);
+      }
 
       const updatedTarget = updated.find(o => o.id === id);
       if (updatedTarget) {
@@ -1603,6 +1621,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
       try {
         localStorage.setItem('masar_orders', JSON.stringify(updated));
+        localStorage.setItem('masar_invoices', JSON.stringify(updated));
       } catch (err) {
         console.error('Failed to update masar_orders with pinned state:', err);
       }
@@ -1621,14 +1640,31 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       const updated = prevOrders.map(o => {
         if (o.id !== id) return o;
         const merged: Order = { ...o, ...updates, pendingSync: true };
-        const calculatedCost = getOrderTotalDetailCosts(merged);
-        const calculatedProfit = getOrderNetProfit({ ...merged, cost: calculatedCost });
+        
+        let calculatedCost = merged.cost;
+        if (updates.cost !== undefined) {
+          calculatedCost = typeof updates.cost === 'number' ? updates.cost : (parseFloat(String(updates.cost || 0)) || 0);
+        } else {
+          calculatedCost = getOrderTotalDetailCosts(merged);
+        }
+
+        const price = typeof merged.price === 'number' ? merged.price : (parseFloat(String(merged.price || 0)) || 0);
+        const calculatedProfit = Number((price - (calculatedCost || 0)).toFixed(2));
+
         return {
           ...merged,
           cost: calculatedCost,
           expectedProfit: calculatedProfit,
         };
       });
+
+      try {
+        localStorage.setItem('masar_orders', JSON.stringify(updated));
+        localStorage.setItem('masar_invoices', JSON.stringify(updated));
+      } catch (err) {
+        console.error('Failed to update masar_orders in localStorage:', err);
+      }
+
       const target = updated.find(o => o.id === id);
       if (target) {
         enqueueSync('orders', 'update', target);
@@ -1710,14 +1746,22 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   
   const updateEmployee = (id: string, updatedFields: Partial<Employee>) => {
-    setEmployees(prev => prev.map(emp => {
-      if (emp.id === id) {
-        const newEmp = { ...emp, ...updatedFields, pendingSync: true };
-        enqueueSync('employees', 'update', newEmp);
-        return newEmp;
+    setEmployees(prev => {
+      const updated = prev.map(emp => {
+        if (emp.id === id) {
+          const newEmp = { ...emp, ...updatedFields, pendingSync: true };
+          enqueueSync('employees', 'update', newEmp);
+          return newEmp;
+        }
+        return emp;
+      });
+      try {
+        localStorage.setItem('masar_employees', JSON.stringify(updated));
+      } catch (err) {
+        console.error(err);
       }
-      return emp;
-    }));
+      return updated;
+    });
   };
 
   const addEmployee = (employee: Omit<Employee, 'id'>) => {
@@ -1726,12 +1770,28 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       id: Math.random().toString(36).substring(2, 9),
       pendingSync: true,
     };
-    setEmployees([newEmployee, ...employees]);
+    setEmployees(prev => {
+      const updated = [newEmployee, ...prev];
+      try {
+        localStorage.setItem('masar_employees', JSON.stringify(updated));
+      } catch (err) {
+        console.error(err);
+      }
+      return updated;
+    });
     enqueueSync('employees', 'insert', newEmployee);
   };
 
   const deleteEmployee = (id: string) => {
-    setEmployees(prev => prev.filter(emp => emp.id !== id));
+    setEmployees(prev => {
+      const updated = prev.filter(emp => emp.id !== id);
+      try {
+        localStorage.setItem('masar_employees', JSON.stringify(updated));
+      } catch (err) {
+        console.error(err);
+      }
+      return updated;
+    });
     enqueueSync('employees', 'delete', { id });
   };
 
@@ -2112,8 +2172,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     <AppContext.Provider value={{
       orders, setOrders, reorderOrders, addOrder, deleteOrder, getNextSerialNumber, updateOrderStatus, toggleOrderPaidStatus, toggleOrderPinned, updateOrder,
       inventory, addInventoryItem, updateInventoryQuantity,
-      expenses, addExpense, deleteExpense, updateExpense,
-      employees, addEmployee, updateEmployee, deleteEmployee,
+      expenses, setExpenses, addExpense, deleteExpense, updateExpense,
+      employees, setEmployees, addEmployee, updateEmployee, deleteEmployee,
       currentUser, login, loginWithPasscode, loginWithSupabaseAuth, logout, simulateRole,
       syncState,
       pendingSyncCount: syncQueue.length,

@@ -28,6 +28,7 @@ import {
 import { format, parseISO, startOfMonth, endOfMonth, isWithinInterval, addMonths, subMonths, isBefore } from 'date-fns';
 import { ar } from 'date-fns/locale';
 import { useAppContext, defaultServicesConfig } from '../context/AppContext';
+import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
 import CostItemsPopover from './CostItemsPopover';
 import { getOrderTotalDetailCosts, getOrderNetProfit, isSponsoredAds } from '../utils/financialCalculations';
 import ExchangeRateModal from './ExchangeRateModal';
@@ -435,38 +436,178 @@ export default function MonthlySalesGrid({
 
   // ثانياً: دالة نسخ / تكرار الفاتورة (Duplicate Row) وإدراج السطر المنسوخ في أسفل الجدول
   const handleDuplicate = (orderToDuplicate: Order) => {
-    if (onDuplicateOrder) {
-      onDuplicateOrder(orderToDuplicate);
-      return;
-    }
+    handleOpenSmartDuplicateModal(orderToDuplicate);
+  };
 
+  // حالة تمييز السطر بالكامل باللون البرتقالي عند النقر على نوع الخدمة
+  const [orangeRowIds, setOrangeRowIds] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem('masar_orange_rows');
+      if (saved) return new Set(JSON.parse(saved));
+    } catch {}
+    return new Set();
+  });
+
+  const handleToggleOrangeHighlight = (orderId: string | number) => {
+    const idStr = String(orderId);
+    setOrangeRowIds(prev => {
+      const next = new Set(prev);
+      if (next.has(idStr)) {
+        next.delete(idStr);
+      } else {
+        next.add(idStr);
+      }
+      try {
+        localStorage.setItem('masar_orange_rows', JSON.stringify(Array.from(next)));
+      } catch {}
+      return next;
+    });
+  };
+
+  // نافذة النسخ الذكية وترحيل الفاتورة إلى شهر آخر
+  const [duplicateModalOrder, setDuplicateModalOrder] = useState<Order | null>(null);
+  const [targetDuplicateMonth, setTargetDuplicateMonth] = useState<string>('');
+  const [resetPaidInDuplicate, setResetPaidInDuplicate] = useState<boolean>(true);
+
+  // قائمة الأشهر المتاحة للترحيل (أشهر السنة الحالية والقادمة)
+  const availableMonthsForDuplication = useMemo(() => {
+    const base = new Date();
+    const list: { key: string; label: string }[] = [];
+    for (let i = -2; i <= 12; i++) {
+      const d = addMonths(base, i);
+      const key = format(d, 'yyyy-MM');
+      const label = format(d, 'MMMM yyyy', { locale: ar });
+      list.push({ key, label });
+    }
+    return list;
+  }, []);
+
+  const handleOpenSmartDuplicateModal = (order: Order) => {
+    setDuplicateModalOrder(order);
+    const nextMonth = addMonths(selectedDate || new Date(), 1);
+    setTargetDuplicateMonth(format(nextMonth, 'yyyy-MM'));
+    setResetPaidInDuplicate(true);
+  };
+
+  const handleConfirmSmartDuplicate = () => {
+    if (!duplicateModalOrder || !targetDuplicateMonth) return;
+    
+    const [yearStr, monthStr] = targetDuplicateMonth.split('-');
+    const y = parseInt(yearStr, 10);
+    const m = parseInt(monthStr, 10) - 1;
+    
+    // Create a date in that target month
+    const targetDate = new Date(y, m, 1, 10, 0, 0);
     const newSerial = getNextSerialNumber();
     const duplicatedOrder: Omit<Order, 'id'> = {
-      ...orderToDuplicate,
+      ...duplicateModalOrder,
       serialNumber: newSerial,
-      // الاحتفاظ بتاريخ الشهر المعروض أو تاريخ اليوم
-      date: selectedDate ? new Date(selectedDate.getFullYear(), selectedDate.getMonth(), Math.min(new Date().getDate(), 28)).toISOString() : new Date().toISOString(),
-      isPaid: false, // يبدأ غير مدفوع كافتراضي للفاتورة الجديدة
-      paidAt: undefined,
+      date: targetDate.toISOString(),
+      isPaid: resetPaidInDuplicate ? false : Boolean(duplicateModalOrder.isPaid),
+      paidAt: resetPaidInDuplicate ? undefined : duplicateModalOrder.paidAt,
+      deposit: resetPaidInDuplicate ? 0 : duplicateModalOrder.deposit,
+      remaining: resetPaidInDuplicate ? duplicateModalOrder.price : duplicateModalOrder.remaining,
       pendingSync: true,
     };
 
-    // إضافة الفاتورة المكررة، ودالة addOrder تقوم بإدراجها في أسفل الجدول [...prev, newItem]
     addOrder(duplicatedOrder, newSerial);
 
-    // إذا كان هناك ترتيب مخصص للأعمدة، نضيف المعرف الجديد في نهاية مصفوفة الترتيب المخصص
-    if (customOrderIds.length > 0) {
-      const updatedCustomOrder = [...customOrderIds, newSerial];
-      setCustomOrderIds(updatedCustomOrder);
-      try {
-        localStorage.setItem('masar_sales_grid_order', JSON.stringify(updatedCustomOrder));
-      } catch (err) {
-        console.error('Error saving updated masar_sales_grid_order:', err);
-      }
-    }
+    const monthLabel = format(targetDate, 'MMMM yyyy', { locale: ar });
+    alert(`تم نسخ الفاتورة وترحيلها بنجاح إلى شهر (${monthLabel}).`);
+    setDuplicateModalOrder(null);
   };
 
-  // حالة تحديد الصفوف عبر الـ Checkbox (التحديد النشط باللون السماوي Sky Blue)
+  // نافذة إضافة بند فرعي جديد (+)
+  const [subItemModalOrder, setSubItemModalOrder] = useState<Order | null>(null);
+  const [subItemMode, setSubItemMode] = useState<'detail_cost' | 'sub_order'>('detail_cost');
+  const [subItemName, setSubItemName] = useState('');
+  const [subItemAmount, setSubItemAmount] = useState('');
+  const [subItemCategory, setSubItemCategory] = useState<'design' | 'print' | 'external' | 'general'>('general');
+
+  const handleOpenSubItemModal = (order: Order) => {
+    setSubItemModalOrder(order);
+    setSubItemMode('detail_cost');
+    setSubItemName('');
+    setSubItemAmount('');
+    setSubItemCategory('general');
+  };
+
+  const handleConfirmAddSubItem = () => {
+    if (!subItemModalOrder || !subItemName.trim()) return;
+    const numAmount = parseFloat(subItemAmount) || 0;
+
+    if (subItemMode === 'detail_cost') {
+      const currentBreakdown = { ...(subItemModalOrder.costBreakdown || {}) };
+      const currentDetails = { ...(subItemModalOrder.costDetails || {}) };
+      const key = `item_${Date.now()}`;
+      
+      currentBreakdown[key] = numAmount;
+      currentDetails[key] = {
+        name: subItemName.trim(),
+        amount: numAmount,
+        type: subItemCategory,
+      };
+
+      const existingCost = getOrderTotalDetailCosts(subItemModalOrder);
+      const newTotalCost = Number((existingCost + numAmount).toFixed(2));
+      const price = typeof subItemModalOrder.price === 'number' ? subItemModalOrder.price : (parseFloat(String(subItemModalOrder.price || 0)) || 0);
+      const newProfit = Number((price - newTotalCost).toFixed(2));
+
+      const updatedOrderDetails = [
+        subItemModalOrder.invoiceDetails || '',
+        `+ ${subItemName.trim()} (${numAmount} ${currency})`
+      ].filter(Boolean).join(' | ');
+
+      const updates: Partial<Order> = {
+        costBreakdown: currentBreakdown,
+        costDetails: currentDetails,
+        cost: newTotalCost,
+        expectedProfit: newProfit,
+        invoiceDetails: updatedOrderDetails,
+      };
+
+      const idStr = String(subItemModalOrder.id);
+      const updated = invoices.map(o => String(o.id) === idStr ? { ...o, ...updates } : o);
+      setInvoices(updated);
+      try {
+        localStorage.setItem('masar_invoices', JSON.stringify(updated));
+        localStorage.setItem('masar_orders', JSON.stringify(updated));
+      } catch (err) {
+        console.error('Error saving subitem updates:', err);
+      }
+
+      if (onUpdateOrder) {
+        onUpdateOrder(idStr, updates);
+      } else if (contextUpdateOrder) {
+        contextUpdateOrder(idStr, updates);
+      }
+      alert(`تمت إضافة البند الفرعي "${subItemName.trim()}" إلى تكاليف الفاتورة بنجاح.`);
+    } else {
+      const newSerial = getNextSerialNumber();
+      const newSubOrder: Omit<Order, 'id'> = {
+        serialNumber: newSerial,
+        clientName: subItemModalOrder.clientName,
+        serviceType: subItemModalOrder.serviceType || 'خدمة إضافية',
+        description: `بند فرعي تابع للفاتورة #${subItemModalOrder.serialNumber}: ${subItemName.trim()}`,
+        price: numAmount,
+        cost: 0,
+        expectedProfit: numAmount,
+        date: selectedDate ? selectedDate.toISOString() : new Date().toISOString(),
+        invoiceDetails: `بند فرعي تابع للفاتورة #${subItemModalOrder.serialNumber}: ${subItemName.trim()}`,
+        isPaid: false,
+        status: 'قيد التصميم',
+        paymentMethod: 'نقدي',
+        pendingSync: true,
+      };
+
+      addOrder(newSubOrder, newSerial);
+      alert(`تم إنشاء طلبية فرعية جديدة برقم #${newSerial} للعميل ${subItemModalOrder.clientName}.`);
+    }
+
+    setSubItemModalOrder(null);
+  };
+
+  // حالة تحديد الصفوف (التحديد النشط باللون السماوي Cyan)
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
 
   const handleToggleSelectRow = (orderId: string | number) => {
@@ -1370,36 +1511,156 @@ export default function MonthlySalesGrid({
     return Number((tableTotals.sumNetProfit - totalMonthlyExpenses).toFixed(2));
   }, [tableTotals.sumNetProfit, totalMonthlyExpenses]);
 
-  // مساحة الملاحظات العامة للشهر الحالي وتحديثها وحفظها تلقائياً
-  const currentMonthKey = useMemo(() => format(selectedDate, 'yyyy_MM'), [selectedDate]);
+  // مساحة الملاحظات العامة للشهر المحدد وربطها وحفظها في Supabase (Persistence)
+  const selectedYear = selectedDate ? selectedDate.getFullYear() : new Date().getFullYear();
+  const selectedMonth = selectedDate ? selectedDate.getMonth() + 1 : new Date().getMonth() + 1;
+  const monthKey = useMemo(() => `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`, [selectedYear, selectedMonth]);
+  const legacyMonthKey = useMemo(() => format(selectedDate, 'yyyy_MM'), [selectedDate]);
+
   const [monthlyNotes, setMonthlyNotes] = useState<string>(() => {
     try {
-      return localStorage.getItem(`masar_monthly_notes_${currentMonthKey}`) || '';
+      return localStorage.getItem(`masar_monthly_notes_${monthKey}`) || 
+             localStorage.getItem(`masar_monthly_notes_${legacyMonthKey}`) || '';
     } catch {
       return '';
     }
   });
   const [notesSaveStatus, setNotesSaveStatus] = useState<string>('');
+  const notesDebounceTimerRef = React.useRef<any>(null);
+  const currentNotesTextRef = React.useRef<string>(monthlyNotes);
 
-  useEffect(() => {
+  // دالة الحفظ السحابي في Supabase مع التخزين المحلي التلقائي
+  const persistNotesToCloud = async (textToSave: string) => {
     try {
-      const saved = localStorage.getItem(`masar_monthly_notes_${currentMonthKey}`) || '';
-      setMonthlyNotes(saved);
-      setNotesSaveStatus('');
-    } catch {
-      // ignore
-    }
-  }, [currentMonthKey]);
+      localStorage.setItem(`masar_monthly_notes_${monthKey}`, textToSave);
+    } catch {}
 
+    if (isSupabaseConfigured) {
+      setNotesSaveStatus('جاري الحفظ سحابياً...');
+      try {
+        const payload = {
+          id: `note-${monthKey}`,
+          month_key: monthKey,
+          month: selectedMonth,
+          year: selectedYear,
+          notes: textToSave,
+          updated_at: new Date().toISOString(),
+        };
+
+        const { error } = await supabase
+          .from('monthly_notes')
+          .upsert(payload, { onConflict: 'month_key' });
+
+        if (error) {
+          console.warn('Supabase upsert monthly_notes warning:', error);
+          setNotesSaveStatus('تم الحفظ محلياً');
+        } else {
+          setNotesSaveStatus('تم الحفظ في السحابة');
+        }
+      } catch (err) {
+        console.warn('Network / Supabase error saving notes:', err);
+        setNotesSaveStatus('تم الحفظ محلياً');
+      }
+    } else {
+      setNotesSaveStatus('تم الحفظ تلقائياً');
+    }
+
+    setTimeout(() => {
+      setNotesSaveStatus('');
+    }, 2500);
+  };
+
+  // استدعاء الملاحظات الخاصة بالشهر المحدد فور فتح الصفحة وتغيير الشهر
+  useEffect(() => {
+    // 1. استرجاع الكاش المحلي فوراً
+    let cached = '';
+    try {
+      cached = localStorage.getItem(`masar_monthly_notes_${monthKey}`) || 
+               localStorage.getItem(`masar_monthly_notes_${legacyMonthKey}`) || '';
+      setMonthlyNotes(cached);
+      currentNotesTextRef.current = cached;
+      setNotesSaveStatus('');
+    } catch {}
+
+    // 2. جلب الملاحظات المسجلة في Supabase للشهر والسنة المحددة
+    let isCancelled = false;
+    const fetchRemoteNotes = async () => {
+      if (!isSupabaseConfigured) return;
+      try {
+        const { data, error } = await supabase
+          .from('monthly_notes')
+          .select('*')
+          .eq('month_key', monthKey)
+          .maybeSingle();
+
+        if (!isCancelled && !error && data) {
+          const remoteNotes = data.notes ?? data.note ?? '';
+          if (typeof remoteNotes === 'string') {
+            setMonthlyNotes(remoteNotes);
+            currentNotesTextRef.current = remoteNotes;
+            try {
+              localStorage.setItem(`masar_monthly_notes_${monthKey}`, remoteNotes);
+            } catch {}
+          }
+        }
+      } catch (err) {
+        console.warn('Supabase fetch notes error:', err);
+      }
+    };
+
+    fetchRemoteNotes();
+
+    return () => {
+      isCancelled = true;
+      if (notesDebounceTimerRef.current) {
+        clearTimeout(notesDebounceTimerRef.current);
+      }
+    };
+  }, [monthKey, legacyMonthKey, selectedYear, selectedMonth]);
+
+  // الاستماع لتحديثات الملاحظات العامة عند الاستيراد التلقائي
+  useEffect(() => {
+    const handleNotesUpdated = (e: any) => {
+      const targetKey = e?.detail?.monthKey;
+      if (!targetKey || targetKey === monthKey) {
+        const refreshed = localStorage.getItem(`masar_monthly_notes_${monthKey}`) || 
+                          localStorage.getItem(`masar_monthly_notes_${legacyMonthKey}`) || '';
+        setMonthlyNotes(refreshed);
+        currentNotesTextRef.current = refreshed;
+      }
+    };
+    window.addEventListener('masar_notes_updated', handleNotesUpdated);
+    window.addEventListener('storage', handleNotesUpdated);
+    return () => {
+      window.removeEventListener('masar_notes_updated', handleNotesUpdated);
+      window.removeEventListener('storage', handleNotesUpdated);
+    };
+  }, [monthKey, legacyMonthKey]);
+
+  // تحديث النص مع Debounce تلقائي أثناء الكتابة
   const handleNotesChange = (val: string) => {
     setMonthlyNotes(val);
+    currentNotesTextRef.current = val;
     try {
-      localStorage.setItem(`masar_monthly_notes_${currentMonthKey}`, val);
-      setNotesSaveStatus('تم الحفظ تلقائياً');
-      setTimeout(() => setNotesSaveStatus(''), 2000);
-    } catch (e) {
-      console.error('Error saving monthly notes:', e);
+      localStorage.setItem(`masar_monthly_notes_${monthKey}`, val);
+    } catch {}
+
+    if (notesDebounceTimerRef.current) {
+      clearTimeout(notesDebounceTimerRef.current);
     }
+
+    setNotesSaveStatus('جاري الكتابة...');
+    notesDebounceTimerRef.current = setTimeout(() => {
+      persistNotesToCloud(val);
+    }, 1200);
+  };
+
+  // حفظ فوري عند انتهاء المستخدم من الكتابة وخروج مؤشر الفأرة (onBlur)
+  const handleNotesBlur = () => {
+    if (notesDebounceTimerRef.current) {
+      clearTimeout(notesDebounceTimerRef.current);
+    }
+    persistNotesToCloud(currentNotesTextRef.current);
   };
 
   // Export Monthly Data Grid to CSV / Excel
@@ -1696,79 +1957,16 @@ export default function MonthlySalesGrid({
           <p className="text-sm text-slate-600 mt-1">الفترة: {formattedCurrentMonth} | إجمالي الفواتير: {tableTotals.sumInvoices.toLocaleString()} {currency} | هامش الربح: {tableTotals.sumNetProfit.toLocaleString()} {currency}</p>
         </div>
 
-        {/* شريط الإجراءات الجماعية عند تحديد الفواتير */}
-        {selectedRowIds.size > 0 && (
-          <div className="p-2.5 px-4 bg-sky-50 dark:bg-sky-950/70 border-b border-sky-200 dark:border-sky-800 text-sky-900 dark:text-sky-200 text-xs font-bold shadow-xs flex items-center justify-between flex-wrap gap-2 animate-in fade-in duration-150">
-            <div className="flex items-center gap-2">
-              <CheckSquare size={16} className="text-sky-600 dark:text-sky-400" />
-              <span>تم تحديد {selectedRowIds.size} فاتورة (تحديد نشط)</span>
-            </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <button
-                type="button"
-                id="btn-batch-mark-paid"
-                onClick={() => handleBatchMarkPaid(true)}
-                className="px-2.5 py-1 rounded-lg bg-amber-200 hover:bg-amber-300 text-amber-950 dark:bg-amber-900/80 dark:text-amber-200 border border-amber-400/70 transition-colors shadow-2xs cursor-pointer text-xs font-bold"
-                title="تحديد الفواتير المحددة كـ تم الدفع من قبل الزبون"
-              >
-                تحديد كـ تم الدفع من قبل الزبون
-              </button>
-              <button
-                type="button"
-                id="btn-batch-mark-unpaid"
-                onClick={() => handleBatchMarkPaid(false)}
-                className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 transition-colors shadow-2xs cursor-pointer text-xs font-bold"
-                title="تحديد كـ غير مدفوع"
-              >
-                تحديد كـ غير مدفوع
-              </button>
-              <button
-                type="button"
-                id="btn-batch-delete"
-                onClick={handleBatchDelete}
-                className="px-2.5 py-1 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300 border border-red-200 dark:border-red-800 transition-colors cursor-pointer text-xs font-bold"
-                title="حذف الفواتير المحددة"
-              >
-                حذف المحدد
-              </button>
-              <button
-                type="button"
-                id="btn-batch-clear"
-                onClick={() => setSelectedRowIds(new Set())}
-                className="px-2.5 py-1 rounded-lg text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white cursor-pointer text-xs font-medium"
-              >
-                إلغاء التحديد
-              </button>
-            </div>
-          </div>
-        )}
-
         {/* Table Container */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-right border-collapse text-xs">
-            <thead>
-              <tr className="bg-slate-100/90 dark:bg-slate-800/90 border-b border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold select-none">
+        <div className="overflow-x-auto w-full">
+          <table className="w-full text-right border-collapse text-xs min-w-[950px]">
+            <thead className="sticky top-0 z-20 backdrop-blur-sm shadow-xs">
+              <tr className="bg-slate-100/95 dark:bg-slate-800/95 border-b border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold select-none">
                 
                 {/* 0. أيقونة السحب والترتيب اليدوي في بداية الجدول (أقصى اليمين) */}
                 <th scope="col" className="py-3 px-2 border-l border-slate-200/80 dark:border-slate-700 w-10 text-center select-none print:hidden">
                   <span className="sr-only">ترتيب الصفوف</span>
                   <GripVertical size={16} className="mx-auto text-slate-400 dark:text-slate-500" />
-                </th>
-
-                {/* عنصر تفاعلي: مربع التحديد في بداية السطر مع حالة الدفع */}
-                <th scope="col" className="py-3 px-2 border-l border-slate-200/80 dark:border-slate-700 min-w-[130px] text-center select-none">
-                  <div className="flex items-center justify-center gap-1.5">
-                    <input
-                      type="checkbox"
-                      id="select-all-orders-header"
-                      checked={isAllSelected}
-                      onChange={handleToggleSelectAll}
-                      className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-sky-600 focus:ring-sky-500 accent-sky-600 cursor-pointer"
-                      title={isAllSelected ? "إلغاء تحديد كافة الفواتير" : "تحديد كافة فواتير هذا الشهر"}
-                      aria-label="تحديد كافة الفواتير"
-                    />
-                    <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300">حالة الدفع</span>
-                  </div>
                 </th>
 
                 {/* 1. نوع الخدمة */}
@@ -1797,12 +1995,12 @@ export default function MonthlySalesGrid({
                 </th>
 
                 {/* 6. الملاحظات */}
-                <th scope="col" className="py-3 px-4 font-bold min-w-[200px] border-l border-slate-200/80 dark:border-slate-700">
+                <th scope="col" className="py-3 px-4 font-bold min-w-[200px] border-l border-slate-200/80 dark:border-slate-700 text-center">
                   الملاحظات
                 </th>
 
                 {/* 7. إجراءات السطر في أقصى اليسار */}
-                <th scope="col" className="py-3 px-2 text-center font-bold min-w-[70px] print:hidden select-none">
+                <th scope="col" className="py-3 px-2 text-center font-bold min-w-[85px] w-24 print:hidden select-none">
                   الإجراءات
                 </th>
               </tr>
@@ -1827,38 +2025,6 @@ export default function MonthlySalesGrid({
                     >
                       {/* عمود فارغ للسحب أثناء التعديل المباشر */}
                       <td className="py-2 px-2 border-l border-blue-200 dark:border-blue-800 text-center print:hidden"></td>
-
-                      {/* أزرار التحكم بالتعديل: زر حفظ أخضر وزر إلغاء رمادي/أحمر استبدالاً لمربع الدفع */}
-                      <td className="py-2 px-2 border-l border-blue-200 dark:border-blue-800 text-center bg-blue-100/70 dark:bg-blue-900/40">
-                        <div className="flex items-center justify-center gap-1">
-                          <button
-                            type="button"
-                            id={`btn-save-edit-${order.id}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleSaveEdit(order.id);
-                            }}
-                            className="relative z-10 cursor-pointer p-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-transform active:scale-95"
-                            title="حفظ التعديلات"
-                            aria-label="حفظ التعديلات"
-                          >
-                            <Check size={14} className="stroke-[3]" />
-                          </button>
-                          <button
-                            type="button"
-                            id={`btn-cancel-edit-${order.id}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleCancelEdit();
-                            }}
-                            className="relative z-10 cursor-pointer p-1.5 rounded-lg bg-slate-200 hover:bg-rose-100 dark:bg-slate-800 dark:hover:bg-rose-950/80 text-slate-700 hover:text-rose-700 dark:text-slate-300 dark:hover:text-rose-300 shadow-xs transition-transform active:scale-95"
-                            title="إلغاء التعديل والتراجع"
-                            aria-label="إلغاء التعديل والتراجع"
-                          >
-                            <X size={14} className="stroke-[3]" />
-                          </button>
-                        </div>
-                      </td>
 
                       {/* 1. نوع الخدمة */}
                       <td className="py-2 px-3 border-l border-blue-200 dark:border-blue-800 text-center">
@@ -2050,8 +2216,37 @@ export default function MonthlySalesGrid({
                         </div>
                       </td>
 
-                      {/* 7. عمود الإجراءات (فارغ أثناء التعديل) */}
-                      <td className="py-2 px-2 text-center print:hidden"></td>
+                      {/* 7. عمود الإجراءات: حفظ وإلغاء التعديل */}
+                      <td className="py-2 px-2 text-center print:hidden">
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            type="button"
+                            id={`btn-save-edit-${order.id}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSaveEdit(order.id);
+                            }}
+                            className="relative z-10 cursor-pointer p-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-transform active:scale-95"
+                            title="حفظ التعديلات"
+                            aria-label="حفظ التعديلات"
+                          >
+                            <Check size={14} className="stroke-[3]" />
+                          </button>
+                          <button
+                            type="button"
+                            id={`btn-cancel-edit-${order.id}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleCancelEdit();
+                            }}
+                            className="relative z-10 cursor-pointer p-1.5 rounded-lg bg-slate-200 hover:bg-rose-100 dark:bg-slate-800 dark:hover:bg-rose-950/80 text-slate-700 hover:text-rose-700 dark:text-slate-300 dark:hover:text-rose-300 shadow-xs transition-transform active:scale-95"
+                            title="إلغاء التعديل والتراجع"
+                            aria-label="إلغاء التعديل والتراجع"
+                          >
+                            <X size={14} className="stroke-[3]" />
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   );
                 }
@@ -2069,19 +2264,16 @@ export default function MonthlySalesGrid({
                 const displayedNotes = (order.notes || '').trim();
 
                 // 1. تحديد نمط ولون الصف:
-                // - عند تفعيل Checkbox التحديد: اللون السماوي/Sky Blue الهادئ للإشارة للتحديد النشط
-                // - عند حالة "تم الدفع من قبل الزبون": اللون الأصفر/Amber
+                // التفاعل بسيط ومباشر: عند النقر على أي مكان في صف الفاتورة لتحديده، يتغير لون خلفية الصف بالكامل إلى البرتقالي (Orange) فقط
+                const isRowSelected = selectedRowIds.has(String(order.id)) || orangeRowIds.has(String(order.id));
                 let rowBgClass = '';
                 if (dragOverOrderId === order.id && draggedOrderId !== order.id) {
-                  rowBgClass = 'border-t-2 border-blue-500 dark:border-blue-400 bg-blue-50/70 dark:bg-blue-900/30';
+                  rowBgClass = 'border-t-2 border-orange-500 dark:border-orange-400 bg-orange-50/70 dark:bg-orange-900/30';
                 } else if (draggedOrderId === order.id) {
                   rowBgClass = 'opacity-40 bg-slate-100 dark:bg-slate-800';
-                } else if (isSelected) {
-                  // التحديد النشط بالـ Checkbox: اللون السماوي الهادئ Sky Blue
-                  rowBgClass = 'bg-sky-50 dark:bg-sky-950/40 text-sky-950 dark:text-sky-100 border-r-4 border-r-sky-500 hover:bg-sky-100/80 dark:hover:bg-sky-900/50';
-                } else if (isPaidByClient) {
-                  // الفواتير التي حالتها تم الدفع من قبل الزبون: اللون الأصفر / Amber
-                  rowBgClass = 'bg-amber-100/90 dark:bg-amber-950/40 text-amber-950 dark:text-amber-100 border-r-4 border-r-amber-500 hover:bg-amber-200/80 dark:hover:bg-amber-900/60';
+                } else if (isRowSelected) {
+                  // التحديد النشط: اللون البرتقالي (Orange) فقط للصف بالكامل
+                  rowBgClass = 'bg-orange-100/95 dark:bg-orange-950/80 text-orange-950 dark:text-orange-100 border-r-4 border-r-orange-500 hover:bg-orange-200/90 dark:hover:bg-orange-900/80 ring-1 ring-orange-400/50 shadow-xs';
                 } else if (order.isUnderReview) {
                   rowBgClass = 'bg-rose-50/70 dark:bg-rose-950/40 text-slate-900 dark:text-slate-100 border-r-4 border-r-rose-400 hover:bg-rose-100/60 dark:hover:bg-rose-900/50';
                 } else {
@@ -2096,7 +2288,12 @@ export default function MonthlySalesGrid({
                     onDragOver={(e) => handleDragOver(e, order.id)}
                     onDrop={(e) => handleDrop(e, order.id)}
                     onDragEnd={handleDragEnd}
-                    className={`transition-all duration-150 group ${rowBgClass}`}
+                    onClick={() => {
+                      if (!isTotalRow) {
+                        handleToggleSelectRow(order.id);
+                      }
+                    }}
+                    className={`transition-all duration-150 group cursor-pointer ${rowBgClass}`}
                   >
                     {/* 0. أيقونة السحب Drag Handle في بداية كل صف (أقصى اليمين) */}
                     <td 
@@ -2121,74 +2318,18 @@ export default function MonthlySalesGrid({
                       )}
                     </td>
 
-                    {/* مربع التحديد باللون السماوي + زر حالة الدفع باللون الأصفر */}
-                    <td className="py-3 px-2 border-l border-slate-200/60 dark:border-slate-800 text-center">
-                      {isTotalRow ? (
-                        <span className="text-slate-400 dark:text-slate-600 font-bold select-none">-</span>
-                      ) : (
-                        <div className="flex items-center justify-center gap-1.5 flex-nowrap">
-                          {/* 1. Checkbox التحديد النشط (Sky Blue) */}
-                          <input
-                            type="checkbox"
-                            id={`order-select-${order.id}`}
-                            checked={isSelected}
-                            onChange={(e) => {
-                              e.stopPropagation();
-                              handleToggleSelectRow(order.id);
-                            }}
-                            className="relative z-10 cursor-pointer w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-sky-600 focus:ring-sky-400 focus:ring-2 transition-all accent-sky-600 shrink-0"
-                            title={isSelected ? 'إلغاء التحديد' : 'تحديد هذا السطر (تحديد نشط)'}
-                            aria-label={`تحديد فاتورة ${order.clientName}`}
-                          />
-
-                          {/* 2. زر / شارة حالة الدفع من قبل الزبون (Amber) */}
-                          <button
-                            type="button"
-                            id={`btn-toggle-paid-${order.id}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleTogglePaid(order.id);
-                            }}
-                            className={`relative z-10 cursor-pointer px-2 py-0.5 rounded-md text-[10px] font-bold transition-all border whitespace-nowrap shadow-2xs ${
-                              isPaidByClient
-                                ? 'bg-amber-200 text-amber-950 dark:bg-amber-900/80 dark:text-amber-200 border-amber-400/80 hover:bg-amber-300 dark:hover:bg-amber-800'
-                                : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-amber-50 hover:text-amber-800 dark:hover:bg-amber-950/40'
-                            }`}
-                            title={isPaidByClient ? 'تم الدفع من قبل الزبون (انقر لإلغاء حالة الدفع)' : 'غير مدفوع (انقر للتعيين كـ تم الدفع من قبل الزبون)'}
-                          >
-                            {isPaidByClient ? 'تم الدفع' : 'غير مدفوع'}
-                          </button>
-
-                          {/* 3. زر التعديل السريع */}
-                          <button
-                            type="button"
-                            id={`btn-edit-order-${order.id}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingRowId(order.id);
-                              handleStartEdit(order);
-                            }}
-                            className="relative z-10 cursor-pointer p-1 rounded-md text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-slate-800 transition-colors inline-flex items-center justify-center opacity-70 group-hover:opacity-100"
-                            title="تعديل بيانات الفاتورة مباشرة من السجل"
-                            aria-label={`تعديل الفاتورة الخاصة بـ ${order.clientName}`}
-                          >
-                            <Pencil size={13} />
-                          </button>
-                        </div>
-                      )}
-                    </td>
-
                     {/* 1. نوع الخدمة */}
-                    <td className="py-2.5 px-3 border-l border-slate-200/60 dark:border-slate-800 text-center">
-                      <div className="relative inline-block w-full max-w-[175px]">
+                    <td 
+                      className="py-2.5 px-3 border-l border-slate-200/60 dark:border-slate-800 text-center select-none"
+                    >
+                      <div className="relative inline-block w-full max-w-[175px]" onClick={(e) => e.stopPropagation()}>
                         <select
                           id={`select-service-${order.id}`}
                           value={order.serviceType || availableServices[0]?.name || 'لافتة إعلانية'}
                           onChange={(e) => {
-                            e.stopPropagation();
                             handleServiceChange(order.id, e.target.value);
                           }}
-                          className={`w-full text-center text-xs font-bold py-1.5 pr-2 pl-6 rounded-lg border appearance-none cursor-pointer transition-colors shadow-2xs focus:ring-2 focus:ring-amber-500 focus:outline-hidden ${getServiceSelectClass(order.serviceType)}`}
+                          className={`w-full text-center text-xs font-bold py-1.5 pr-2 pl-6 rounded-lg border appearance-none cursor-pointer transition-colors shadow-2xs focus:ring-2 focus:ring-orange-500 focus:outline-hidden ${getServiceSelectClass(order.serviceType)}`}
                           title="تغيير نوع الخدمة واستدعاء قالب التكلفة تلقائياً"
                         >
                           {availableServices.map((srv) => (
@@ -2284,16 +2425,16 @@ export default function MonthlySalesGrid({
                     </td>
 
                     {/* 6. الملاحظات المستقلة */}
-                    <td className="py-3 px-4 max-w-[260px] border-l border-slate-200/60 dark:border-slate-800">
+                    <td className="py-3 px-4 max-w-[260px] border-l border-slate-200/60 dark:border-slate-800 text-center">
                       {displayedNotes ? (
                         <span 
-                          className="text-[11px] text-slate-600 dark:text-slate-300 font-medium truncate block max-w-[250px] cursor-help hover:text-slate-900 dark:hover:text-white"
+                          className="text-[11px] text-slate-600 dark:text-slate-300 font-medium truncate block max-w-[250px] mx-auto text-center cursor-help hover:text-slate-900 dark:hover:text-white"
                           title={displayedNotes}
                         >
                           {displayedNotes}
                         </span>
                       ) : (
-                        <span className="text-[11px] text-slate-300 dark:text-slate-600 select-none">
+                        <span className="text-[11px] text-slate-300 dark:text-slate-600 select-none block text-center">
                           —
                         </span>
                       )}
@@ -2320,41 +2461,22 @@ export default function MonthlySalesGrid({
                             <Pencil size={15} />
                           </button>
 
-                          {/* ثانياً: أيقونة نسخ/تكرار الفاتورة (Copy SVG) */}
+                          {/* ثانياً: أيقونة نسخ وترحيل الفاتورة إلى شهر آخر (Copy Modal) */}
                           <button
                             type="button"
                             id={`btn-duplicate-order-${order.id}`}
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleDuplicate(order);
+                              handleOpenSmartDuplicateModal(order);
                             }}
                             className="relative z-10 cursor-pointer p-1.5 rounded-lg text-slate-400 hover:text-cyan-600 dark:hover:text-cyan-400 hover:bg-cyan-50 dark:hover:bg-slate-800 transition-colors inline-flex items-center justify-center"
-                            title="نسخ وتكرار هذا البند لأسفل الجدول"
-                            aria-label={`تكرار فاتورة ${order.clientName}`}
+                            title="نسخ وترحيل الفاتورة إلى شهر آخر"
+                            aria-label={`نسخ وترحيل فاتورة ${order.clientName}`}
                           >
                             <Copy size={15} />
                           </button>
 
-                          {/* ثالثاً: أيقونة تثبيت البند للأشهر القادمة (Pin SVG) */}
-                          <button
-                            type="button"
-                            id={`btn-pin-order-${order.id}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleTogglePin(order.id);
-                            }}
-                            className={`relative z-10 cursor-pointer p-1.5 rounded-lg transition-colors inline-flex items-center justify-center ${
-                              order.isPinned 
-                                ? 'text-amber-500 bg-amber-50 dark:bg-amber-950/60 dark:text-amber-400 shadow-xs' 
-                                : 'text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-50/50 dark:hover:bg-slate-800'
-                            }`}
-                            title={order.isPinned ? "البند مثبت للأشهر القادمة (انقر لإلغاء التثبيت)" : "تثبيت البند للأشهر القادمة"}
-                            aria-label={`تثبيت فاتورة ${order.clientName}`}
-                          >
-                            <Pin size={15} className={order.isPinned ? "fill-amber-500/30 text-amber-500 dark:text-amber-400" : ""} />
-                          </button>
-
-                          {/* رابعاً: أيقونة تمييز الفاتورة تحت المراجعة (AlertCircle) */}
+                          {/* ثالثاً: أيقونة تمييز الفاتورة تحت المراجعة (AlertCircle) */}
                           <button
                             type="button"
                             id={`btn-review-order-${order.id}`}
@@ -2401,32 +2523,6 @@ export default function MonthlySalesGrid({
                 <tr className="bg-blue-50/90 dark:bg-blue-950/50 border-y-2 border-blue-400 dark:border-blue-500 animate-in fade-in slide-in-from-bottom-1 duration-150 shadow-inner">
                   {/* عمود فارغ للسحب أثناء إضافة سطر جديد */}
                   <td className="py-2 px-2 border-l border-blue-200 dark:border-blue-800 text-center print:hidden"></td>
-
-                  {/* أزرار الحفظ والإلغاء السريعة */}
-                  <td className="py-2 px-2 border-l border-blue-200 dark:border-blue-800 text-center bg-blue-100/60 dark:bg-blue-900/40">
-                    <div className="flex items-center justify-center gap-1">
-                      <button
-                        type="button"
-                        id="btn-save-inline-row-icon"
-                        onClick={handleSaveInlineRow}
-                        className="relative z-10 cursor-pointer p-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-transform active:scale-95"
-                        title="حفظ الفاتورة وإدراجها في السجل"
-                        aria-label="حفظ الفاتورة"
-                      >
-                        <Check size={14} className="stroke-[3]" />
-                      </button>
-                      <button
-                        type="button"
-                        id="btn-cancel-inline-row-icon"
-                        onClick={() => setIsAddingRow(false)}
-                        className="relative z-10 cursor-pointer p-1.5 rounded-lg bg-rose-100 hover:bg-rose-200 dark:bg-rose-950/80 dark:hover:bg-rose-900 text-rose-700 dark:text-rose-300 shadow-xs transition-transform active:scale-95"
-                        title="إلغاء الإضافة"
-                        aria-label="إلغاء الإضافة"
-                      >
-                        <X size={14} className="stroke-[3]" />
-                      </button>
-                    </div>
-                  </td>
 
                   {/* 1. نوع الخدمة */}
                   <td className="py-2 px-3 border-l border-blue-200 dark:border-blue-800 text-center">
@@ -2611,15 +2707,38 @@ export default function MonthlySalesGrid({
                     </div>
                   </td>
 
-                  {/* 7. عمود الإجراءات (فارغ أثناء الإضافة) */}
-                  <td className="py-2 px-2 text-center print:hidden"></td>
+                  {/* 7. عمود الإجراءات أثناء الإضافة: حفظ وإلغاء */}
+                  <td className="py-2 px-2 text-center print:hidden">
+                    <div className="flex items-center justify-center gap-1">
+                      <button
+                        type="button"
+                        id="btn-save-inline-row-icon"
+                        onClick={handleSaveInlineRow}
+                        className="relative z-10 cursor-pointer p-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-transform active:scale-95"
+                        title="حفظ الفاتورة وإدراجها في السجل"
+                        aria-label="حفظ الفاتورة"
+                      >
+                        <Check size={14} className="stroke-[3]" />
+                      </button>
+                      <button
+                        type="button"
+                        id="btn-cancel-inline-row-icon"
+                        onClick={() => setIsAddingRow(false)}
+                        className="relative z-10 cursor-pointer p-1.5 rounded-lg bg-rose-100 hover:bg-rose-200 dark:bg-rose-950/80 dark:hover:bg-rose-900 text-rose-700 dark:text-rose-300 shadow-xs transition-transform active:scale-95"
+                        title="إلغاء الإضافة"
+                        aria-label="إلغاء الإضافة"
+                      >
+                        <X size={14} className="stroke-[3]" />
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               )}
 
               {/* ثالثاً (الأهم): اعرض رسالة "لا توجد فواتير مسجلة في شهر ..." فقط وحصرياً إذا كان السجل فارغاً و لم يكن المستخدم في وضع الإضافة */}
               {filteredGridOrders.length === 0 && !isAddingRow && (
                 <tr>
-                  <td colSpan={9} className="py-12 text-center text-slate-500 dark:text-slate-400">
+                  <td colSpan={8} className="py-12 text-center text-slate-500 dark:text-slate-400">
                     <div className="flex flex-col items-center justify-center gap-2">
                       <FileSpreadsheet size={32} className="text-slate-300 dark:text-slate-600" />
                       <span className="font-bold text-sm text-slate-700 dark:text-slate-300">
@@ -2628,6 +2747,15 @@ export default function MonthlySalesGrid({
                       <p className="text-xs text-slate-500">
                         يمكنك إضافة طلبيات جديدة أو اختيار شهر آخر من شريط التنقل أعلاه
                       </p>
+                      <button
+                        type="button"
+                        id="btn-empty-add-invoice"
+                        onClick={handleTriggerAddRow}
+                        className="mt-2 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-all cursor-pointer"
+                      >
+                        <Plus size={14} className="stroke-[2.5]" />
+                        <span>إضافة فاتورة الآن</span>
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -2642,21 +2770,30 @@ export default function MonthlySalesGrid({
                 <tr className="bg-slate-200/90 dark:bg-slate-800/95 font-black border-t-2 border-slate-300 dark:border-slate-700 text-xs select-none">
                   
                   {/* Drag column spacer */}
-                  <td className="py-3 px-2 text-center border-l border-slate-300 dark:border-slate-700 text-slate-400 print:hidden">
+                  <td className="py-3 px-2 text-center border-l border-slate-300 dark:border-slate-700 text-slate-400 print:hidden select-none">
                     -
                   </td>
 
-                  {/* Checkbox column spacer */}
-                  <td className="py-3 px-3 text-center border-l border-slate-300 dark:border-slate-700 text-slate-400">
-                    -
+                  {/* الخلية أقصى اليمين (تحت عمود نوع الخدمة): زر إضافة فاتورة النصي الأخضر */}
+                  <td className="py-2.5 px-3 border-l border-slate-300 dark:border-slate-700 text-center">
+                    <button
+                      type="button"
+                      id="btn-footer-add-invoice"
+                      onClick={handleTriggerAddRow}
+                      className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs shadow-xs transition-all cursor-pointer whitespace-nowrap"
+                      title="إضافة فاتورة جديدة إلى السجل"
+                    >
+                      <Plus size={14} className="stroke-[2.5]" />
+                      <span>إضافة فاتورة</span>
+                    </button>
                   </td>
 
-                  {/* Columns 1-2: نوع الخدمة + اسم العميل Label */}
-                  <td colSpan={2} className="py-3 px-4 text-right text-slate-900 dark:text-slate-100 border-l border-slate-300 dark:border-slate-700 font-bold">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span>إجمالي الشهر ({actualOrdersCount} طلبية):</span>
-                      <span className="text-[10px] font-normal text-slate-600 dark:text-slate-400">
-                        مجموع القيم المحسوبة
+                  {/* Column 2: اسم العميل (تسمية إجمالي الشهر) */}
+                  <td className="py-3 px-3 text-center text-slate-900 dark:text-slate-100 border-l border-slate-300 dark:border-slate-700 font-bold">
+                    <div className="flex flex-col items-center justify-center">
+                      <span className="text-xs">إجمالي الشهر ({actualOrdersCount} طلبية)</span>
+                      <span className="text-[10px] font-normal text-slate-500 dark:text-slate-400">
+                        مجموع القيم
                       </span>
                     </div>
                   </td>
@@ -2704,7 +2841,7 @@ export default function MonthlySalesGrid({
                     </div>
                   </td>
 
-                  {/* Column 7: حذف (Footer Spacer) */}
+                  {/* Column 7: أقصى اليسار تحت عمود الإجراءات (فاصل) */}
                   <td className="py-3 px-2 text-center text-slate-400 dark:text-slate-500 print:hidden font-bold select-none">
                     -
                   </td>
@@ -2739,7 +2876,8 @@ export default function MonthlySalesGrid({
           rows={3}
           value={monthlyNotes}
           onChange={(e) => handleNotesChange(e.target.value)}
-          placeholder={`اكتب هنا أي ملاحظات، أهداف، أو تسويات تخص شهر ${formattedCurrentMonth}... يتم الحفظ تلقائياً.`}
+          onBlur={handleNotesBlur}
+          placeholder={`اكتب هنا أي ملاحظات، أهداف، أو تسويات تخص شهر ${formattedCurrentMonth}... يتم الحفظ تلقائياً في السحابة.`}
           className="w-full glass-input rounded-xl p-3 text-xs text-slate-800 dark:text-slate-200 bg-slate-50/60 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-emerald-500 resize-y min-h-[75px]"
         />
       </div>
@@ -2762,23 +2900,252 @@ export default function MonthlySalesGrid({
       />
 
       {/* ========================================================================= */}
-      {/* FLOATING ACTION BUTTON (FAB) - زر إضافة عائم متمركز في أقصى اليمين أسفل الشاشة */}
+      {/* 1. نافذة النسخ الذكية وترحيل الفاتورة إلى شهر آخر (Smart Duplicate Modal) */}
       {/* ========================================================================= */}
-      <div className="fixed bottom-6 right-6 z-40 print:hidden">
-        <button
-          type="button"
-          id="btn-fab-add-invoice"
-          onClick={handleTriggerAddRow}
-          className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 active:scale-95 text-white shadow-xl hover:shadow-2xl hover:shadow-emerald-600/40 border-2 border-white/30 dark:border-slate-700/60 flex items-center justify-center transition-all duration-300 cursor-pointer group focus:outline-hidden focus:ring-4 focus:ring-emerald-500/40"
-          title="إضافة بند جديد"
-          aria-label="إضافة بند جديد"
+      {duplicateModalOrder && (
+        <div 
+          className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200"
+          onClick={() => setDuplicateModalOrder(null)}
         >
-          <Plus 
-            size={28} 
-            className="text-white stroke-[2.75] transition-transform duration-300 ease-out group-hover:rotate-90 group-hover:scale-110" 
-          />
-        </button>
-      </div>
+          <div 
+            className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-md overflow-hidden text-right"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="p-4 px-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/80 dark:bg-slate-800/60">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-cyan-100 dark:bg-cyan-950/70 text-cyan-600 dark:text-cyan-400 flex items-center justify-center">
+                  <Copy size={16} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100">نسخ وترحيل الفاتورة إلى شهر آخر</h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">تكرار الفاتورة في قاعدة البيانات للشهر المختار</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDuplicateModalOrder(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 space-y-4">
+              {/* Invoice Summary Card */}
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/60 text-xs space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 dark:text-slate-400">العميل:</span>
+                  <span className="font-bold text-slate-900 dark:text-slate-100">{duplicateModalOrder.clientName}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 dark:text-slate-400">نوع الخدمة:</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">{duplicateModalOrder.serviceType || 'لافتة إعلانية'}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 dark:text-slate-400">المبلغ:</span>
+                  <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                    {Number(duplicateModalOrder.price || 0).toLocaleString()} {currency}
+                  </span>
+                </div>
+              </div>
+
+              {/* Month Selection */}
+              <div>
+                <label htmlFor="target-duplicate-month" className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5">
+                  اختر الشهر المستهدف للترحيل:
+                </label>
+                <select
+                  id="target-duplicate-month"
+                  value={targetDuplicateMonth}
+                  onChange={(e) => setTargetDuplicateMonth(e.target.value)}
+                  className="w-full glass-input rounded-xl px-3 py-2 text-xs font-bold text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 focus:ring-2 focus:ring-cyan-500"
+                >
+                  {availableMonthsForDuplication.map(m => (
+                    <option key={m.key} value={m.key} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">
+                      {m.label} ({m.key})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Option: reset paid status */}
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  type="checkbox"
+                  id="checkbox-reset-paid"
+                  checked={resetPaidInDuplicate}
+                  onChange={(e) => setResetPaidInDuplicate(e.target.checked)}
+                  className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-cyan-600 focus:ring-cyan-500 accent-cyan-600 cursor-pointer"
+                />
+                <label htmlFor="checkbox-reset-paid" className="text-xs text-slate-700 dark:text-slate-300 cursor-pointer select-none">
+                  تعيين حالة الفاتورة كـ "غير مدفوع" في الشهر الجديد
+                </label>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 px-5 bg-slate-50/80 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDuplicateModalOrder(null)}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                id="btn-confirm-duplicate-month"
+                onClick={handleConfirmSmartDuplicate}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-cyan-600 hover:bg-cyan-700 active:bg-cyan-800 shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <Check size={14} />
+                <span>تأكيد النسخ والترحيل</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 2. نافذة إضافة بند فرعي جديد (Add Sub-Item Modal) */}
+      {/* ========================================================================= */}
+      {subItemModalOrder && (
+        <div 
+          className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200"
+          onClick={() => setSubItemModalOrder(null)}
+        >
+          <div 
+            className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-md overflow-hidden text-right"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="p-4 px-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/80 dark:bg-slate-800/60">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-950/70 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                  <Plus size={18} className="stroke-[2.5]" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100">إضافة بند فرعي جديد</h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    فاتورة #{subItemModalOrder.serialNumber} - {subItemModalOrder.clientName}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSubItemModalOrder(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 space-y-4">
+              {/* Mode Selector */}
+              <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
+                <button
+                  type="button"
+                  onClick={() => setSubItemMode('detail_cost')}
+                  className={`py-2 px-3 rounded-lg text-xs font-bold transition-all text-center ${
+                    subItemMode === 'detail_cost'
+                      ? 'bg-white dark:bg-slate-700 text-emerald-700 dark:text-emerald-300 shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                  }`}
+                >
+                  بند تكلفة تفصيلي
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSubItemMode('sub_order')}
+                  className={`py-2 px-3 rounded-lg text-xs font-bold transition-all text-center ${
+                    subItemMode === 'sub_order'
+                      ? 'bg-white dark:bg-slate-700 text-emerald-700 dark:text-emerald-300 shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                  }`}
+                >
+                  طلبية فرعية مستقلة
+                </button>
+              </div>
+
+              {/* Form fields */}
+              <div>
+                <label htmlFor="subitem-title-input" className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5">
+                  بيان / اسم البند الفرعي:
+                </label>
+                <input
+                  type="text"
+                  id="subitem-title-input"
+                  value={subItemName}
+                  onChange={(e) => setSubItemName(e.target.value)}
+                  placeholder="مثلاً: طباعة ستيكر إضافي، تصميم شعار، تركيب خارجي..."
+                  className="w-full glass-input rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 focus:ring-2 focus:ring-emerald-500"
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label htmlFor="subitem-amount-input" className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5">
+                  {subItemMode === 'detail_cost' ? `تكلفة البند (${currency}):` : `سعر الطلبية الفرعية (${currency}):`}
+                </label>
+                <input
+                  type="number"
+                  id="subitem-amount-input"
+                  step="any"
+                  value={subItemAmount}
+                  onChange={(e) => setSubItemAmount(e.target.value)}
+                  placeholder="0"
+                  className="w-full glass-input rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 focus:ring-2 focus:ring-emerald-500 text-left"
+                />
+              </div>
+
+              {subItemMode === 'detail_cost' && (
+                <div>
+                  <label htmlFor="subitem-category-select" className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5">
+                    تصنيف بند التكلفة:
+                  </label>
+                  <select
+                    id="subitem-category-select"
+                    value={subItemCategory}
+                    onChange={(e: any) => setSubItemCategory(e.target.value)}
+                    className="w-full glass-input rounded-xl px-3 py-2 text-xs font-bold text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 focus:ring-2 focus:ring-emerald-500"
+                  >
+                    <option value="general">تكلفة عامة إضافية</option>
+                    <option value="design">تكلفة تصميم</option>
+                    <option value="print">تكلفة طباعة</option>
+                    <option value="external">تكلفة خارجية / تركيب</option>
+                  </select>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 px-5 bg-slate-50/80 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setSubItemModalOrder(null)}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                id="btn-confirm-add-subitem"
+                disabled={!subItemName.trim()}
+                onClick={handleConfirmAddSubItem}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:opacity-50 shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <Check size={14} />
+                <span>إضافة البند الفرعي</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
     </div>
   );
 }

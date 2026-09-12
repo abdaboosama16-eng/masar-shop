@@ -11,8 +11,8 @@ export default function ProfitsPage() {
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-[1600px] mx-auto">
       
-      {/* Top Header Navigation Tabs - فصل شاشات المصاريف والأرباح وسجل الفواتير */}
-      <div className="flex items-center gap-2 p-1.5 bg-slate-100/90 dark:bg-slate-800/90 rounded-xl border border-slate-200/80 dark:border-slate-700 shadow-xs no-print">
+      {/* Top Header Navigation Tabs - فصل شاشات المصاريف والأرباح وسجل الفواتير (Sticky) */}
+      <div className="sticky top-0 z-40 flex items-center gap-2 p-1.5 bg-slate-100/95 dark:bg-slate-800/95 backdrop-blur-md rounded-xl border border-slate-200/80 dark:border-slate-700 shadow-md no-print">
         
         {/* Tab 1: سجل الفواتير */}
         <button

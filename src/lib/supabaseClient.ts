@@ -65,7 +65,7 @@ export const supabase: SupabaseClient = clientInstance;
  */
 export interface SyncQueueItem {
   id: string;
-  table: 'orders' | 'inventory' | 'expenses' | 'employees' | 'system_settings' | 'exchange_rates';
+  table: 'orders' | 'inventory' | 'expenses' | 'employees' | 'system_settings' | 'exchange_rates' | 'monthly_notes';
   action: 'insert' | 'update' | 'delete' | 'upsert';
   payload: any;
   timestamp: string;

@@ -60,8 +60,9 @@ import { useAppContext } from '../context/AppContext';
 import { EmployeeRole, RolePermission, DynamicServiceConfig } from '../types';
 import { isSupabaseConfigured } from '../lib/supabaseClient';
 import PageManagerTab from '../components/settings/PageManagerTab';
+import DocxSmartImporter from '../components/settings/DocxSmartImporter';
 
-type SettingsTab = 'pages' | 'basic' | 'services' | 'security' | 'rbac' | 'invoice' | 'appearance' | 'supabase' | 'backup' | 'support' | 'commissions';
+type SettingsTab = 'pages' | 'basic' | 'services' | 'security' | 'rbac' | 'invoice' | 'appearance' | 'supabase' | 'backup' | 'support' | 'commissions' | 'docx_import';
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -628,6 +629,7 @@ export default function Settings() {
     { id: 'appearance' as SettingsTab, label: 'المظهر والسمة', icon: Sun, desc: 'التبديل بين الوضع الفاتح والداكن والملمس الجداري' },
     { id: 'supabase' as SettingsTab, label: 'المزامنة السحابية (Supabase)', icon: Database, desc: 'قواعد البيانات السحابية، المزامنة الذكية بدون إنترنت' },
     { id: 'backup' as SettingsTab, label: 'النسخ الاحتياطي', icon: Download, desc: 'تصدير واستيراد البيانات وحفظ قواعد السجلات' },
+    { id: 'docx_import' as SettingsTab, label: 'استيراد مستندات Word (.docx)', icon: FileText, desc: 'نظام استيراد ذكي خالي من الأخطاء مع إعادة الحسابات بدقة ومنع التكرار' },
     { id: 'support' as SettingsTab, label: 'الدعم الفني', icon: Headphones, desc: 'قنوات التواصل المباشر، التذاكر وحالة النظام' },
     { id: 'commissions' as SettingsTab, label: 'إدارة العمولات', icon: Coins, desc: 'تحديد أساس احتساب العمولة للموظفين' },
   ];
@@ -1709,7 +1711,7 @@ export default function Settings() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   {/* Export Card */}
                   <div className="p-6 rounded-xl bg-slate-50/50 border border-slate-200/80 shadow-sm hover:shadow-sm transition-shadow flex flex-col justify-between h-full gap-6">
                     <div className="space-y-2">
@@ -1752,6 +1754,27 @@ export default function Settings() {
                     >
                       <Upload size={18} />
                       <span>بدء الاستيراد</span>
+                    </button>
+                  </div>
+
+                  {/* Word Docx Smart Importer Card */}
+                  <div className="p-6 rounded-xl bg-emerald-50/40 dark:bg-emerald-950/20 border border-emerald-200/80 dark:border-emerald-800/60 shadow-sm hover:shadow-sm transition-shadow flex flex-col justify-between h-full gap-6">
+                    <div className="space-y-2">
+                      <div className="w-12 h-12 rounded-xl bg-emerald-100/70 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 flex items-center justify-center mb-4">
+                        <FileText size={24} />
+                      </div>
+                      <h4 className="text-sm font-bold text-slate-900 dark:text-white">استيراد مستندات Word (.docx)</h4>
+                      <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                        نظام استيراد ذكي خالي من الأخطاء (Zero-Error) للفواتير والعاملين والجهات مع إعادة احتساب الأرباح رياضياً 100% ومنع التكرار.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('docx_import')}
+                      className="w-full px-5 py-3 rounded-xl text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-sm flex items-center justify-center gap-2 mt-4 transition-all"
+                    >
+                      <FileText size={18} />
+                      <span>فتح نظام الاستيراد الذكي</span>
                     </button>
                   </div>
                 </div>
@@ -1947,6 +1970,13 @@ export default function Settings() {
                   </div>
                 </form>
               </div>
+            </div>
+          )}
+
+          {/* TAB: DOCX SMART IMPORTER (Zero-Error Importer) */}
+          {activeTab === 'docx_import' && (
+            <div className="space-y-6 animate-in fade-in duration-150">
+              <DocxSmartImporter />
             </div>
           )}
         </div>
