@@ -33,6 +33,7 @@ import {
 import { isSponsoredAds } from '../../utils/financialCalculations';
 import { Order, Expense } from '../../types';
 import { supabase, isSupabaseConfigured } from '../../lib/supabaseClient';
+import { sanitizeOrderPayload, sanitizeExpensePayload, sanitizeEmployeePayload } from '../../utils/supabaseSanitizer';
 
 interface DocxSmartImporterProps {
   onSuccess?: (summary: { invoicesCount: number; expensesCount: number; monthsCount: number }) => void;
@@ -439,13 +440,16 @@ export default function DocxSmartImporter({ onSuccess }: DocxSmartImporterProps)
       if (isSupabaseConfigured) {
         try {
           if (ordersToInsert.length > 0) {
-            await supabase.from('orders').upsert(ordersToInsert, { onConflict: 'id' });
+            const sanitizedOrders = ordersToInsert.map(o => sanitizeOrderPayload(o));
+            await supabase.from('orders').upsert(sanitizedOrders, { onConflict: 'id' });
           }
           if (expensesToInsert.length > 0) {
-            await supabase.from('expenses').upsert(expensesToInsert, { onConflict: 'id' });
+            const sanitizedExpenses = expensesToInsert.map(e => sanitizeExpensePayload(e));
+            await supabase.from('expenses').upsert(sanitizedExpenses, { onConflict: 'id' });
           }
           if (salaryExpenses.length > 0) {
-            await supabase.from('employees').upsert(updatedEmployeesList, { onConflict: 'id' });
+            const sanitizedEmployees = updatedEmployeesList.map(emp => sanitizeEmployeePayload(emp));
+            await supabase.from('employees').upsert(sanitizedEmployees, { onConflict: 'id' });
           }
         } catch (cloudErr) {
           console.warn('Supabase sync warning:', cloudErr);

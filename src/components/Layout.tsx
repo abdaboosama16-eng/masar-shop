@@ -9,7 +9,6 @@ import LoginScreen from './LoginScreen';
 import SyncStatusBadge from './SyncStatusBadge';
 import GlobalSearch from './GlobalSearch';
 import DynamicIcon from './DynamicIcon';
-import ExchangeRateModal from './ExchangeRateModal';
 
 export default function Layout() {
   const { 
@@ -158,7 +157,7 @@ export default function Layout() {
           {/* Brand Header & Collapse Toggle */}
           <div className="p-4 border-b border-slate-200/70 dark:border-slate-800/70 flex justify-between items-center bg-slate-50/50 dark:bg-slate-950/30">
             <div className={`flex items-center gap-3 min-w-0 ${isSidebarCollapsed ? 'md:justify-center md:w-full' : ''}`}>
-              <div className="w-10 h-10 bg-emerald-600 rounded-xl flex items-center justify-center shadow-sm shadow-emerald-600/25 text-white font-bold text-xl overflow-hidden shrink-0">
+              <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-sm shadow-blue-600/25 text-white font-bold text-xl overflow-hidden shrink-0">
                 {settings.shopInfo.logoUrl ? (
                   <img src={settings.shopInfo.logoUrl} alt="Logo" className="w-full h-full object-cover" />
                 ) : (
@@ -170,7 +169,7 @@ export default function Layout() {
                   <span className="font-bold text-sm tracking-tight text-slate-900 dark:text-slate-100 block leading-tight truncate">
                     {settings.shopInfo.name}
                   </span>
-                  <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold block mt-0.5">
+                  <span className="text-[11px] text-blue-600 dark:text-blue-400 font-bold block mt-0.5">
                     لوحة التحكم
                   </span>
                 </div>
@@ -210,7 +209,7 @@ export default function Layout() {
                 className={({ isActive }) =>
                   `flex items-center ${isSidebarCollapsed ? 'md:justify-center px-2' : 'px-3.5'} py-2.5 rounded-xl text-sm font-semibold transition-all duration-150 ease-out ${
                     isActive
-                      ? 'bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 dark:border-emerald-500/30 shadow-sm font-bold'
+                      ? 'bg-blue-500/10 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300 border border-blue-500/20 dark:border-blue-500/30 shadow-sm font-bold'
                       : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100/80 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-slate-100'
                   }`
                 }
@@ -236,7 +235,7 @@ export default function Layout() {
                   {!isSidebarCollapsed && (
                     <div className="flex flex-col min-w-0">
                       <span className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">{currentUser?.name || 'مستخدم'}</span>
-                      <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-bold">{currentUser?.role || '---'}</span>
+                      <span className="text-[10px] text-blue-700 dark:text-blue-400 font-bold">{currentUser?.role || '---'}</span>
                     </div>
                   )}
                 </div>
@@ -321,7 +320,7 @@ export default function Layout() {
             </div>
             <button
               onClick={toggleKioskMode}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-2 transition-all duration-150 ease-out  shadow-sm"
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-xl text-xs font-bold flex items-center gap-2 transition-all duration-150 ease-out shadow-sm"
             >
               <Minimize2 size={15} />
               <span>إنهاء وضع الورشة</span>
@@ -330,7 +329,6 @@ export default function Layout() {
         )}
 
         <Outlet />
-        <ExchangeRateModal />
       </main>
     </div>
   );

@@ -23,6 +23,7 @@ import {
 } from '../types';
 import { supabase, isSupabaseConfigured, SyncQueueItem, authenticateUser } from '../lib/supabaseClient';
 import { getOrderTotalDetailCosts, getOrderNetProfit } from '../utils/financialCalculations';
+import { sanitizePayloadForTable } from '../utils/supabaseSanitizer';
 
 export const defaultPagesConfig: PageConfig[] = [
   {
@@ -268,9 +269,11 @@ interface AppContextType {
   addExpense: (expense: Omit<Expense, 'id'>) => void;
   deleteExpense: (id: string) => void;
   updateExpense: (id: string, updatedFields: Partial<Expense>) => void;
+  togglePinExpense: (id: string) => void;
+  autoCopyPinnedExpensesToMonth: (targetDate: Date) => number;
   employees: Employee[];
   setEmployees: React.Dispatch<React.SetStateAction<Employee[]>>;
-  addEmployee: (employee: Omit<Employee, 'id'>) => void;
+  addEmployee: (employee: Omit<Employee, 'id'>, customId?: string) => void;
   updateEmployee: (id: string, employee: Partial<Employee>) => void;
   deleteEmployee: (id: string) => void;
   currentUser: Employee | null;
@@ -350,9 +353,17 @@ interface AppContextType {
   setSelectedMonthYear: (year: number, month: number) => void;
   totalExpensesForSelectedMonth: number;
 
-  // Monthly Exchange Rates (تسعير صرف الدولار المعتمد شهرياً)
+  // Monthly Exchange Rates (تسعير صرف الدولار: سعر الصرف 1 للكاش، وسعر الصرف 2 للحوالة)
+  usdRate1: number;
+  usdRate2: number;
   exchangeRates: Record<string, number>;
+  exchangeRates1: Record<string, number>;
+  exchangeRates2: Record<string, number>;
   setMonthExchangeRate: (monthKey: string, rate: number) => Promise<void>;
+  setMonthUsdRate1: (monthKey: string, rate: number) => Promise<void>;
+  setMonthUsdRate2: (monthKey: string, rate: number) => Promise<void>;
+  setUsdRate1: (rate: number) => Promise<void>;
+  setUsdRate2: (rate: number) => Promise<void>;
   getExchangeRateForMonth: (dateOrKey: Date | string) => number;
   currentMonthExchangeRate: number;
 }
@@ -670,10 +681,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }, 0);
   }, [expenses, selectedDate]);
 
-  // Monthly Exchange Rates (تسعير صرف الدولار المعتمد شهرياً)
-  const [exchangeRates, setExchangeRates] = useState<Record<string, number>>(() => {
+  // Monthly Exchange Rates (حقلان لسعر الصرف: 1 كاش، 2 حوالة)
+  const [exchangeRates1, setExchangeRates1] = useState<Record<string, number>>(() => {
     try {
-      const saved = localStorage.getItem('masar_exchange_rates');
+      const saved = localStorage.getItem('masar_exchange_rates_1') || localStorage.getItem('masar_exchange_rates');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed && typeof parsed === 'object') return parsed;
@@ -685,6 +696,24 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     };
   });
 
+  const [exchangeRates2, setExchangeRates2] = useState<Record<string, number>>(() => {
+    try {
+      const saved = localStorage.getItem('masar_exchange_rates_2');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') return parsed;
+      }
+    } catch {}
+    return {
+      '2026-08': 7.30,
+      '2026-09': 7.35,
+    };
+  });
+
+  // التوافق مع الكود السابق
+  const exchangeRates = exchangeRates1;
+  const setExchangeRates = setExchangeRates1;
+
   // مزامنة واسترجاع أسعار الصرف من Supabase
   useEffect(() => {
     if (!isSupabaseConfigured) return;
@@ -694,20 +723,29 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           .from('exchange_rates')
           .select('*');
         if (!error && Array.isArray(data) && data.length > 0) {
-          setExchangeRates(prev => {
-            const merged = { ...prev };
-            data.forEach((row: any) => {
-              const key = row.month_key || row.monthKey || row.id;
-              const rate = Number(row.rate);
-              if (key && !isNaN(rate) && rate > 0) {
-                merged[key] = rate;
-              }
-            });
-            try {
-              localStorage.setItem('masar_exchange_rates', JSON.stringify(merged));
-            } catch {}
-            return merged;
+          const merged1 = { ...exchangeRates1 };
+          const merged2 = { ...exchangeRates2 };
+          data.forEach((row: any) => {
+            const key = row.month_key || row.monthKey || row.id;
+            const rate = Number(row.rate);
+            const rate1 = Number(row.rate1);
+            const rate2 = Number(row.rate2);
+            if (key && !isNaN(rate1) && rate1 > 0) {
+              merged1[key] = rate1;
+            } else if (key && !isNaN(rate) && rate > 0) {
+              merged1[key] = rate;
+            }
+            if (key && !isNaN(rate2) && rate2 > 0) {
+              merged2[key] = rate2;
+            }
           });
+          setExchangeRates1(merged1);
+          setExchangeRates2(merged2);
+          try {
+            localStorage.setItem('masar_exchange_rates_1', JSON.stringify(merged1));
+            localStorage.setItem('masar_exchange_rates', JSON.stringify(merged1));
+            localStorage.setItem('masar_exchange_rates_2', JSON.stringify(merged2));
+          } catch {}
         }
       } catch {
         // Safe fallback
@@ -1426,12 +1464,16 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         for (const item of queue) {
           try {
             if (item.action === 'insert' || item.action === 'upsert' || item.action === 'update') {
-              await supabase.from(item.table).upsert(item.payload);
+              const cleanPayload = sanitizePayloadForTable(item.table, item.payload);
+              const { error } = await supabase.from(item.table).upsert(cleanPayload);
+              if (error) {
+                console.warn(`Supabase upsert warning on ${item.table}:`, error.message);
+              }
             } else if (item.action === 'delete') {
               await supabase.from(item.table).delete().match({ id: item.payload.id });
             }
-          } catch {
-            // Non-blocking table sync error, item will remain in queue
+          } catch (syncItemErr) {
+            console.warn('Sync queue error for item:', syncItemErr);
           }
         }
       }
@@ -1744,6 +1786,129 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  // 1. دالة تثبيت / إلغاء تثبيت المصروف (Pinned/Recurring Expense)
+  const togglePinExpense = useCallback((id: string) => {
+    setExpenses(prev => {
+      const target = prev.find(e => e.id === id);
+      const nextPinned = target ? !Boolean(target.isPinned) : true;
+      const updated = prev.map(e => e.id === id ? { ...e, isPinned: nextPinned, pendingSync: true } : e);
+      try {
+        localStorage.setItem('masar_expenses', JSON.stringify(updated));
+      } catch (err) {
+        console.error('Error saving pinned expense:', err);
+      }
+      if (target) {
+        enqueueSync('expenses', 'update', { ...target, isPinned: nextPinned });
+      }
+      return updated;
+    });
+  }, [enqueueSync]);
+
+  // 2. دالة النسخ التلقائي للمصاريف الثابتة عند الانتقال إلى شهر جديد وفارغ
+  const autoCopyPinnedExpensesToMonth = useCallback((targetDate: Date): number => {
+    let copiedCount = 0;
+    setExpenses(prevExpenses => {
+      if (!Array.isArray(prevExpenses) || prevExpenses.length === 0) return prevExpenses;
+
+      const targetStart = startOfMonth(targetDate);
+      const targetEnd = endOfMonth(targetDate);
+
+      // أ) التحقق مما إذا كان هذا الشهر يحتوي بالفعل على أي مصاريف
+      const currentMonthExpenses = prevExpenses.filter(e => {
+        if (!e.date) return false;
+        try {
+          const expDate = parseISO(e.date);
+          return isWithinInterval(expDate, { start: targetStart, end: targetEnd });
+        } catch {
+          return false;
+        }
+      });
+
+      // إذا كان الشهر يحتوي على مصاريف مسبقاً، فلا نكرر النسخ التلقائي
+      if (currentMonthExpenses.length > 0) {
+        return prevExpenses;
+      }
+
+      // ب) البحث عن المصاريف المثبتة (isPinned: true) من الأشهر السابقة
+      const pinnedExpenses = prevExpenses.filter(e => {
+        if (!e.isPinned) return false;
+        if (!e.date) return true;
+        try {
+          const expDate = parseISO(e.date);
+          // استثناء أي مصاريف تتبع نفس الشهر المستهدف
+          return !isWithinInterval(expDate, { start: targetStart, end: targetEnd });
+        } catch {
+          return true;
+        }
+      });
+
+      if (pinnedExpenses.length === 0) {
+        return prevExpenses;
+      }
+
+      // ت) إزالة التكرار: نأخذ أحدث نسخة لكل بيان مصروف مثبت (مثل الإيجار، المرتبات الثابتة، الإنترنت)
+      const uniquePinnedMap = new Map<string, Expense>();
+      const sortedPinned = [...pinnedExpenses].sort((a, b) => {
+        const dateA = a.date ? new Date(a.date).getTime() : 0;
+        const dateB = b.date ? new Date(b.date).getTime() : 0;
+        return dateB - dateA;
+      });
+
+      sortedPinned.forEach(exp => {
+        const cleanDesc = (exp.description || '').trim().toLowerCase();
+        if (cleanDesc && !uniquePinnedMap.has(cleanDesc)) {
+          uniquePinnedMap.set(cleanDesc, exp);
+        }
+      });
+
+      const uniquePinnedList = Array.from(uniquePinnedMap.values());
+      if (uniquePinnedList.length === 0) return prevExpenses;
+
+      // ث) إنشاء النسخ للشهر الحالي بتاريخ اليوم الأول من هذا الشهر
+      const baseDate = new Date(targetDate.getFullYear(), targetDate.getMonth(), 1, 10, 0, 0);
+      const newClonedExpenses: Expense[] = uniquePinnedList.map((pinned, idx) => {
+        const itemDate = new Date(baseDate.getTime() + idx * 1000).toISOString();
+        const newId = `exp-pin-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`;
+        return {
+          id: newId,
+          description: pinned.description,
+          amount: pinned.amount,
+          category: pinned.category || 'تشغيلي',
+          type: pinned.type || 'مصروف',
+          paymentMethod: pinned.paymentMethod,
+          notes: pinned.notes,
+          date: itemDate,
+          isPinned: true, // يظل مثبتاً للشهر الجديد أيضاً
+          pendingSync: true,
+        };
+      });
+
+      copiedCount = newClonedExpenses.length;
+      const updatedAll = [...prevExpenses, ...newClonedExpenses];
+
+      try {
+        localStorage.setItem('masar_expenses', JSON.stringify(updatedAll));
+      } catch (err) {
+        console.error('Error saving copied pinned expenses:', err);
+      }
+
+      newClonedExpenses.forEach(clonedExp => {
+        enqueueSync('expenses', 'insert', clonedExp);
+      });
+
+      return updatedAll;
+    });
+
+    return copiedCount;
+  }, [enqueueSync]);
+
+  // تشغيل التحقق التلقائي والنسخ للمصاريف الثابتة عند فتح المنظومة أو الانتقال إلى شهر جديد
+  useEffect(() => {
+    if (expenses && expenses.length > 0) {
+      autoCopyPinnedExpensesToMonth(selectedDate);
+    }
+  }, [selectedDate, autoCopyPinnedExpensesToMonth]);
+
   
   const updateEmployee = (id: string, updatedFields: Partial<Employee>) => {
     setEmployees(prev => {
@@ -1764,10 +1929,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     });
   };
 
-  const addEmployee = (employee: Omit<Employee, 'id'>) => {
+  const addEmployee = (employee: Omit<Employee, 'id'>, customId?: string) => {
+    const nextId = customId && customId.trim() !== '' ? customId.trim() : Math.random().toString(36).substring(2, 9);
     const newEmployee: Employee = { 
       ...employee, 
-      id: Math.random().toString(36).substring(2, 9),
+      id: nextId,
       pendingSync: true,
     };
     setEmployees(prev => {
@@ -1945,29 +2111,32 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     enqueueSync('system_settings', 'upsert', { type: 'invoice', invoice });
   };
 
-  const setMonthExchangeRate = useCallback(async (monthKey: string, rate: number) => {
+  const setMonthUsdRate1 = useCallback(async (monthKey: string, rate: number) => {
     const validRate = Number(rate) || 0;
-    setExchangeRates(prev => {
+    setExchangeRates1(prev => {
       const updated = { ...prev, [monthKey]: validRate };
       try {
+        localStorage.setItem('masar_exchange_rates_1', JSON.stringify(updated));
         localStorage.setItem('masar_exchange_rates', JSON.stringify(updated));
       } catch {}
       return updated;
     });
 
     enqueueSync('exchange_rates', 'upsert', {
-      id: `rate-${monthKey}`,
+      id: `rate1-${monthKey}`,
       month_key: monthKey,
       rate: validRate,
+      rate1: validRate,
       updated_at: new Date().toISOString(),
     });
 
     if (isSupabaseConfigured) {
       try {
         await supabase.from('exchange_rates').upsert({
-          id: `rate-${monthKey}`,
+          id: `rate1-${monthKey}`,
           month_key: monthKey,
           rate: validRate,
+          rate1: validRate,
           updated_at: new Date().toISOString(),
         });
       } catch {
@@ -1975,6 +2144,52 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       }
     }
   }, [enqueueSync]);
+
+  const setMonthUsdRate2 = useCallback(async (monthKey: string, rate: number) => {
+    const validRate = Number(rate) || 0;
+    setExchangeRates2(prev => {
+      const updated = { ...prev, [monthKey]: validRate };
+      try {
+        localStorage.setItem('masar_exchange_rates_2', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+
+    enqueueSync('exchange_rates', 'upsert', {
+      id: `rate2-${monthKey}`,
+      month_key: monthKey,
+      rate2: validRate,
+      updated_at: new Date().toISOString(),
+    });
+
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.from('exchange_rates').upsert({
+          id: `rate2-${monthKey}`,
+          month_key: monthKey,
+          rate2: validRate,
+          updated_at: new Date().toISOString(),
+        });
+      } catch {
+        // Handled through queue
+      }
+    }
+  }, [enqueueSync]);
+
+  const setMonthExchangeRate = setMonthUsdRate1;
+
+  const currentMonthKey = format(selectedDate, 'yyyy-MM');
+  const usdRate1 = exchangeRates1[currentMonthKey] !== undefined ? exchangeRates1[currentMonthKey] : 7.25;
+  const usdRate2 = exchangeRates2[currentMonthKey] !== undefined ? exchangeRates2[currentMonthKey] : 7.35;
+  const currentMonthExchangeRate = usdRate1;
+
+  const setUsdRate1 = useCallback(async (rate: number) => {
+    await setMonthUsdRate1(currentMonthKey, rate);
+  }, [currentMonthKey, setMonthUsdRate1]);
+
+  const setUsdRate2 = useCallback(async (rate: number) => {
+    await setMonthUsdRate2(currentMonthKey, rate);
+  }, [currentMonthKey, setMonthUsdRate2]);
 
   const getExchangeRateForMonth = useCallback((dateOrKey: Date | string): number => {
     let key = '';
@@ -1988,11 +2203,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     } else if (dateOrKey instanceof Date) {
       key = format(dateOrKey, 'yyyy-MM');
     }
-    return exchangeRates[key] || 0;
-  }, [exchangeRates]);
-
-  const currentMonthKey = format(selectedDate, 'yyyy-MM');
-  const currentMonthExchangeRate = exchangeRates[currentMonthKey] || 0;
+    return exchangeRates1[key] || 0;
+  }, [exchangeRates1]);
 
 
   const addServiceConfig = (service: { name: string; costItems: string[] }) => {
@@ -2172,7 +2384,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     <AppContext.Provider value={{
       orders, setOrders, reorderOrders, addOrder, deleteOrder, getNextSerialNumber, updateOrderStatus, toggleOrderPaidStatus, toggleOrderPinned, updateOrder,
       inventory, addInventoryItem, updateInventoryQuantity,
-      expenses, setExpenses, addExpense, deleteExpense, updateExpense,
+      expenses, setExpenses, addExpense, deleteExpense, updateExpense, togglePinExpense, autoCopyPinnedExpensesToMonth,
       employees, setEmployees, addEmployee, updateEmployee, deleteEmployee,
       currentUser, login, loginWithPasscode, loginWithSupabaseAuth, logout, simulateRole,
       syncState,
@@ -2219,8 +2431,16 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       setSelectedYear,
       setSelectedMonthYear,
       totalExpensesForSelectedMonth,
+      usdRate1,
+      usdRate2,
       exchangeRates,
+      exchangeRates1,
+      exchangeRates2,
       setMonthExchangeRate,
+      setMonthUsdRate1,
+      setMonthUsdRate2,
+      setUsdRate1,
+      setUsdRate2,
       getExchangeRateForMonth,
       currentMonthExchangeRate,
     }}>

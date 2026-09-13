@@ -68,6 +68,31 @@ export default function Sales() {
   // Inline table row addition state
   const [isAddingRow, setIsAddingRow] = useState(false);
 
+  // اختصار F2 في الخلفية لإضافة فاتورة/بند جديد فوراً بدون أي ملصقات مرئية
+  useEffect(() => {
+    const handleGlobalF2 = (e: KeyboardEvent) => {
+      if (e.key === 'F2') {
+        e.preventDefault();
+        if (activeTab !== 'monthly_grid') {
+          setActiveTab('monthly_grid');
+        }
+        setIsAddingRow(true);
+        setTimeout(() => {
+          const inputEl = document.getElementById('inline-input-client-name');
+          if (inputEl) {
+            inputEl.focus();
+            inputEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }, 100);
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalF2);
+    return () => {
+      window.removeEventListener('keydown', handleGlobalF2);
+    };
+  }, [activeTab]);
+
   // Modals state
   const [selectedOrderForDesign, setSelectedOrderForDesign] = useState<Order | null>(null);
   const [selectedOrderForDetails, setSelectedOrderForDetails] = useState<Order | null>(null);
@@ -507,15 +532,15 @@ export default function Sales() {
 
       {/* Success Toast Notification */}
       {showSuccessToast && (
-        <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-900 flex items-center justify-between animate-in fade-in slide-in-from-top-2 shadow-sm">
+        <div className="p-3.5 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-900 dark:text-blue-200 flex items-center justify-between animate-in fade-in slide-in-from-top-2 shadow-sm">
           <div className="flex items-center gap-2.5">
-            <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
+            <CheckCircle2 size={18} className="text-blue-600 dark:text-blue-400 shrink-0" />
             <span className="text-xs font-bold">تم حفظ الطلبية وإصدار الفاتورة بنجاح.</span>
           </div>
           <button
             type="button"
             onClick={() => setShowSuccessToast(false)}
-            className="text-emerald-700 p-1 hover:bg-emerald-500/20 rounded-lg"
+            className="text-blue-700 dark:text-blue-300 p-1 hover:bg-blue-500/20 rounded-lg"
           >
             <X size={15} />
           </button>
@@ -531,11 +556,11 @@ export default function Sales() {
           onClick={() => handleTabChange('monthly_grid')}
           className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-150 ease-out cursor-pointer ${
             activeTab === 'monthly_grid'
-              ? 'bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-300 shadow-sm border border-slate-200/80 dark:border-slate-600'
+              ? 'bg-white dark:bg-slate-700 text-blue-700 dark:text-blue-300 shadow-sm border border-blue-300/80 dark:border-blue-600/80 ring-1 ring-blue-500/20'
               : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
           }`}
         >
-          <FileSpreadsheet size={16} className={activeTab === 'monthly_grid' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'} />
+          <FileSpreadsheet size={16} className={activeTab === 'monthly_grid' ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400'} />
           <span>سجل الفواتير</span>
         </button>
 
@@ -546,11 +571,11 @@ export default function Sales() {
           onClick={() => handleTabChange('expenses')}
           className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-150 ease-out cursor-pointer ${
             activeTab === 'expenses'
-              ? 'bg-white dark:bg-slate-700 text-amber-700 dark:text-amber-300 shadow-sm border border-slate-200/80 dark:border-slate-600'
+              ? 'bg-white dark:bg-slate-700 text-blue-700 dark:text-blue-300 shadow-sm border border-blue-300/80 dark:border-blue-600/80 ring-1 ring-blue-500/20'
               : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
           }`}
         >
-          <Receipt size={16} className={activeTab === 'expenses' ? 'text-amber-600 dark:text-amber-400' : 'text-slate-400'} />
+          <Receipt size={16} className={activeTab === 'expenses' ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400'} />
           <span>المصاريف</span>
         </button>
 
@@ -561,11 +586,11 @@ export default function Sales() {
           onClick={() => handleTabChange('profits')}
           className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-150 ease-out cursor-pointer ${
             activeTab === 'profits'
-              ? 'bg-white dark:bg-slate-700 text-emerald-700 dark:text-emerald-300 shadow-sm border border-slate-200/80 dark:border-slate-600'
+              ? 'bg-white dark:bg-slate-700 text-blue-700 dark:text-blue-300 shadow-sm border border-blue-300/80 dark:border-blue-600/80 ring-1 ring-blue-500/20'
               : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
           }`}
         >
-          <TrendingUp size={16} className={activeTab === 'profits' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'} />
+          <TrendingUp size={16} className={activeTab === 'profits' ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400'} />
           <span>الأرباح</span>
         </button>
       </div>
@@ -601,7 +626,7 @@ export default function Sales() {
           
           <div className="flex items-center justify-between pb-4 border-b border-slate-200/80 ">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
+              <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center font-bold">
                 <Plus size={20} />
               </div>
               <div>
@@ -866,9 +891,9 @@ export default function Sales() {
                   </div>
                 </div>
 
-                <div className="p-3.5 rounded-xl bg-emerald-50/80 border border-emerald-200/80 text-center shadow-xs">
-                  <span className="text-[11px] font-bold text-emerald-800 block mb-0.5">صافي الربح المحسوب آلياً:</span>
-                  <span className={`font-mono tabular-nums text-sm font-black ${expectedProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                <div className="p-3.5 rounded-xl bg-blue-50/80 border border-blue-200/80 text-center shadow-xs">
+                  <span className="text-[11px] font-bold text-blue-800 block mb-0.5">صافي الربح المحسوب آلياً:</span>
+                  <span className={`font-mono tabular-nums text-sm font-black ${expectedProfit >= 0 ? 'text-blue-700' : 'text-rose-700'}`}>
                     {expectedProfit >= 0 ? `+${expectedProfit.toLocaleString()}` : expectedProfit.toLocaleString()} {settings.shopInfo.currency}
                   </span>
                 </div>
@@ -887,7 +912,7 @@ export default function Sales() {
               <button
                 type="button"
                 onClick={() => setShowAdvancedFields(!showAdvancedFields)}
-                className="text-xs font-bold text-slate-700 hover:text-emerald-700 :text-emerald-400 flex items-center gap-1.5 py-1 transition-all duration-150 ease-out "
+                className="text-xs font-bold text-slate-700 hover:text-blue-700 dark:hover:text-blue-400 flex items-center gap-1.5 py-1 transition-all duration-150 ease-out "
               >
                 <span>بيانات تكميلية للسداد والتسليم والتركيب (اختياري)</span>
                 <ChevronDown size={14} className={`transform transition-transform ${showAdvancedFields ? 'rotate-180' : ''}`} />
@@ -954,7 +979,7 @@ export default function Sales() {
                   {/* Signage Dimensions & Crane */}
                   {serviceType === 'لافتة إعلانية' && (
                     <div className="pt-3 border-t border-slate-200/80 space-y-3">
-                      <span className="text-[11px] font-bold text-emerald-800 block">مقاسات اللوحة والرافعة:</span>
+                      <span className="text-[11px] font-bold text-blue-800 dark:text-blue-300 block">مقاسات اللوحة والرافعة:</span>
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-center">
                         <div>
                           <label className="block text-[10px] text-slate-600 mb-1">الطول (متر)</label>
@@ -992,7 +1017,7 @@ export default function Sales() {
                       </div>
 
                       {width && height && (
-                        <div className="text-[11px] font-bold text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200 flex justify-between items-center">
+                        <div className="text-[11px] font-bold text-blue-800 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40 px-3 py-1.5 rounded-lg border border-blue-200 dark:border-blue-800 flex justify-between items-center">
                           <span>المساحة المحسوبة آلياً:</span>
                           <span className="font-mono tabular-nums">{calculatedArea} متر مربع (م²)</span>
                         </div>
@@ -1231,7 +1256,7 @@ export default function Sales() {
                                 <button
                                   type="button"
                                   onClick={() => updateOrderStatus(order.id, nextStatus)}
-                                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold transition-all duration-150 ease-out  shadow-xs"
+                                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-[10px] font-bold transition-all duration-150 ease-out shadow-xs"
                                   title={`نقل إلى ${nextStatus}`}
                                 >
                                   <span>{nextStatus}</span>

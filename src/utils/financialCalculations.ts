@@ -127,10 +127,114 @@ export function formatMoney(amount: number | string | undefined | null): string 
 }
 
 /**
- * التحقق مما إذا كانت الخدمة إعلانات ممولة / حملات إعلانية
+ * التحقق الصارم مما إذا كانت الخدمة "إعلانات ممولة" (أو إعلانات):
+ * القاعدة الحتمية: فقط "إعلانات ممولة" (أو إعلانات رقمية ممولة) هي التي تتبع حسابات الدولار وسعر الصرف.
+ * جميع الخدمات الأخرى (إدارة صفحة، لافتات إعلانية، طباعة، تصميم، بنر، فلكس، تركيب، برمجة، إلخ)
+ * تُعامل بالدينار الليبي فقط وتتجاهل حقل سعر الصرف تماماً.
  */
 export function isSponsoredAds(serviceName?: string | null): boolean {
   if (!serviceName) return false;
-  const s = serviceName.toLowerCase().trim();
-  return s.includes('إعلان') || s.includes('ممول') || s.includes('ad') || s.includes('campaign');
+  const s = serviceName.trim().toLowerCase();
+
+  // استبعاد صريح وقاطع للخدمات المحلية واللافتات والطباعة وإدارة الصفحات
+  if (
+    s.includes('لافت') || 
+    s.includes('لوح') || 
+    s.includes('طباع') || 
+    s.includes('صفح') || 
+    s.includes('تصميم') || 
+    s.includes('بنر') || 
+    s.includes('فلكس') ||
+    s.includes('كروت') ||
+    s.includes('هوية') ||
+    s.includes('بروشور') ||
+    s.includes('فولدر') ||
+    s.includes('بوستر') ||
+    s.includes('ستيكر') ||
+    s.includes('تركيب') ||
+    s.includes('قص') ||
+    s.includes('موقع') ||
+    s.includes('برمج') ||
+    s.includes('استضاف') ||
+    s.includes('أخرى')
+  ) {
+    return false;
+  }
+
+  // مطابقة صريحة لخدمة الإعلانات الممولة
+  return (
+    s === 'إعلانات ممولة' ||
+    s === 'إعلانات' ||
+    s === 'إعلان ممول' ||
+    s === 'حملة إعلانية ممولة' ||
+    s.includes('ممول') ||
+    s === 'sponsored ads' ||
+    s === 'sponsored' ||
+    s === 'ads' ||
+    s === 'ad'
+  );
 }
+
+/**
+ * دالة حساب إجمالي الفاتورة وقاعدة التحويل بالدولار الصارمة:
+ * - القاعدة الحتمية: يجب أن يكون الإجمالي هو التكلفة بالدينار الليبي فقط.
+ * - يُمنع منعاً باتاً ضرب التكلفة في سعر الصرف (الدولار) إلا إذا كان serviceType === 'إعلانات ممولة'.
+ * - أي خدمة أخرى تتجاهل حقل سعر الصرف تماماً وتعتمد التكلفة بالدينار الليبي حصراً.
+ * - هامش الربح = إجمالي الفاتورة المعتمد - مجموع التكاليف
+ */
+export function calculateOrderFinancials(params: {
+  serviceType?: string | null;
+  rawPrice?: number | string | null;
+  rawCost?: number | string | null;
+  adBudgetUsd?: number | string | null;
+  usdExchangeRate?: number | null;
+  profitMarginPercent?: number | null;
+}): {
+  price: number;
+  cost: number;
+  profit: number;
+  isDollarConverted: boolean;
+} {
+  const isAd = isSponsoredAds(params.serviceType);
+  const parsedPrice = typeof params.rawPrice === 'number' 
+    ? params.rawPrice 
+    : (parseFloat(String(params.rawPrice || 0)) || 0);
+
+  let parsedCost = typeof params.rawCost === 'number' 
+    ? params.rawCost 
+    : (parseFloat(String(params.rawCost || 0)) || 0);
+
+  let isDollarConverted = false;
+
+  // فقط إذا كانت الخدمة تحديداً "إعلانات ممولة" وهناك ميزانية بالدولار وسعر صرف صالح يتم تطبيق التحويل
+  if (isAd) {
+    const rate = Number(params.usdExchangeRate) || 0;
+    const numUsd = typeof params.adBudgetUsd === 'number' 
+      ? params.adBudgetUsd 
+      : (parseFloat(String(params.adBudgetUsd || 0)) || 0);
+
+    if (numUsd > 0 && rate > 0) {
+      parsedCost = Math.round(numUsd * rate);
+      isDollarConverted = true;
+    }
+  }
+
+  // أي خدمة أخرى: تتجاهل حقل سعر الصرف تماماً وتبقى بالدينار الليبي
+  let finalPrice = parsedPrice;
+  if (finalPrice <= 0 && parsedCost > 0) {
+    const margin = typeof params.profitMarginPercent === 'number' ? params.profitMarginPercent : 32;
+    const marginRatio = Math.max(0.01, Math.min(0.9, margin / 100));
+    finalPrice = Math.round(parsedCost / (1 - marginRatio));
+  }
+
+  // هامش الربح = إجمالي الفاتورة - التكلفة المعتمدة
+  const profit = Number((finalPrice - parsedCost).toFixed(2));
+
+  return {
+    price: finalPrice,
+    cost: parsedCost,
+    profit,
+    isDollarConverted,
+  };
+}
+

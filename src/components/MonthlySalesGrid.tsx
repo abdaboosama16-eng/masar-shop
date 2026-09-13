@@ -21,6 +21,7 @@ import {
   Layers,
   AlertCircle,
   AlertTriangle,
+  HelpCircle,
   CheckSquare,
   FileText,
   DollarSign
@@ -30,8 +31,8 @@ import { ar } from 'date-fns/locale';
 import { useAppContext, defaultServicesConfig } from '../context/AppContext';
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
 import CostItemsPopover from './CostItemsPopover';
-import { getOrderTotalDetailCosts, getOrderNetProfit, isSponsoredAds } from '../utils/financialCalculations';
-import ExchangeRateModal from './ExchangeRateModal';
+import MonthNavigator from './MonthNavigator';
+import { getOrderTotalDetailCosts, getOrderNetProfit, isSponsoredAds, calculateOrderFinancials } from '../utils/financialCalculations';
 
 interface MonthlySalesGridProps {
   orders: Order[];
@@ -213,12 +214,43 @@ export default function MonthlySalesGrid({
     selectedDate,
     setSelectedDate,
     currentMonthExchangeRate,
+    usdRate1,
+    usdRate2,
+    setMonthUsdRate1,
+    setMonthUsdRate2,
     getExchangeRateForMonth,
     setMonthExchangeRate,
     exchangeRates
   } = useAppContext();
 
-  const [showExchangeRateModal, setShowExchangeRateModal] = useState(false);
+  const currentMonthKey = format(selectedDate, 'yyyy-MM');
+  const [rate1Input, setRate1Input] = useState<string>(() => (usdRate1 > 0 ? String(usdRate1) : '7.25'));
+  const [rate2Input, setRate2Input] = useState<string>(() => (usdRate2 > 0 ? String(usdRate2) : '7.35'));
+
+  // تحديث حقول سعر الصرف عند تغيير الشهر أو القيمة بدون أي نوافذ منبثقة إطلاقاً
+  useEffect(() => {
+    setRate1Input(usdRate1 > 0 ? String(usdRate1) : '');
+  }, [usdRate1, currentMonthKey]);
+
+  useEffect(() => {
+    setRate2Input(usdRate2 > 0 ? String(usdRate2) : '');
+  }, [usdRate2, currentMonthKey]);
+
+  const handleRate1Change = (val: string) => {
+    setRate1Input(val);
+    const num = parseFloat(val);
+    if (!isNaN(num) && num > 0) {
+      setMonthUsdRate1(currentMonthKey, num);
+    }
+  };
+
+  const handleRate2Change = (val: string) => {
+    setRate2Input(val);
+    const num = parseFloat(val);
+    if (!isNaN(num) && num > 0) {
+      setMonthUsdRate2(currentMonthKey, num);
+    }
+  };
 
   // إدارة حالة الفواتير (Invoices State) لضمان الاستجابة اللحظية والتحديث المباشر واستبعاد أي صف إجماليات
   const [invoices, setInvoicesState] = useState<Order[]>(() => {
@@ -394,6 +426,21 @@ export default function MonthlySalesGrid({
       }
     }, 100);
   };
+
+  // تفعيل اختصار F2 برمجياً في الخلفية لفتح إضافة فاتورة جديدة فوراً
+  useEffect(() => {
+    const handleGlobalF2 = (e: KeyboardEvent) => {
+      if (e.key === 'F2') {
+        e.preventDefault();
+        handleTriggerAddRow();
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalF2);
+    return () => {
+      window.removeEventListener('keydown', handleGlobalF2);
+    };
+  }, []);
 
   // دالة الحذف وتحديث الحالة (State) وحفظ المصفوفة الجديدة في localStorage مباشرة
   const handleDelete = (orderId: string | number) => {
@@ -864,13 +911,17 @@ export default function MonthlySalesGrid({
     setDraftCostBreakdown(costBreakdown);
     setDraftCostExecutors(costExecutors);
 
-    if (isSponsoredAds(newService) && newAdBudgetUsd) {
-      const rate = currentMonthExchangeRate || 1;
-      const numUsd = parseFloat(newAdBudgetUsd) || 0;
-      const convertedCost = Math.round(numUsd * rate);
-      setNewCost(convertedCost > 0 ? String(convertedCost) : '');
-      setNewDetails(`ميزانية إعلان ممول: ${newAdBudgetUsd}$ = ${convertedCost.toLocaleString()} ${currency}`);
+    if (isSponsoredAds(newService)) {
+      if (newAdBudgetUsd) {
+        const rate = usdRate1 || currentMonthExchangeRate || 1;
+        const numUsd = parseFloat(newAdBudgetUsd) || 0;
+        const convertedCost = Math.round(numUsd * rate);
+        setNewCost(convertedCost > 0 ? String(convertedCost) : '');
+        setNewDetails(`ميزانية إعلان ممول: ${newAdBudgetUsd}$ = ${convertedCost.toLocaleString()} ${currency}`);
+      }
     } else {
+      // أي خدمة أخرى غير الإعلانات الممولة: تعامل بالدينار الليبي مباشرة دون أي ضرب بسعر الصرف
+      setNewAdBudgetUsd('');
       setNewCost(totalCost > 0 ? String(totalCost) : '');
       setNewDetails(detailsList.join(' • '));
     }
@@ -878,7 +929,7 @@ export default function MonthlySalesGrid({
 
   const handleNewAdBudgetUsdChange = (usdVal: string) => {
     setNewAdBudgetUsd(usdVal);
-    const rate = currentMonthExchangeRate || 1;
+    const rate = usdRate1 || currentMonthExchangeRate || 1;
     const numUsd = parseFloat(usdVal) || 0;
     const convertedCost = Math.round(numUsd * rate);
     setNewCost(convertedCost > 0 ? String(convertedCost) : '');
@@ -901,7 +952,7 @@ export default function MonthlySalesGrid({
 
   const handleEditAdBudgetUsdChange = (usdVal: string) => {
     setEditAdBudgetUsd(usdVal);
-    const rate = currentMonthExchangeRate || 1;
+    const rate = usdRate1 || currentMonthExchangeRate || 1;
     const numUsd = parseFloat(usdVal) || 0;
     const convertedCost = Math.round(numUsd * rate);
     setEditCost(convertedCost > 0 ? String(convertedCost) : '');
@@ -1065,7 +1116,8 @@ export default function MonthlySalesGrid({
     const expectedProfit = parsedPrice - parsedCost;
 
     const isAd = isSponsoredAds(editServiceType);
-    const usdBudget = parseFloat(editAdBudgetUsd) || (isAd && currentMonthExchangeRate > 0 ? Math.round(parsedCost / currentMonthExchangeRate) : undefined);
+    const activeRate = usdRate1 || currentMonthExchangeRate || 0;
+    const usdBudget = parseFloat(editAdBudgetUsd) || (isAd && activeRate > 0 ? Math.round(parsedCost / activeRate) : undefined);
 
     const updates: Partial<Order> = {
       serviceType: editServiceType,
@@ -1077,8 +1129,11 @@ export default function MonthlySalesGrid({
       notes: editNotes.trim() ? editNotes.trim() : undefined,
       ...(isAd ? {
         adBudgetUsd: usdBudget,
-        adExchangeRate: currentMonthExchangeRate || undefined,
-      } : {}),
+        adExchangeRate: activeRate || undefined,
+      } : {
+        adBudgetUsd: undefined,
+        adExchangeRate: undefined,
+      }),
     };
 
     if (onUpdateOrder) {
@@ -1105,7 +1160,8 @@ export default function MonthlySalesGrid({
     const autoSerial = getNextSerialNumber ? getNextSerialNumber() : `INV-${Date.now().toString().slice(-4)}`;
 
     const isAd = isSponsoredAds(newServiceType);
-    const usdBudget = parseFloat(newAdBudgetUsd) || (isAd && currentMonthExchangeRate > 0 ? Math.round(parsedCost / currentMonthExchangeRate) : undefined);
+    const activeRate = usdRate1 || currentMonthExchangeRate || 0;
+    const usdBudget = parseFloat(newAdBudgetUsd) || (isAd && activeRate > 0 ? Math.round(parsedCost / activeRate) : undefined);
 
     const detailsArray = newDetails.trim() 
       ? newDetails.split(/[\n•,]+/).map(s => s.trim()).filter(Boolean) 
@@ -1121,7 +1177,7 @@ export default function MonthlySalesGrid({
       cost: parsedCost,
       expectedProfit,
       adBudgetUsd: isAd ? usdBudget : undefined,
-      adExchangeRate: isAd ? (currentMonthExchangeRate || undefined) : undefined,
+      adExchangeRate: isAd ? (activeRate || undefined) : undefined,
       costDetails: draftCostDetails,
       costBreakdown: draftCostBreakdown,
       costExecutors: draftCostExecutors,
@@ -1787,21 +1843,22 @@ export default function MonthlySalesGrid({
       {/* ========================================================================= */}
       {/* 1. COMPACT MONTH SELECTOR, SEARCH & ACTION BUTTONS TOOLBAR */}
       {/* ========================================================================= */}
-      <div className="glass-panel p-3 sm:p-4 rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 shadow-xs space-y-3 no-print">
+      {/* 1. لوحة التحكم وشريط الأدوات المنظم (Clean 3-Row Toolbar Dashboard) */}
+      {/* ========================================================================= */}
+      <div className="glass-panel p-3.5 sm:p-4 rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 shadow-sm space-y-3.5 no-print">
         
-        {/* Top Line: Month Info, Month Switcher & Action Buttons */}
-        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3">
-          
-          {/* Left Title & Month Badge */}
+        {/* الصف الأول: عنوان "سجل الفواتير" على اليمين، ومحدد الأشهر (الأسهم) على اليسار */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+          {/* اليمين: عنوان سجل الفواتير مع شارة الشهر وعدد الطلبيات */}
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 flex items-center justify-center font-bold border border-emerald-200/60 dark:border-emerald-800/60 shadow-2xs shrink-0">
-              <FileSpreadsheet size={17} />
+            <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold border border-blue-200/60 dark:border-blue-800/60 shadow-2xs shrink-0">
+              <FileSpreadsheet size={18} />
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 tracking-tight">
                 سجل الفواتير
               </h3>
-              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-emerald-100/80 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-blue-100/80 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
                 {formattedCurrentMonth}
               </span>
               <span className="text-[11px] text-slate-500 dark:text-slate-400 font-bold">
@@ -1810,138 +1867,115 @@ export default function MonthlySalesGrid({
             </div>
           </div>
 
-          {/* Right Controls: Month Selector & Action Buttons (Export/Print) */}
-          <div className="flex items-center flex-wrap gap-2 w-full lg:w-auto justify-start lg:justify-end">
-            
-            {/* Month Dropdown */}
-            <div className="relative flex-1 sm:w-44 min-w-[140px]">
-              <select
-                id="month-selector-dropdown"
-                value={format(selectedDate, 'yyyy-MM')}
-                onChange={(e) => {
-                  const targetMonth = availableMonths.find(m => m.key === e.target.value);
-                  if (targetMonth) {
-                    setSelectedDate(targetMonth.date);
-                  }
-                }}
-                className="w-full glass-input rounded-lg pr-3 pl-8 py-1.5 text-xs font-black text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 appearance-none cursor-pointer shadow-2xs"
-              >
-                {availableMonths.map((m) => (
-                  <option key={m.key} value={m.key}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-            </div>
-
-            {/* Previous / Current / Next Month Controls */}
-            <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700 shrink-0">
-              <button
-                type="button"
-                id="btn-prev-month"
-                onClick={handlePrevMonth}
-                className="relative z-10 cursor-pointer p-1 rounded-md hover:bg-white dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors"
-                title="الشهر السابق"
-                aria-label="الشهر السابق"
-              >
-                <ChevronRight size={15} />
-              </button>
-
-              <button
-                type="button"
-                id="btn-current-month"
-                onClick={handleCurrentMonth}
-                className="relative z-10 cursor-pointer px-2 py-0.5 text-[11px] font-bold text-slate-700 dark:text-slate-300 hover:text-emerald-700 dark:hover:text-emerald-400 transition-colors"
-                title="الرجوع إلى الشهر الحالي"
-              >
-                الحالي
-              </button>
-
-              <button
-                type="button"
-                id="btn-next-month"
-                onClick={handleNextMonth}
-                className="relative z-10 cursor-pointer p-1 rounded-md hover:bg-white dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors"
-                title="الشهر التالي"
-                aria-label="الشهر التالي"
-              >
-                <ChevronLeft size={15} />
-              </button>
-            </div>
-
-            {/* Action Buttons: Exchange Rate, Export Excel & Print */}
-            <div className="flex items-center gap-1.5 shrink-0">
-              {/* زر ومؤشر سعر صرف الدولار للشهر الحالي */}
-              <button
-                type="button"
-                id="btn-open-exchange-rate-modal"
-                onClick={() => setShowExchangeRateModal(true)}
-                className="relative z-10 cursor-pointer py-1.5 px-3 rounded-lg text-xs font-bold flex items-center gap-1.5 border border-emerald-300 dark:border-emerald-800 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-900/60 shadow-2xs transition-colors"
-                title="تحديد أو تعديل سعر صرف الدولار المعتمد لهذا الشهر"
-              >
-                <DollarSign size={14} className="text-emerald-600 dark:text-emerald-400 stroke-[2.5]" />
-                <span>صرف $:</span>
-                <span className="font-mono font-black">
-                  {currentMonthExchangeRate > 0 ? `${currentMonthExchangeRate.toLocaleString()} ${currency}` : 'تحديد'}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                id="btn-export-excel-grid"
-                onClick={handleExportCSV}
-                className="relative z-10 cursor-pointer btn-secondary py-1.5 px-3 rounded-lg text-xs font-bold flex items-center gap-1.5 border border-slate-300 dark:border-slate-700 shadow-2xs hover:bg-slate-100 dark:hover:bg-slate-800"
-                title="تصدير كشف الشهر الحالي إلى ملف Excel / CSV"
-              >
-                <Download size={14} className="text-emerald-600 dark:text-emerald-400" />
-                <span>تصدير Excel</span>
-              </button>
-
-              <button
-                type="button"
-                id="btn-print-monthly-grid"
-                onClick={() => window.print()}
-                className="relative z-10 cursor-pointer btn-secondary py-1.5 px-3 rounded-lg text-xs font-bold flex items-center gap-1.5 border border-slate-300 dark:border-slate-700 shadow-2xs hover:bg-slate-100 dark:hover:bg-slate-800"
-                title="طباعة السجل الشهري"
-              >
-                <Printer size={14} className="text-blue-600 dark:text-blue-400" />
-                <span>طباعة السجل</span>
-              </button>
-            </div>
+          {/* اليسار: محدد الأشهر الموحد (الأسهم) */}
+          <div className="shrink-0 w-full sm:w-auto flex justify-start sm:justify-end">
+            <MonthNavigator
+              selectedDate={selectedDate}
+              onDateChange={setSelectedDate}
+            />
           </div>
         </div>
 
-        {/* Second Line: Search & Service Filters */}
-        <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800/80">
-          
-          {/* Quick Search */}
+        {/* الصف الثاني: حقول "سعر الصرف 1" و "سعر الصرف 2" على اليمين، وأزرار "تصدير Excel" و "طباعة السجل" على اليسار */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pt-3 border-t border-slate-100 dark:border-slate-800/80">
+          {/* اليمين: حقول سعر الصرف 1 وسعر الصرف 2 بتصميم زجاجي متناسق */}
+          <div className="flex items-center flex-wrap gap-2 w-full sm:w-auto">
+            {/* حقل سعر الصرف 1 */}
+            <div 
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-50/90 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 shadow-2xs backdrop-blur-md transition-all"
+              title="سعر الصرف 1 (مثلاً للكاش)"
+            >
+              <span className="text-xs font-bold text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                سعر الصرف 1:
+              </span>
+              <input
+                type="number"
+                id="input-usd-rate-1"
+                step="any"
+                value={rate1Input}
+                onChange={(e) => handleRate1Change(e.target.value)}
+                placeholder="7.25"
+                className="w-16 text-center font-mono font-black text-xs text-blue-900 dark:text-blue-200 bg-transparent border-b border-dashed border-slate-300 dark:border-slate-600 focus:outline-hidden focus:border-solid focus:border-blue-500 py-0.5"
+              />
+              <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">{currency}</span>
+            </div>
+
+            {/* حقل سعر الصرف 2 */}
+            <div 
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-50/90 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 shadow-2xs backdrop-blur-md transition-all"
+              title="سعر الصرف 2 (مثلاً للحوالة)"
+            >
+              <span className="text-xs font-bold text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                سعر الصرف 2:
+              </span>
+              <input
+                type="number"
+                id="input-usd-rate-2"
+                step="any"
+                value={rate2Input}
+                onChange={(e) => handleRate2Change(e.target.value)}
+                placeholder="7.35"
+                className="w-16 text-center font-mono font-black text-xs text-blue-900 dark:text-blue-200 bg-transparent border-b border-dashed border-slate-300 dark:border-slate-600 focus:outline-hidden focus:border-solid focus:border-blue-500 py-0.5"
+              />
+              <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">{currency}</span>
+            </div>
+          </div>
+
+          {/* اليسار: أزرار تصدير Excel وطباعة السجل */}
+          <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto justify-end">
+            <button
+              type="button"
+              id="btn-export-excel-grid"
+              onClick={handleExportCSV}
+              className="cursor-pointer btn-secondary py-1.5 px-3.5 rounded-xl text-xs font-bold flex items-center gap-1.5 border border-slate-200 dark:border-slate-700 shadow-2xs hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              title="تصدير كشف الشهر الحالي إلى ملف Excel / CSV"
+            >
+              <Download size={14} className="text-blue-600 dark:text-blue-400" />
+              <span>تصدير Excel</span>
+            </button>
+
+            <button
+              type="button"
+              id="btn-print-monthly-grid"
+              onClick={() => window.print()}
+              className="cursor-pointer btn-secondary py-1.5 px-3.5 rounded-xl text-xs font-bold flex items-center gap-1.5 border border-slate-200 dark:border-slate-700 shadow-2xs hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              title="طباعة السجل الشهري"
+            >
+              <Printer size={14} className="text-blue-600 dark:text-blue-400" />
+              <span>طباعة السجل</span>
+            </button>
+          </div>
+        </div>
+
+        {/* الصف الثالث: شريط البحث الشامل (يأخذ المساحة الأكبر)، وبجانبه قائمة "كافة أنواع الخدمات" للفلترة */}
+        <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800/80">
+          {/* شريط البحث الشامل (يأخذ المساحة الأكبر) */}
           <div className="relative flex-1">
-            <Search size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Search size={15} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
               id="monthly-grid-search"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="ابحث برقم الفاتورة، اسم العميل، نوع الخدمة، أو الملاحظات..."
-              className="w-full glass-input rounded-lg pr-9 pl-3 py-1.5 text-xs bg-slate-50/80 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700"
+              className="w-full glass-input rounded-xl pr-10 pl-3.5 py-2 text-xs bg-slate-50/80 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-blue-500 transition-all text-slate-900 dark:text-slate-100"
             />
           </div>
 
-          {/* Service Filter Dropdown */}
-          <div className="relative shrink-0 md:w-56">
+          {/* قائمة كافة أنواع الخدمات للفلترة */}
+          <div className="relative shrink-0 sm:w-60">
             <select
               id="monthly-service-filter"
               value={serviceFilter}
               onChange={(e) => setServiceFilter(e.target.value)}
-              className="w-full glass-input rounded-lg pr-3 pl-7 py-1.5 text-xs font-bold text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 appearance-none cursor-pointer"
+              className="w-full glass-input rounded-xl pr-3.5 pl-8 py-2 text-xs font-bold text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 appearance-none cursor-pointer focus:ring-2 focus:ring-blue-500 transition-all shadow-2xs"
             >
               <option value="الكل">كافة أنواع الخدمات</option>
               {availableServices.map((srv) => (
                 <option key={srv.id || srv.name} value={srv.name}>{srv.name}</option>
               ))}
             </select>
-            <ChevronDown size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            <ChevronDown size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
           </div>
         </div>
       </div>
@@ -2208,7 +2242,7 @@ export default function MonthlySalesGrid({
                               e.stopPropagation();
                               handleSaveEdit(order.id);
                             }}
-                            className="relative z-10 cursor-pointer px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-xs transition-colors shrink-0 flex items-center gap-1"
+                            className="relative z-10 cursor-pointer px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 shadow-xs transition-colors shrink-0 flex items-center gap-1"
                           >
                             <Check size={14} />
                             <span>حفظ</span>
@@ -2226,7 +2260,7 @@ export default function MonthlySalesGrid({
                               e.stopPropagation();
                               handleSaveEdit(order.id);
                             }}
-                            className="relative z-10 cursor-pointer p-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-transform active:scale-95"
+                            className="relative z-10 cursor-pointer p-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white shadow-xs transition-transform active:scale-95"
                             title="حفظ التعديلات"
                             aria-label="حفظ التعديلات"
                           >
@@ -2268,14 +2302,15 @@ export default function MonthlySalesGrid({
                 const isRowSelected = selectedRowIds.has(String(order.id)) || orangeRowIds.has(String(order.id));
                 let rowBgClass = '';
                 if (dragOverOrderId === order.id && draggedOrderId !== order.id) {
-                  rowBgClass = 'border-t-2 border-orange-500 dark:border-orange-400 bg-orange-50/70 dark:bg-orange-900/30';
+                  rowBgClass = 'border-t-2 border-blue-500 dark:border-blue-400 bg-blue-50/70 dark:bg-blue-900/30';
                 } else if (draggedOrderId === order.id) {
                   rowBgClass = 'opacity-40 bg-slate-100 dark:bg-slate-800';
                 } else if (isRowSelected) {
-                  // التحديد النشط: اللون البرتقالي (Orange) فقط للصف بالكامل
+                  // التحديد النشط: اللون البرتقالي (Orange/Amber) فقط للصف بالكامل (اللون الأزرق مخصص لفواتير تحت المراجعة)
                   rowBgClass = 'bg-orange-100/95 dark:bg-orange-950/80 text-orange-950 dark:text-orange-100 border-r-4 border-r-orange-500 hover:bg-orange-200/90 dark:hover:bg-orange-900/80 ring-1 ring-orange-400/50 shadow-xs';
                 } else if (order.isUnderReview) {
-                  rowBgClass = 'bg-rose-50/70 dark:bg-rose-950/40 text-slate-900 dark:text-slate-100 border-r-4 border-r-rose-400 hover:bg-rose-100/60 dark:hover:bg-rose-900/50';
+                  // تمييز فواتير "تحت المراجعة" باللون الأزرق الفاتح والزجاجي للصف بالكامل مع وضوح فائق للنصوص
+                  rowBgClass = 'bg-blue-50/80 dark:bg-blue-950/45 text-slate-900 dark:text-slate-100 border-r-4 border-r-blue-500 hover:bg-blue-100/70 dark:hover:bg-blue-900/50 shadow-2xs backdrop-blur-xs';
                 } else {
                   rowBgClass = index % 2 === 0 
                     ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 hover:bg-slate-50/90 dark:hover:bg-slate-800/60' 
@@ -2353,10 +2388,10 @@ export default function MonthlySalesGrid({
                         <div className="flex items-center justify-center gap-1.5 truncate max-w-full">
                           {order.isPinned && (
                             <span 
-                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-900 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-300 dark:border-amber-700 select-none shadow-2xs shrink-0"
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-900 dark:bg-blue-950/70 dark:text-blue-300 border border-blue-300 dark:border-blue-700 select-none shadow-2xs shrink-0"
                               title="اشتراك شهري مثبت / عقد متكرر مستمر في الأشهر القادمة"
                             >
-                              <Pin size={10} className="text-amber-600 dark:text-amber-400 fill-amber-500/30 shrink-0" />
+                              <Pin size={10} className="text-blue-600 dark:text-blue-400 fill-blue-500/30 shrink-0" />
                               <span>عقد مستمر</span>
                             </span>
                           )}
@@ -2364,10 +2399,10 @@ export default function MonthlySalesGrid({
                         </div>
                         {order.isUnderReview && (
                           <span 
-                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-200/90 dark:bg-amber-900/80 text-amber-900 dark:text-amber-200 border border-amber-400 dark:border-amber-700 select-none shadow-2xs"
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 dark:bg-blue-950/80 text-blue-900 dark:text-blue-200 border border-blue-300 dark:border-blue-700 select-none shadow-2xs shrink-0"
                             title="فاتورة تحت المراجعة: تدقيق التكاليف والأرباح مطلوب"
                           >
-                            <AlertCircle size={10} className="text-amber-700 dark:text-amber-400 shrink-0 stroke-[2.5]" />
+                            <HelpCircle size={10} className="text-blue-700 dark:text-blue-400 shrink-0 stroke-[2.5]" />
                             <span>تحت المراجعة</span>
                           </span>
                         )}
@@ -2406,10 +2441,10 @@ export default function MonthlySalesGrid({
                           type="button"
                           id={`btn-open-cost-details-${order.id}`}
                           onClick={(e) => handleOpenPopover(order, e)}
-                          className="inline-flex items-center justify-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 hover:bg-amber-50 dark:bg-slate-800 dark:hover:bg-amber-950/40 text-slate-700 hover:text-amber-700 dark:text-slate-200 dark:hover:text-amber-300 border border-slate-200/80 dark:border-slate-700/80 transition-colors shadow-2xs cursor-pointer active:scale-95"
+                          className="inline-flex items-center justify-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 hover:bg-blue-50 dark:bg-slate-800 dark:hover:bg-blue-950/40 text-slate-700 hover:text-blue-700 dark:text-slate-200 dark:hover:text-blue-300 border border-slate-200/80 dark:border-slate-700/80 transition-colors shadow-2xs cursor-pointer active:scale-95"
                           title="فتح نافذة بنود التكلفة المستدعاة من القالب"
                         >
-                          <Layers size={13} className="text-amber-600 dark:text-amber-400" />
+                          <Layers size={13} className="text-blue-600 dark:text-blue-400" />
                           <span>التفاصيل</span>
                         </button>
                       </div>
@@ -2476,7 +2511,7 @@ export default function MonthlySalesGrid({
                             <Copy size={15} />
                           </button>
 
-                          {/* ثالثاً: أيقونة تمييز الفاتورة تحت المراجعة (AlertCircle) */}
+                          {/* ثالثاً: زر علامة الاستفهام (?) لتمييز الفاتورة تحت المراجعة لتدقيق التكاليف والأرباح */}
                           <button
                             type="button"
                             id={`btn-review-order-${order.id}`}
@@ -2484,15 +2519,15 @@ export default function MonthlySalesGrid({
                               e.stopPropagation();
                               handleToggleUnderReview(order.id);
                             }}
-                            className={`relative z-10 cursor-pointer p-1.5 rounded-lg transition-colors inline-flex items-center justify-center ${
+                            className={`relative z-10 cursor-pointer p-1.5 rounded-lg transition-all inline-flex items-center justify-center ${
                               order.isUnderReview 
-                                ? 'text-amber-700 bg-amber-100 dark:bg-amber-900/70 dark:text-amber-300 shadow-xs border border-amber-300 dark:border-amber-600' 
-                                : 'text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-slate-800'
+                                ? 'text-blue-700 bg-blue-100 dark:bg-blue-900/70 dark:text-blue-200 shadow-xs border border-blue-300 dark:border-blue-600' 
+                                : 'text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-slate-800'
                             }`}
-                            title={order.isUnderReview ? "الفاتورة تحت المراجعة (انقر لإلغاء التمييز)" : "تمييز كـ تحت المراجعة لتدقيق التكاليف والأرباح"}
+                            title={order.isUnderReview ? "الفاتورة تحت المراجعة (انقر لإلغاء التمييز)" : "تمييز كـ تحت المراجعة (?) لتدقيق التكاليف والأرباح"}
                             aria-label={`تمييز مراجعة فاتورة ${order.clientName}`}
                           >
-                            <AlertCircle size={15} className={order.isUnderReview ? "text-amber-600 dark:text-amber-300 stroke-[2.5]" : ""} />
+                            <HelpCircle size={15} className={order.isUnderReview ? "text-blue-600 dark:text-blue-300 stroke-[2.5]" : ""} />
                           </button>
 
                           {/* خامساً: زر الحذف */}
@@ -2714,7 +2749,7 @@ export default function MonthlySalesGrid({
                         type="button"
                         id="btn-save-inline-row-icon"
                         onClick={handleSaveInlineRow}
-                        className="relative z-10 cursor-pointer p-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-transform active:scale-95"
+                        className="relative z-10 cursor-pointer p-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white shadow-xs transition-transform active:scale-95"
                         title="حفظ الفاتورة وإدراجها في السجل"
                         aria-label="حفظ الفاتورة"
                       >
@@ -2751,7 +2786,7 @@ export default function MonthlySalesGrid({
                         type="button"
                         id="btn-empty-add-invoice"
                         onClick={handleTriggerAddRow}
-                        className="mt-2 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-all cursor-pointer"
+                        className="mt-2 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-all cursor-pointer"
                       >
                         <Plus size={14} className="stroke-[2.5]" />
                         <span>إضافة فاتورة الآن</span>
@@ -2892,12 +2927,6 @@ export default function MonthlySalesGrid({
           onSave={handleSaveOrderCosts}
         />
       )}
-
-      {/* نافذة تسعير وتعديل سعر صرف الدولار للشهر */}
-      <ExchangeRateModal
-        forceOpen={showExchangeRateModal}
-        onClose={() => setShowExchangeRateModal(false)}
-      />
 
       {/* ========================================================================= */}
       {/* 1. نافذة النسخ الذكية وترحيل الفاتورة إلى شهر آخر (Smart Duplicate Modal) */}

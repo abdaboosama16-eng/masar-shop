@@ -7,6 +7,7 @@ import {
 import { format, startOfMonth, endOfMonth, parseISO, isWithinInterval, addMonths, subMonths } from 'date-fns';
 import { ar } from 'date-fns/locale';
 import { useAppContext } from '../context/AppContext';
+import MonthNavigator from './MonthNavigator';
 import { Order } from '../types';
 import { 
   getOrderTotalDetailCosts, 
@@ -132,7 +133,7 @@ export default function ProfitsView({
         
         {/* Title and Icon */}
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold">
+          <div className="w-11 h-11 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold">
             <TrendingUp size={22} />
           </div>
           <div>
@@ -140,7 +141,7 @@ export default function ProfitsView({
               <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">
                 جدول الإدارة والملخص المالي
               </h2>
-              <span className="px-2 py-0.5 text-[11px] font-bold rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300">
+              <span className="px-2 py-0.5 text-[11px] font-bold rounded-full bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300">
                 {periodOrders.length} فاتورة
               </span>
             </div>
@@ -150,51 +151,22 @@ export default function ProfitsView({
           </div>
         </div>
 
-        {/* Month Selector Controls */}
+        {/* Month Selector Controls: Unified MonthNavigator */}
         <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200/80 dark:border-slate-700">
-            <button
-              type="button"
-              onClick={handleNextMonth}
-              className="p-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer"
-              title="الشهر القادم"
-              aria-label="الشهر القادم"
-            >
-              <ChevronRight size={16} />
-            </button>
-            
-            <button
-              type="button"
-              onClick={handleCurrentMonth}
-              className={`px-3 py-1 text-xs font-bold rounded-lg transition-colors cursor-pointer ${
-                !showAllMonths 
-                  ? 'text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-700 shadow-xs' 
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-              }`}
-            >
-              <span className="flex items-center gap-1.5">
-                <Calendar size={14} className="text-emerald-500" />
-                <span>{formattedCurrentMonth}</span>
-              </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handlePrevMonth}
-              className="p-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer"
-              title="الشهر السابق"
-              aria-label="الشهر السابق"
-            >
-              <ChevronLeft size={16} />
-            </button>
-          </div>
+          <MonthNavigator
+            selectedDate={selectedDate}
+            onDateChange={(newDate) => {
+              setSelectedDate(newDate);
+              setShowAllMonths(false);
+            }}
+          />
 
           <button
             type="button"
             onClick={() => setShowAllMonths(!showAllMonths)}
             className={`px-3 py-2 text-xs font-bold rounded-xl border transition-colors cursor-pointer ${
               showAllMonths
-                ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
                 : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200/80 dark:border-slate-700 hover:bg-slate-50'
             }`}
           >
@@ -205,7 +177,7 @@ export default function ProfitsView({
             <button
               type="button"
               onClick={onNavigateToExpenses}
-              className="px-3.5 py-2 text-xs font-bold rounded-xl bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-300/60 dark:border-amber-700/60 hover:bg-amber-500/20 transition-colors flex items-center gap-1.5 cursor-pointer"
+              className="px-3.5 py-2 text-xs font-bold rounded-xl bg-blue-500/10 text-blue-700 dark:text-blue-300 border border-blue-300/60 dark:border-blue-700/60 hover:bg-blue-500/20 transition-colors flex items-center gap-1.5 cursor-pointer"
             >
               <Receipt size={14} />
               <span>إدارة المصاريف</span>
@@ -316,7 +288,7 @@ export default function ProfitsView({
         
         <div className="p-4 border-b border-slate-200/80 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-950/30">
           <div className="flex items-center gap-2">
-            <Layers size={16} className="text-emerald-600 dark:text-emerald-400" />
+            <Layers size={16} className="text-blue-600 dark:text-blue-400" />
             <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100">
               جدول تفصيل أرباح الفواتير ({showAllMonths ? 'كافة الأشهر' : formattedCurrentMonth})
             </h3>
@@ -434,7 +406,7 @@ export default function ProfitsView({
           <button
             type="button"
             onClick={onNavigateToSales}
-            className="text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1.5 cursor-pointer"
+            className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1.5 cursor-pointer"
           >
             <span>العودة إلى سجل الفواتير</span>
             <ChevronLeft size={15} />

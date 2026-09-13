@@ -134,6 +134,7 @@ export interface Expense {
   attachments?: string[];
   pendingSync?: boolean;
   commissions?: CommissionRecord[];
+  isPinned?: boolean;
 }
 
 export interface CustomerTransaction {
@@ -317,6 +318,8 @@ export interface MonthlyExchangeRate {
   id: string; // e.g. "rate-2026-09"
   monthKey: string; // format "YYYY-MM" e.g. "2026-09"
   rate: number; // e.g. 7.25
+  rate1?: number; // سعر الصرف 1 (كاش)
+  rate2?: number; // سعر الصرف 2 (حوالة)
   updatedAt?: string;
   notes?: string;
 }

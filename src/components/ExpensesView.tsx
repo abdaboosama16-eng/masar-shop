@@ -1,13 +1,14 @@
 import React, { useState, useMemo } from 'react';
 import { 
   Plus, Trash2, Calendar, ChevronRight, ChevronLeft, 
-  Receipt, Check, X, Pencil, FileSpreadsheet
+  Receipt, Check, X, Pencil, FileSpreadsheet, Pin
 } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, parseISO, isWithinInterval, addMonths, subMonths } from 'date-fns';
 import { ar } from 'date-fns/locale';
 import { useAppContext } from '../context/AppContext';
 import { Expense } from '../types';
 import { formatMoney } from '../utils/financialCalculations';
+import MonthNavigator from './MonthNavigator';
 
 interface ExpensesViewProps {
   currency?: string;
@@ -20,7 +21,16 @@ export default function ExpensesView({
   onNavigateToProfits,
   onNavigateToSales: _onNavigateToSales
 }: ExpensesViewProps) {
-  const { expenses, addExpense, deleteExpense, updateExpense, selectedDate, setSelectedDate } = useAppContext();
+  const { 
+    expenses, 
+    addExpense, 
+    deleteExpense, 
+    updateExpense, 
+    togglePinExpense, 
+    autoCopyPinnedExpensesToMonth, 
+    selectedDate, 
+    setSelectedDate 
+  } = useAppContext();
 
   // Selected Month State
   const [showAllMonths, setShowAllMonths] = useState<boolean>(false);
@@ -71,6 +81,23 @@ export default function ExpensesView({
   const [newExpenseDescription, setNewExpenseDescription] = useState<string>('');
   const [newExpenseAmount, setNewExpenseAmount] = useState<string>('');
   const [newExpenseNotes, setNewExpenseNotes] = useState<string>('');
+  const [newExpenseIsPinned, setNewExpenseIsPinned] = useState<boolean>(false);
+
+  // عدد المصاريف الثابتة من الأشهر الأخرى غير الموجودة بعد في هذا الشهر
+  const otherPinnedCount = useMemo(() => {
+    if (showAllMonths) return 0;
+    const currentMonthDescSet = new Set(
+      periodExpenses.map(e => (e.description || '').trim().toLowerCase())
+    );
+    return expenses.filter(e => e.isPinned && !currentMonthDescSet.has((e.description || '').trim().toLowerCase())).length;
+  }, [expenses, periodExpenses, showAllMonths]);
+
+  // التحقق التلقائي عند التواجد في شهر جديد وفارغ
+  React.useEffect(() => {
+    if (!showAllMonths && periodExpenses.length === 0 && expenses.some(e => e.isPinned)) {
+      autoCopyPinnedExpensesToMonth(selectedDate);
+    }
+  }, [selectedDate, showAllMonths, periodExpenses.length, expenses, autoCopyPinnedExpensesToMonth]);
 
   // Editing existing expense state
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
@@ -83,6 +110,7 @@ export default function ExpensesView({
     setNewExpenseDescription('');
     setNewExpenseAmount('');
     setNewExpenseNotes('');
+    setNewExpenseIsPinned(false);
     setEditingExpenseId(null);
     setTimeout(() => {
       const inputEl = document.getElementById('inline-expense-input-desc');
@@ -95,6 +123,7 @@ export default function ExpensesView({
     setNewExpenseDescription('');
     setNewExpenseAmount('');
     setNewExpenseNotes('');
+    setNewExpenseIsPinned(false);
   };
 
   const handleSaveNewExpense = (e?: React.FormEvent) => {
@@ -123,11 +152,13 @@ export default function ExpensesView({
       type: 'مصروف',
       date: expenseDate,
       category: 'تشغيلي',
+      isPinned: newExpenseIsPinned,
     });
 
     setNewExpenseDescription('');
     setNewExpenseAmount('');
     setNewExpenseNotes('');
+    setNewExpenseIsPinned(false);
     setIsAddingExpense(false);
   };
 
@@ -189,7 +220,7 @@ export default function ExpensesView({
         
         {/* Title and Badge */}
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold border border-amber-200/60 dark:border-amber-800/60">
+          <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold border border-blue-200/60 dark:border-blue-800/60">
             <Receipt size={20} />
           </div>
           <div>
@@ -197,7 +228,7 @@ export default function ExpensesView({
               <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-slate-100">
                 سجل المصاريف التشغيلية
               </h2>
-              <span className="px-2.5 py-0.5 text-[11px] font-black rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800/60">
+              <span className="px-2.5 py-0.5 text-[11px] font-black rounded-full bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200/60 dark:border-blue-800/60">
                 {periodExpenses.length} بند
               </span>
             </div>
@@ -209,61 +240,42 @@ export default function ExpensesView({
 
         {/* Month Selector & Direct Add Controls */}
         <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200/80 dark:border-slate-700">
-            <button
-              type="button"
-              onClick={handleNextMonth}
-              className="p-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer"
-              title="الشهر القادم"
-              aria-label="الشهر القادم"
-            >
-              <ChevronRight size={16} />
-            </button>
-            
-            <button
-              type="button"
-              onClick={handleCurrentMonth}
-              className={`px-3 py-1 text-xs font-bold rounded-lg transition-colors cursor-pointer ${
-                !showAllMonths 
-                  ? 'text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-700 shadow-xs' 
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-              }`}
-            >
-              <span className="flex items-center gap-1.5">
-                <Calendar size={14} className="text-amber-500" />
-                <span>{formattedCurrentMonth}</span>
-              </span>
-            </button>
+          {/* محدد الأشهر الموحد */}
+          <MonthNavigator
+            selectedDate={selectedDate}
+            onDateChange={(newDate) => {
+              setSelectedDate(newDate);
+              setShowAllMonths(false);
+            }}
+            showAllMonths={showAllMonths}
+            onToggleShowAllMonths={() => setShowAllMonths(!showAllMonths)}
+          />
 
+          {/* زر جلب المصاريف الثابتة من الأشهر السابقة عند الحاجة */}
+          {!showAllMonths && otherPinnedCount > 0 && (
             <button
               type="button"
-              onClick={handlePrevMonth}
-              className="p-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer"
-              title="الشهر السابق"
-              aria-label="الشهر السابق"
+              id="btn-copy-pinned-expenses"
+              onClick={() => {
+                const count = autoCopyPinnedExpensesToMonth(selectedDate);
+                if (count > 0) {
+                  alert(`تم بنجاح جلب ونسخ ${count} من المصاريف الثابتة لشهر ${formattedCurrentMonth}`);
+                }
+              }}
+              className="px-3 py-2 text-xs font-bold rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-800 dark:text-blue-300 border border-blue-300 dark:border-blue-700 hover:bg-blue-100 dark:hover:bg-blue-900/60 flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
+              title="جلب ونسخ المصاريف الثابتة (مثل الإيجار، المرتبات الثابتة، الإنترنت) من الأشهر السابقة لهذا الشهر"
             >
-              <ChevronLeft size={16} />
+              <Pin size={14} className="fill-blue-500/40 text-blue-600" />
+              <span>جلب المصاريف الثابتة ({otherPinnedCount})</span>
             </button>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setShowAllMonths(!showAllMonths)}
-            className={`px-3 py-2 text-xs font-bold rounded-xl border transition-colors cursor-pointer ${
-              showAllMonths
-                ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
-                : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200/80 dark:border-slate-700 hover:bg-slate-50'
-            }`}
-          >
-            كافة الأشهر
-          </button>
+          )}
 
           {/* زر إضافة مصروف مباشر يفتح السطر المضمن أسفل الجدول */}
           <button
             type="button"
             id="btn-add-expense-main"
             onClick={handleStartAddExpense}
-            className="px-4 py-2 text-xs font-bold rounded-xl bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
+            className="px-4 py-2 text-xs font-bold rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
           >
             <Plus size={16} />
             <span>إضافة مصروف</span>
@@ -272,26 +284,26 @@ export default function ExpensesView({
       </div>
 
       {/* Summary Stat Card for Expenses */}
-      <div className="p-3.5 sm:p-4 rounded-xl bg-amber-50/70 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-900/40 flex flex-col sm:flex-row items-center justify-between gap-3">
+      <div className="p-3.5 sm:p-4 rounded-xl bg-blue-50/70 dark:bg-blue-950/20 border border-blue-200/60 dark:border-blue-900/40 flex flex-col sm:flex-row items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-amber-500 text-white flex items-center justify-center font-bold shadow-xs">
+          <div className="w-9 h-9 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold shadow-xs">
             <Receipt size={18} />
           </div>
           <div>
-            <span className="text-xs font-bold text-amber-900 dark:text-amber-200 block">
+            <span className="text-xs font-bold text-blue-900 dark:text-blue-200 block">
               إجمالي المصاريف التشغيلية ({showAllMonths ? 'كافة الأشهر' : formattedCurrentMonth})
             </span>
-            <span className="text-[11px] text-amber-700/80 dark:text-amber-400/80">
+            <span className="text-[11px] text-blue-700/80 dark:text-blue-400/80">
               تُسحب تلقائياً لحساب صافي الأرباح في صفحة الأرباح
             </span>
           </div>
         </div>
 
         <div className="text-left">
-          <span className="text-2xl sm:text-3xl font-black font-mono tabular-nums text-amber-700 dark:text-amber-300">
+          <span className="text-2xl sm:text-3xl font-black font-mono tabular-nums text-blue-700 dark:text-blue-300">
             {formatMoney(totalExpensesAmount)}
           </span>
-          <span className="text-xs font-bold text-amber-800/80 dark:text-amber-400 mr-1.5">
+          <span className="text-xs font-bold text-blue-800/80 dark:text-blue-400 mr-1.5">
             {currency}
           </span>
         </div>
@@ -318,8 +330,8 @@ export default function ExpensesView({
 
                 if (isEditing) {
                   return (
-                    <tr key={expense.id} className="bg-amber-50/80 dark:bg-amber-950/40 border-y-2 border-amber-400 dark:border-amber-600">
-                      <td className="py-2.5 px-3 text-center font-bold text-amber-600 border-l border-slate-200/60 dark:border-slate-800">
+                    <tr key={expense.id} className="bg-blue-50/80 dark:bg-blue-950/40 border-y-2 border-blue-400 dark:border-blue-600">
+                      <td className="py-2.5 px-3 text-center font-bold text-blue-600 border-l border-slate-200/60 dark:border-slate-800">
                         {idx + 1}
                       </td>
                       <td className="py-2.5 px-4 text-slate-500 font-mono text-[11px] border-l border-slate-200/60 dark:border-slate-800 text-center">
@@ -334,7 +346,7 @@ export default function ExpensesView({
                             if (e.key === 'Enter') handleSaveEdit(expense.id);
                             if (e.key === 'Escape') handleCancelEdit();
                           }}
-                          className="w-full glass-input rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 border-amber-300 dark:border-amber-700 focus:ring-2 focus:ring-amber-500"
+                          className="w-full glass-input rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 border-blue-300 dark:border-blue-700 focus:ring-2 focus:ring-blue-500"
                           placeholder="البيان..."
                           autoFocus
                         />
@@ -357,7 +369,7 @@ export default function ExpensesView({
                             if (e.key === 'Enter') handleSaveEdit(expense.id);
                             if (e.key === 'Escape') handleCancelEdit();
                           }}
-                          className="w-full glass-input rounded-lg px-2 py-1.5 text-xs font-mono font-bold text-center text-rose-700 dark:text-rose-400 bg-white dark:bg-slate-800 border-amber-300 dark:border-amber-700 focus:ring-2 focus:ring-amber-500"
+                          className="w-full glass-input rounded-lg px-2 py-1.5 text-xs font-mono font-bold text-center text-rose-700 dark:text-rose-400 bg-white dark:bg-slate-800 border-blue-300 dark:border-blue-700 focus:ring-2 focus:ring-blue-500"
                           placeholder="0"
                         />
                       </td>
@@ -370,7 +382,7 @@ export default function ExpensesView({
                             if (e.key === 'Enter') handleSaveEdit(expense.id);
                             if (e.key === 'Escape') handleCancelEdit();
                           }}
-                          className="w-full glass-input rounded-lg px-2.5 py-1.5 text-xs text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-800 border-amber-300 dark:border-amber-700 focus:ring-2 focus:ring-amber-500"
+                          className="w-full glass-input rounded-lg px-2.5 py-1.5 text-xs text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-800 border-blue-300 dark:border-blue-700 focus:ring-2 focus:ring-blue-500"
                           placeholder="الملاحظات..."
                         />
                       </td>
@@ -379,7 +391,7 @@ export default function ExpensesView({
                           <button
                             type="button"
                             onClick={() => handleSaveEdit(expense.id)}
-                            className="p-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition-colors cursor-pointer"
+                            className="p-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors cursor-pointer"
                             title="حفظ التعديلات (Enter)"
                             aria-label="حفظ"
                           >
@@ -400,10 +412,16 @@ export default function ExpensesView({
                   );
                 }
 
+                const isPinned = Boolean(expense.isPinned);
+
                 return (
                   <tr 
                     key={expense.id} 
-                    className="hover:bg-slate-50/70 dark:hover:bg-slate-800/50 transition-colors group"
+                    className={`transition-colors group ${
+                      isPinned 
+                        ? 'bg-blue-50/20 dark:bg-blue-950/15 hover:bg-blue-50/40 dark:hover:bg-blue-950/30' 
+                        : 'hover:bg-slate-50/70 dark:hover:bg-slate-800/50'
+                    }`}
                   >
                     <td className="py-3 px-3 text-center font-bold text-slate-400 dark:text-slate-500 border-l border-slate-200/60 dark:border-slate-800">
                       {idx + 1}
@@ -414,7 +432,18 @@ export default function ExpensesView({
                     </td>
 
                     <td className="py-3 px-4 font-bold text-slate-900 dark:text-slate-100 border-l border-slate-200/60 dark:border-slate-800">
-                      <span>{expense.description}</span>
+                      <div className="flex items-center gap-2">
+                        {isPinned && (
+                          <span 
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 dark:bg-blue-950/80 text-blue-900 dark:text-blue-200 border border-blue-300 dark:border-blue-700 select-none shadow-2xs shrink-0"
+                            title="مصروف ثابت ومثبت: يتكرر تلقائياً في الأشهر الجديدة"
+                          >
+                            <Pin size={10} className="text-blue-600 dark:text-blue-400 fill-blue-500/40 shrink-0" />
+                            <span>مثبت</span>
+                          </span>
+                        )}
+                        <span className="truncate">{expense.description}</span>
+                      </div>
                     </td>
 
                     <td className="py-3 px-4 text-center font-mono tabular-nums font-black text-rose-700 dark:text-rose-400 border-l border-slate-200/60 dark:border-slate-800 whitespace-nowrap">
@@ -432,6 +461,23 @@ export default function ExpensesView({
                     {/* أزرار الإجراءات موحدة مع جدول الفواتير */}
                     <td className="py-3 px-2 text-center print:hidden">
                       <div className="flex items-center justify-center gap-1">
+                        {/* أولاً: زر تثبيت المصروف (Pinned/Recurring Expense) */}
+                        <button
+                          type="button"
+                          id={`btn-pin-expense-${expense.id}`}
+                          onClick={() => togglePinExpense(expense.id)}
+                          className={`p-1.5 rounded-lg transition-all cursor-pointer inline-flex items-center justify-center ${
+                            isPinned 
+                              ? 'text-blue-700 bg-blue-100 dark:bg-blue-900/70 dark:text-blue-300 shadow-xs border border-blue-300 dark:border-blue-600' 
+                              : 'text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-slate-800'
+                          }`}
+                          title={isPinned ? "مصروف مثبت شهرياً (انقر لإلغاء التثبيت)" : "تثبيت هذا المصروف ليتكرر تلقائياً في الأشهر الجديدة"}
+                          aria-label={`تثبيت مصروف ${expense.description}`}
+                        >
+                          <Pin size={15} className={isPinned ? "text-blue-600 dark:text-blue-300 fill-blue-500/40" : ""} />
+                        </button>
+
+                        {/* ثانياً: زر التعديل */}
                         <button
                           type="button"
                           onClick={() => handleStartEdit(expense)}
@@ -441,6 +487,8 @@ export default function ExpensesView({
                         >
                           <Pencil size={15} />
                         </button>
+
+                        {/* ثالثاً: زر الحذف */}
                         <button
                           type="button"
                           onClick={() => {
@@ -536,9 +584,21 @@ export default function ExpensesView({
                     />
                   </td>
 
-                  {/* أزرار الحفظ والإلغاء السريعة */}
+                  {/* أزرار الحفظ والإلغاء السريعة مع زر تثبيت المصروف */}
                   <td className="py-2.5 px-2 text-center print:hidden">
                     <div className="flex items-center justify-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setNewExpenseIsPinned(!newExpenseIsPinned)}
+                        className={`p-1.5 rounded-lg transition-colors cursor-pointer flex items-center justify-center ${
+                          newExpenseIsPinned 
+                            ? 'text-blue-700 bg-blue-100 dark:bg-blue-900/70 border border-blue-300' 
+                            : 'text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-slate-800'
+                        }`}
+                        title={newExpenseIsPinned ? "سيتم حفظه كمصروف مثبت (يتكرر شهرياً)" : "تثبيت كمصروف شهري متكرر"}
+                      >
+                        <Pin size={14} className={newExpenseIsPinned ? "fill-blue-500/40 text-blue-600" : ""} />
+                      </button>
                       <button
                         type="button"
                         id="btn-inline-save-expense"
@@ -575,14 +635,31 @@ export default function ExpensesView({
                       <p className="text-xs text-slate-500">
                         انقر على زر "إضافة مصروف" لتسجيل بند جديد في الجدول مباشرة
                       </p>
-                      <button
-                        type="button"
-                        onClick={handleStartAddExpense}
-                        className="mt-2 px-3.5 py-1.5 text-xs font-bold rounded-lg bg-amber-600 hover:bg-amber-700 text-white flex items-center gap-1 shadow-xs cursor-pointer"
-                      >
-                        <Plus size={14} />
-                        <span>إضافة أول مصروف</span>
-                      </button>
+                      <div className="flex flex-wrap items-center justify-center gap-2 mt-2">
+                        <button
+                          type="button"
+                          onClick={handleStartAddExpense}
+                          className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white flex items-center gap-1 shadow-xs cursor-pointer"
+                        >
+                          <Plus size={14} />
+                          <span>إضافة أول مصروف</span>
+                        </button>
+                        {!showAllMonths && otherPinnedCount > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const count = autoCopyPinnedExpensesToMonth(selectedDate);
+                              if (count > 0) {
+                                alert(`تم بنجاح جلب ونسخ ${count} من المصاريف الثابتة لشهر ${formattedCurrentMonth}`);
+                              }
+                            }}
+                            className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-blue-100 dark:bg-blue-950/70 text-blue-900 dark:text-blue-200 border border-blue-300 dark:border-blue-700 hover:bg-blue-200 flex items-center gap-1 shadow-xs cursor-pointer"
+                          >
+                            <Pin size={13} className="fill-blue-500/40 text-blue-600" />
+                            <span>نسخ المصاريف الثابتة ({otherPinnedCount})</span>
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </td>
                 </tr>
@@ -618,7 +695,7 @@ export default function ExpensesView({
           <button
             type="button"
             onClick={onNavigateToProfits}
-            className="text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1.5 cursor-pointer"
+            className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1.5 cursor-pointer"
           >
             <span>الانتقال إلى صفحة الأرباح والملخص المالي</span>
             <ChevronLeft size={15} />

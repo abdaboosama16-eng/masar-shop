@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useId, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Plus, Check, Trash2, Layers, RotateCcw } from 'lucide-react';
-import { Order } from '../types';
+import { X, Plus, Check, Trash2, Layers, RotateCcw, UserPlus } from 'lucide-react';
+import { Order, Employee } from '../types';
 import { useAppContext, defaultServicesConfig } from '../context/AppContext';
+import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
+import { sanitizeEmployeePayload } from '../utils/supabaseSanitizer';
 
 export interface CostItemRow {
   id: string;
@@ -27,7 +29,13 @@ export default function CostItemsPopover({
   onClose,
   onSave,
 }: CostItemsPopoverProps) {
-  const { settings, employees } = useAppContext();
+  const { settings, employees, addEmployee } = useAppContext();
+
+  // حالة الإضافة السريعة لموظف جديد
+  const [isAddingEmployeeModal, setIsAddingEmployeeModal] = useState(false);
+  const [targetItemIdForNewEmployee, setTargetItemIdForNewEmployee] = useState<string | null>(null);
+  const [newEmployeeName, setNewEmployeeName] = useState('');
+  const [isSavingEmployee, setIsSavingEmployee] = useState(false);
 
   // الحصول على القالب المعتمد لهذه الخدمة
   const activeTemplate = useMemo(() => {
@@ -185,6 +193,64 @@ export default function CostItemsPopover({
     setCostItems(prev => prev.map(item => item.id === id ? { ...item, [field]: value } : item));
   };
 
+  // معالجة تغيير المنفذ / الموظف مع ميزة الإضافة السريعة
+  const handleExecutorChange = (itemId: string, value: string) => {
+    if (value === '__ADD_NEW_EMPLOYEE__') {
+      setTargetItemIdForNewEmployee(itemId);
+      setNewEmployeeName('');
+      setIsAddingEmployeeModal(true);
+      return;
+    }
+    handleUpdateItem(itemId, 'executor', value);
+  };
+
+  // حفظ موظف جديد مباشرة في قاعدة البيانات وتحديث القائمة وتعيينه للبند الحالي
+  const handleConfirmAddEmployee = async () => {
+    const cleanName = newEmployeeName.trim();
+    if (!cleanName) return;
+
+    setIsSavingEmployee(true);
+    try {
+      const newEmpId = Math.random().toString(36).substring(2, 9);
+      const newEmpData: Omit<Employee, 'id'> = {
+        name: cleanName,
+        role: 'فني تنفيذ',
+        status: 'نشط',
+        salary: 0,
+      };
+
+      // أ) إرسال هذا الموظف الجديد وحفظه مباشرة في قاعدة البيانات (AppContext + localStorage + Supabase Queue)
+      addEmployee(newEmpData, newEmpId);
+
+      // إرسال مباشر أو تحديث لجدول الموظفين في Supabase إذا كان متصلاً بعد تنظيف البيانات
+      if (isSupabaseConfigured) {
+        try {
+          const sanitizedEmp = sanitizeEmployeePayload({
+            id: newEmpId,
+            name: cleanName,
+            role: 'فني تنفيذ',
+            status: 'نشط',
+            salary: 0,
+          });
+          await supabase.from('employees').upsert([sanitizedEmp]);
+        } catch (supabaseErr) {
+          console.warn('Direct Supabase upsert error:', supabaseErr);
+        }
+      }
+
+      // ب) تحديث القائمة المنسدلة فوراً واختيار هذا الموظف الجديد للبند الحالي دون الحاجة لإغلاق نافذة الفاتورة
+      if (targetItemIdForNewEmployee) {
+        handleUpdateItem(targetItemIdForNewEmployee, 'executor', cleanName);
+      }
+
+      setIsAddingEmployeeModal(false);
+      setNewEmployeeName('');
+      setTargetItemIdForNewEmployee(null);
+    } finally {
+      setIsSavingEmployee(false);
+    }
+  };
+
   // حذف بند
   const handleRemoveItem = (id: string) => {
     setCostItems(prev => prev.filter(item => item.id !== id));
@@ -331,7 +397,7 @@ export default function CostItemsPopover({
         <div className="flex items-center justify-between pb-2.5 border-b border-slate-100 dark:border-slate-800">
           <div>
             <div className="flex items-center gap-1.5">
-              <Layers size={14} className="text-amber-500 shrink-0" />
+              <Layers size={14} className="text-blue-600 dark:text-blue-400 shrink-0" />
               <h4 className="font-bold text-xs text-slate-900 dark:text-slate-100">
                 بنود التكلفة: {order.serviceType || 'خدمة مخصصة'}
               </h4>
@@ -351,7 +417,7 @@ export default function CostItemsPopover({
             <button
               type="button"
               onClick={handleResetToTemplate}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-slate-800 transition-colors"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-slate-800 transition-colors"
               title="إعادة تعيين البنود لقيم القالب الافتراضية"
               aria-label="إعادة تعيين البنود"
             >
@@ -369,6 +435,65 @@ export default function CostItemsPopover({
           </div>
         </div>
 
+        {/* نافذة الإضافة السريعة لموظف جديد */}
+        {isAddingEmployeeModal && (
+          <div className="p-3 rounded-xl bg-blue-50/95 dark:bg-blue-950/90 border border-blue-200 dark:border-blue-800 shadow-md space-y-2 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-blue-900 dark:text-blue-200">
+                <UserPlus size={15} className="text-blue-600 dark:text-blue-400" />
+                <span>إضافة موظف جديد وتعيينه للبند</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsAddingEmployeeModal(false);
+                  setNewEmployeeName('');
+                  setTargetItemIdForNewEmployee(null);
+                }}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-white/50 cursor-pointer"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                autoFocus
+                value={newEmployeeName}
+                onChange={(e) => setNewEmployeeName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleConfirmAddEmployee();
+                  } else if (e.key === 'Escape') {
+                    setIsAddingEmployeeModal(false);
+                    setNewEmployeeName('');
+                    setTargetItemIdForNewEmployee(null);
+                  }
+                }}
+                placeholder="أدخل اسم الموظف الجديد (مثال: أحمد عبد الله)..."
+                className="flex-1 text-xs px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-blue-300 dark:border-blue-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+              />
+              <button
+                type="button"
+                disabled={!newEmployeeName.trim() || isSavingEmployee}
+                onClick={handleConfirmAddEmployee}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 transition-all shadow-xs shrink-0 flex items-center gap-1 cursor-pointer"
+              >
+                {isSavingEmployee ? (
+                  <span className="inline-block animate-spin text-xs">⟳</span>
+                ) : (
+                  <Check size={14} className="stroke-[2.5]" />
+                )}
+                <span>حفظ وتعيين</span>
+              </button>
+            </div>
+            <p className="text-[10px] text-blue-700 dark:text-blue-300">
+              يتم الحفظ فوراً في قاعدة البيانات وتعيين الموظف لهذا البند تلقائياً
+            </p>
+          </div>
+        )}
+
         {/* شبكة إدخال بنود التكلفة المستدعاة من القالب والبنود الحرة */}
         <div className="space-y-2 max-h-[300px] overflow-y-auto pr-0.5">
           {costItems.map((item) => (
@@ -377,7 +502,7 @@ export default function CostItemsPopover({
               className={`p-2.5 rounded-lg border space-y-1.5 transition-colors ${
                 item.isFromTemplate 
                   ? 'bg-slate-50/90 dark:bg-slate-800/60 border-slate-200/80 dark:border-slate-700/80' 
-                  : 'bg-amber-50/50 dark:bg-amber-950/20 border-amber-200/70 dark:border-amber-900/60'
+                  : 'bg-blue-50/40 dark:bg-blue-950/20 border-blue-200/70 dark:border-blue-900/60'
               }`}
             >
               <div className="flex items-center justify-between text-[11px] font-bold text-slate-800 dark:text-slate-200">
@@ -423,29 +548,62 @@ export default function CostItemsPopover({
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') handleSave();
                     }}
-                    className="w-full text-xs font-mono px-2.5 py-1.5 rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:ring-1 focus:ring-amber-500 focus:outline-hidden"
+                    className="w-full text-xs font-mono px-2.5 py-1.5 rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:ring-1 focus:ring-blue-500 focus:outline-hidden"
                   />
                 </div>
                 <div>
-                  <label className="text-[9px] text-slate-500 dark:text-slate-400 block mb-0.5 font-medium">اسم المنفذ / الموظف</label>
-                  <select
-                    value={item.executor}
-                    onChange={(e) => handleUpdateItem(item.id, 'executor', e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleSave();
-                    }}
-                    className="w-full text-xs px-2 py-1.5 rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-amber-500 focus:outline-hidden cursor-pointer"
-                  >
-                    <option value="">-- اختر المنفذ / الموظف --</option>
-                    {employees.map(emp => (
-                      <option key={emp.id} value={emp.name}>
-                        {emp.name} {emp.role ? `(${emp.role})` : ''}
+                  <div className="flex items-center justify-between mb-0.5">
+                    <label className="text-[9px] text-slate-500 dark:text-slate-400 font-medium">اسم المنفذ / الموظف</label>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <select
+                      value={item.executor || (employees[0]?.name || '')}
+                      onChange={(e) => handleExecutorChange(item.id, e.target.value)}
+                      onFocus={(e) => {
+                        try {
+                          if (typeof (e.currentTarget as any).showPicker === 'function') {
+                            (e.currentTarget as any).showPicker();
+                          }
+                        } catch {}
+                      }}
+                      onClick={(e) => {
+                        try {
+                          if (typeof (e.currentTarget as any).showPicker === 'function') {
+                            (e.currentTarget as any).showPicker();
+                          }
+                        } catch {}
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleSave();
+                      }}
+                      className="flex-1 text-xs px-2 py-1.5 rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-blue-500 focus:outline-hidden cursor-pointer"
+                    >
+                      {/* إزالة الخيار الافتراضي: احذف خيار -- اختر المنفذ / الموظف -- تماماً من القائمة */}
+                      {employees.map(emp => (
+                        <option key={emp.id} value={emp.name}>
+                          {emp.name} {emp.role ? `(${emp.role})` : ''}
+                        </option>
+                      ))}
+                      {item.executor && !employees.some(e => e.name === item.executor) && (
+                        <option value={item.executor}>{item.executor} (مخصص)</option>
+                      )}
+                      <option value="__ADD_NEW_EMPLOYEE__" className="font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950">
+                        ➕ إضافة موظف جديد...
                       </option>
-                    ))}
-                    {item.executor && !employees.some(e => e.name === item.executor) && (
-                      <option value={item.executor}>{item.executor} (مخصص)</option>
-                    )}
-                  </select>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTargetItemIdForNewEmployee(item.id);
+                        setNewEmployeeName('');
+                        setIsAddingEmployeeModal(true);
+                      }}
+                      title="➕ إضافة موظف جديد وتعيينه للبند"
+                      className="p-1.5 rounded-md bg-blue-50 hover:bg-blue-100 text-blue-600 dark:bg-blue-950/60 dark:hover:bg-blue-900 dark:text-blue-300 border border-blue-200/80 dark:border-blue-800 shrink-0 cursor-pointer transition-colors"
+                    >
+                      <Plus size={13} className="stroke-[2.5]" />
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -472,7 +630,7 @@ export default function CostItemsPopover({
                   handleAddCustomItem();
                 }
               }}
-              className="flex-1 text-xs px-3 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:ring-1 focus:ring-amber-500 focus:outline-hidden"
+              className="flex-1 text-xs px-3 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:ring-1 focus:ring-blue-500 focus:outline-hidden"
             />
             <button
               type="button"
@@ -503,8 +661,8 @@ export default function CostItemsPopover({
             onClick={handleSave}
             className={`px-4 py-1.5 rounded-lg font-bold text-xs transition-all flex items-center gap-1.5 shadow-xs cursor-pointer ${
               isSaved 
-                ? 'bg-emerald-600 text-white' 
-                : 'bg-emerald-600 hover:bg-emerald-700 text-white active:scale-95'
+                ? 'bg-blue-600 text-white' 
+                : 'bg-blue-600 hover:bg-blue-700 text-white active:scale-95'
             }`}
           >
             {isSaved ? <Check size={14} /> : null}

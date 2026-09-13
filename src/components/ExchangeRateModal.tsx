@@ -27,27 +27,17 @@ export default function ExchangeRateModal({ forceOpen = false, onClose }: Exchan
   const [errorMsg, setErrorMsg] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
-  // تحقق تلقائي عند تغير الشهر/السنة: إذا لم يكن سعر الصرف مسجلاً مسبقاً، افتح النافذة تلقائياً
+  // فتح النافذة فقط عند الطلب الصريح عبر forceOpen، والتنقل بين الأشهر صامت تماماً
   useEffect(() => {
     if (forceOpen) {
       const existingRate = exchangeRates[monthKey];
       setRateInput(existingRate ? String(existingRate) : '');
       setIsOpen(true);
       setErrorMsg('');
-      return;
-    }
-
-    const hasRate = exchangeRates[monthKey] !== undefined && exchangeRates[monthKey] > 0;
-    const isDismissed = dismissedMonths.has(monthKey);
-
-    if (!hasRate && !isDismissed) {
-      setRateInput('');
-      setIsOpen(true);
-      setErrorMsg('');
-    } else if (!forceOpen) {
+    } else {
       setIsOpen(false);
     }
-  }, [selectedDate, monthKey, exchangeRates, forceOpen, dismissedMonths]);
+  }, [forceOpen, monthKey, exchangeRates]);
 
   const handleClose = () => {
     setIsOpen(false);
